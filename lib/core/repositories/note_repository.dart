@@ -1,96 +1,48 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive/hive.dart';
 import 'package:notesync_app/models/note.dart';
 
 class NoteRepository {
-  static const String _notesKey = 'notes';
+  final Box<Note> _box;
 
-  // 新增：init 方法
+  NoteRepository(this._box);
+
+  // 初始化方法现在可以为空，因为 main.dart 已经完成了 Box 的打开
   Future<void> init() async {}
 
-  // 重命名：getAllNotes 适配 Provider 调用
-  Future<List<Note>> getAllNotes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final notesJson = prefs.getStringList(_notesKey) ?? [];
-
-    if (notesJson.isEmpty) {
-      return [];
-    }
-
-    return notesJson.map((json) => Note.fromJson(jsonDecode(json))).toList();
+  List<Note> getAllNotes() {
+    // Hive 的 values 是可迭代的，直接转为 List
+    // 按更新时间降序排列 (最近修改的在前面)
+    final notes = _box.values.toList();
+    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return notes;
   }
 
-  // 重命名：addNote 适配 Provider 调用
   Future<void> addNote(Note note) async {
-    final prefs = await SharedPreferences.getInstance();
-    final notes = await getAllNotes();
-    notes.add(note);
-    await _saveAllNotes(notes);
+    // 使用 note.id 作为 key，方便后续快速查找
+    await _box.put(note.id, note);
   }
 
-  // 新增：updateNote 适配 Provider 调用
   Future<void> updateNote(Note note) async {
-    final prefs = await SharedPreferences.getInstance();
-    final notes = await getAllNotes();
-
-    final index = notes.indexWhere((n) => n.id == note.id);
-    if (index != -1) {
-      notes[index] = note;
-      await _saveAllNotes(notes);
-    }
+    await _box.put(note.id, note);
   }
 
   Future<void> deleteNote(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final notes = await getAllNotes();
-    notes.removeWhere((note) => note.id == id);
-    await _saveAllNotes(notes);
+    await _box.delete(id);
   }
 
-  // 修正：searchNotes 改为 Future 方法（适配异步逻辑）
-  Future<List<Note>> searchNotes(String query) async {
-    final notes = await getAllNotes();
-    if (query.isEmpty) return notes;
+  // 搜索逻辑：同步且快速
+  List<Note> searchNotes(String query) {
+    if (query.isEmpty) return getAllNotes();
 
     final lowercaseQuery = query.toLowerCase();
-    return notes.where((note) {
+    return _box.values.where((note) {
       return note.title.toLowerCase().contains(lowercaseQuery) ||
-          note.content.toLowerCase().contains(lowercaseQuery) ||
+          note.plainText.toLowerCase().contains(lowercaseQuery) ||
           note.tags.any((tag) => tag.toLowerCase().contains(lowercaseQuery));
-    }).toList();
+    }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
-  // 新增：getNoteById 适配 Provider 调用
-  Future<Note?> getNoteById(String id) async {
-    final notes = await getAllNotes();
-    return notes.firstWhere((note) => note.id == id);
-  }
-
-  Future<void> _saveAllNotes(List<Note> notes) async {
-    final prefs = await SharedPreferences.getInstance();
-    final notesJson = notes.map((note) => jsonEncode(note.toJson())).toList();
-    await prefs.setStringList(_notesKey, notesJson);
-  }
-
-  Future<List<String>> getAllTags() async {
-    final notes = await getAllNotes();
-    final allTags = <String>{};
-
-    for (final note in notes) {
-      allTags.addAll(note.tags);
-    }
-
-    return allTags.toList()..sort();
-  }
-
-  Future<List<String>> getAllCategories() async {
-    final notes = await getAllNotes();
-    final allCategories = <String>{};
-
-    for (final note in notes) {
-      allCategories.add(note.category);
-    }
-
-    return allCategories.toList()..sort();
+  Note? getNoteById(String id) {
+    return _box.get(id);
   }
 }

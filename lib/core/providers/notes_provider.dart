@@ -6,50 +6,56 @@ import '../../models/note.dart';
 class NotesProvider with ChangeNotifier {
   final NoteRepository _repository;
   List<Note> _notes = [];
-
-  // 修正：uuid 定义位置（避免全局变量）
   final Uuid _uuid = const Uuid();
 
-  NotesProvider(this._repository);
+  NotesProvider(this._repository) {
+    loadNotes();
+  }
 
   List<Note> get notes => _notes;
 
-  Future<void> init() async {
-    await _repository.init();
-    _notes = await _repository.getAllNotes(); // 补充 await
+  void loadNotes() {
+    _notes = _repository.getAllNotes();
     notifyListeners();
   }
 
-  Future<void> addNote({required String title, required String content}) async {
+  // 保持兼容性，初始化方法
+  Future<void> init() async {
+    loadNotes();
+  }
+
+  // 🔴 修改处：增加了 tags 参数，默认为空列表
+  Future<void> addNote({
+    required String title,
+    required String content,
+    List<String> tags = const []
+  }) async {
     final note = Note(
-      id: _uuid.v4(), // 使用类内 uuid
+      id: _uuid.v4(),
       title: title,
       content: content,
+      tags: tags, // 保存标签
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
     await _repository.addNote(note);
-    _notes = await _repository.getAllNotes(); // 补充 await
-    notifyListeners();
+    loadNotes();
   }
 
   Future<void> updateNote(Note note) async {
-    await _repository.updateNote(note);
-    _notes = await _repository.getAllNotes(); // 补充 await
-    notifyListeners();
+    // updateNote 直接接收完整的 Note 对象（包含 ID 和 updated tags），所以逻辑不用变
+    // 但为了严谨，我们在这里更新一下 updatedAt
+    final updatedNote = note.copyWith(updatedAt: DateTime.now());
+    await _repository.updateNote(updatedNote);
+    loadNotes();
   }
 
   Future<void> deleteNote(String id) async {
     await _repository.deleteNote(id);
-    _notes = await _repository.getAllNotes(); // 补充 await
-    notifyListeners();
+    loadNotes();
   }
 
-  Future<List<Note>> searchNotes(String query) async { // 改为 Future
-    return await _repository.searchNotes(query);
-  }
-
-  Future<Note?> getNoteById(String id) async { // 改为 Future
-    return await _repository.getNoteById(id);
+  List<Note> searchNotes(String query) {
+    return _repository.searchNotes(query);
   }
 }

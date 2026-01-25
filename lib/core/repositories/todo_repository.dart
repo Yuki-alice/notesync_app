@@ -1,82 +1,54 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive/hive.dart';
 import 'package:notesync_app/models/todo.dart';
 
 class TodoRepository {
-  static const String _todosKey = 'todos';
+  final Box<Todo> _box;
 
-  // 新增：适配 Provider 的 init 方法（空实现，保持接口统一）
+  TodoRepository(this._box);
+
   Future<void> init() async {}
 
-  // 重命名：getAllTodos 适配 Provider 调用
-  Future<List<Todo>> getAllTodos() async {
-    final prefs = await SharedPreferences.getInstance();
-    final todosJson = prefs.getStringList(_todosKey) ?? [];
-
-    if (todosJson.isEmpty) {
-      return [];
-    }
-
-    return todosJson.map((json) => Todo.fromJson(jsonDecode(json))).toList();
+  List<Todo> getAllTodos() {
+    // 未完成的排前面，已完成的排后面
+    final todos = _box.values.toList();
+    todos.sort((a, b) {
+      if (a.isCompleted == b.isCompleted) {
+        return b.createdAt.compareTo(a.createdAt);
+      }
+      return a.isCompleted ? 1 : -1;
+    });
+    return todos;
   }
 
-  // 重命名：addTodo 适配 Provider 调用
   Future<void> addTodo(Todo todo) async {
-    final prefs = await SharedPreferences.getInstance();
-    final todos = await getAllTodos();
-    todos.add(todo);
-    await _saveAllTodos(todos);
+    await _box.put(todo.id, todo);
   }
 
-  // 新增：updateTodo 适配 Provider 调用
   Future<void> updateTodo(Todo todo) async {
-    final prefs = await SharedPreferences.getInstance();
-    final todos = await getAllTodos();
-
-    final index = todos.indexWhere((t) => t.id == todo.id);
-    if (index != -1) {
-      todos[index] = todo;
-      await _saveAllTodos(todos);
-    }
+    await _box.put(todo.id, todo);
   }
 
   Future<void> deleteTodo(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final todos = await getAllTodos();
-    todos.removeWhere((todo) => todo.id == id);
-    await _saveAllTodos(todos);
+    await _box.delete(id);
   }
 
-  // 重命名：toggleTodoStatus 适配 Provider 调用，修复字段逻辑
   Future<void> toggleTodoStatus(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final todos = await getAllTodos();
-
-    final index = todos.indexWhere((todo) => todo.id == id);
-    if (index != -1) {
-      final currentTodo = todos[index];
-      todos[index] = currentTodo.copyWith(
-        isCompleted: !currentTodo.isCompleted,
+    final todo = _box.get(id);
+    if (todo != null) {
+      final updatedTodo = todo.copyWith(
+        isCompleted: !todo.isCompleted,
         updatedAt: DateTime.now(),
       );
-      await _saveAllTodos(todos);
+      await _box.put(id, updatedTodo);
     }
   }
 
-  // 新增：searchTodos 适配 Provider 调用
-  Future<List<Todo>> searchTodos(String query) async {
-    final todos = await getAllTodos();
-    if (query.isEmpty) return todos;
+  List<Todo> searchTodos(String query) {
+    if (query.isEmpty) return getAllTodos();
 
     final lowercaseQuery = query.toLowerCase();
-    return todos
+    return _box.values
         .where((todo) => todo.title.toLowerCase().contains(lowercaseQuery))
         .toList();
-  }
-
-  Future<void> _saveAllTodos(List<Todo> todos) async {
-    final prefs = await SharedPreferences.getInstance();
-    final todosJson = todos.map((todo) => jsonEncode(todo.toJson())).toList();
-    await prefs.setStringList(_todosKey, todosJson);
   }
 }

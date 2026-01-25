@@ -1,37 +1,27 @@
 import 'package:hive/hive.dart';
-import 'package:intl/intl.dart';
+import 'dart:convert'; // 用于解析 JSON
 
-part 'note.g.dart'; // 确保执行过 build_runner 生成该文件
+part 'note.g.dart';
 
 @HiveType(typeId: 0)
 class Note extends HiveObject {
   @HiveField(0)
-  String id;
+  final String id;
 
   @HiveField(1)
-  String title;
+  final String title;
 
   @HiveField(2)
-  String content;
+  final String content; // 存储纯文本(旧) 或 Delta JSON字符串(新)
 
   @HiveField(3)
-  DateTime createdAt;
+  final DateTime createdAt;
 
   @HiveField(4)
-  DateTime updatedAt;
+  final DateTime updatedAt;
 
   @HiveField(5)
-  String category; // 分类字段，默认值 general
-
-  @HiveField(6)
-  List<String> tags; // 标签字段，默认空列表
-
-  // 可选：补充其他通用字段（按需）
-  @HiveField(7)
-  bool isPinned;
-
-  @HiveField(8)
-  bool isArchived;
+  final List<String> tags; // 标签列表
 
   Note({
     required this.id,
@@ -39,16 +29,58 @@ class Note extends HiveObject {
     required this.content,
     required this.createdAt,
     required this.updatedAt,
-    this.category = 'general',
     this.tags = const [],
-    this.isPinned = false,
-    this.isArchived = false,
   });
 
+  // 辅助属性：判断内容是否为富文本 (简单判断是否以 JSON 数组/对象开头)
+  bool get isRichText {
+    final trimmed = content.trim();
+    return trimmed.startsWith('[') || trimmed.startsWith('{');
+  }
 
-  String get formattedCreatedAt => DateFormat('yyyy-MM-dd HH:mm').format(createdAt);
-  String get formattedUpdatedAt => DateFormat('yyyy-MM-dd HH:mm').format(updatedAt);
+  // 核心方法：获取用于显示和搜索的纯文本
+  // 如果是富文本 JSON，这里会提取出其中的文字部分
+  String get plainText {
+    if (!isRichText) return content;
 
+    try {
+      final List<dynamic> delta = jsonDecode(content);
+      final buffer = StringBuffer();
+
+      for (final op in delta) {
+        if (op is Map<String, dynamic> && op.containsKey('insert')) {
+          final insert = op['insert'];
+          if (insert is String) {
+            buffer.write(insert);
+          } else {
+            // 如果插入的是对象（如图片），可以用占位符代替，或者忽略
+            buffer.write('[图片]');
+          }
+        }
+      }
+      return buffer.toString().trim();
+    } catch (e) {
+      // 解析失败则降级返回原始内容
+      return content;
+    }
+  }
+
+  // 格式化时间 getter
+  String get formattedUpdatedAt {
+    final now = DateTime.now();
+    final diff = now.difference(updatedAt);
+
+    if (diff.inDays == 0) {
+      return "${updatedAt.hour.toString().padLeft(2,'0')}:${updatedAt.minute.toString().padLeft(2,'0')}";
+    } else if (diff.inDays < 7) {
+      return "${diff.inDays}天前";
+    } else {
+      return "${updatedAt.year}-${updatedAt.month.toString().padLeft(2,'0')}-${updatedAt.day.toString().padLeft(2,'0')}";
+    }
+  }
+  String get formattedCreatedAt {
+    return "${createdAt.year}-${createdAt.month.toString().padLeft(2,'0')}-${createdAt.day.toString().padLeft(2,'0')} ${createdAt.hour.toString().padLeft(2,'0')}:${createdAt.minute.toString().padLeft(2,'0')}";
+  }
 
   Note copyWith({
     String? id,
@@ -56,51 +88,15 @@ class Note extends HiveObject {
     String? content,
     DateTime? createdAt,
     DateTime? updatedAt,
-    String? category,
     List<String>? tags,
-    bool? isPinned,
-    bool? isArchived,
   }) {
     return Note(
       id: id ?? this.id,
       title: title ?? this.title,
       content: content ?? this.content,
       createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? DateTime.now(),
-      category: category ?? this.category,
+      updatedAt: updatedAt ?? this.updatedAt,
       tags: tags ?? this.tags,
-      isPinned: isPinned ?? this.isPinned,
-      isArchived: isArchived ?? this.isArchived,
-    );
-  }
-
-  // 兼容 Repository 的 toJson 方法（Hive 可序列化，但 Repository 仍需 JSON 转换）
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'content': content,
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt.toIso8601String(),
-      'category': category,
-      'tags': tags,
-      'isPinned': isPinned,
-      'isArchived': isArchived,
-    };
-  }
-
-  // 兼容 Repository 的 fromJson 静态方法
-  static Note fromJson(Map<String, dynamic> json) {
-    return Note(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      content: json['content'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
-      category: json['category'] as String? ?? 'general',
-      tags: List<String>.from(json['tags'] ?? []),
-      isPinned: json['isPinned'] as bool? ?? false,
-      isArchived: json['isArchived'] as bool? ?? false,
     );
   }
 }
