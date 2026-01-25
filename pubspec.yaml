@@ -1,0 +1,30 @@
+name: notesync_app
+description: "一个跨平台的笔记与待办事项同步应用"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.1.1
+  gap: ^3.0.1
+  uuid: ^4.4.0
+  shared_preferences: ^2.2.2      # 本地存储
+  intl: ^0.19.0                   # 日期格式化
+  flutter_slidable: ^3.0.0        # 侧滑删除
+  search_page: ^2.1.1            # 搜索页面
+  hive: ^2.2.3                   # 本地持久化
+  hive_flutter: ^1.1.0           # Hive Flutter适配
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  hive_generator: ^2.0.1         # Hive代码生成器
+  build_runner: ^2.4.10          # Hive代码生成器运行器
+
+flutter:
+  uses-material-design: true
