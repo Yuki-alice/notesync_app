@@ -5,28 +5,42 @@ part 'todo.g.dart';
 @HiveType(typeId: 1)
 class Todo extends HiveObject {
   @HiveField(0)
-  String id;
+  final String id;
 
   @HiveField(1)
-  String title;
+  final String title;
 
   @HiveField(2)
-  bool isCompleted;
+  final bool isCompleted;
 
   @HiveField(3)
-  DateTime createdAt;
+  final DateTime createdAt;
 
-  // 新增 updatedAt 字段（适配完成状态更新）
   @HiveField(4)
-  DateTime updatedAt;
+  final DateTime updatedAt;
+
+  @HiveField(5)
+  final String description;
+
+  @HiveField(6)
+  final DateTime? dueDate;
+
+  // 保留排序字段，用于拖拽功能
+  @HiveField(8)
+  final double sortOrder;
+
+  // 注意：删除了 notificationId (index 7)
 
   Todo({
     required this.id,
     required this.title,
     this.isCompleted = false,
     required this.createdAt,
-    DateTime? updatedAt,
-  }) : updatedAt = updatedAt ?? DateTime.now();
+    required this.updatedAt,
+    this.description = '',
+    this.dueDate,
+    this.sortOrder = 0.0,
+  });
 
   Todo copyWith({
     String? id,
@@ -34,6 +48,9 @@ class Todo extends HiveObject {
     bool? isCompleted,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? description,
+    DateTime? dueDate,
+    double? sortOrder,
   }) {
     return Todo(
       id: id ?? this.id,
@@ -41,28 +58,9 @@ class Todo extends HiveObject {
       isCompleted: isCompleted ?? this.isCompleted,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
-    );
-  }
-
-  // 补充 JSON 序列化（适配 Repository）
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'isCompleted': isCompleted,
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt.toIso8601String(),
-    };
-  }
-
-  // 补充 JSON 反序列化
-  static Todo fromJson(Map<String, dynamic> json) {
-    return Todo(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      isCompleted: json['isCompleted'] as bool? ?? false,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      description: description ?? this.description,
+      dueDate: dueDate ?? this.dueDate,
+      sortOrder: sortOrder ?? this.sortOrder,
     );
   }
 }

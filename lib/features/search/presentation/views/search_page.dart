@@ -4,7 +4,9 @@ import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/providers/todos_provider.dart';
 import '../../../../models/note.dart';
 import '../../../../models/todo.dart';
-import '../../../../widgets/common/dialogs/note_detail_dialog.dart'; // 确保导入
+
+import '../../../../widgets/common/dialogs/create_todo_dialog.dart';
+import '../../../notes/presentation/views/note_editor_page.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -33,76 +35,162 @@ class _SearchPageState extends State<SearchPage> {
     super.dispose();
   }
 
+  void _openNote(Note note) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => NoteEditorPage(note: note)),
+    );
+  }
+
+  void _openTodo(Todo todo) async {
+    final provider = Provider.of<TodosProvider>(context, listen: false);
+    final result = await showCreateTodoDialog(
+      context: context,
+      existingTodo: todo,
+    );
+    if (result != null) {
+      await provider.updateTodo(result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 获取 Provider
+    final theme = Theme.of(context);
     final notesProvider = Provider.of<NotesProvider>(context);
     final todosProvider = Provider.of<TodosProvider>(context);
 
-    // 获取过滤后的列表 (同步操作，非常快)
+    // 获取过滤后的列表
     final filteredNotes = notesProvider.searchNotes(_searchQuery);
     final filteredTodos = todosProvider.searchTodos(_searchQuery);
 
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: '搜索笔记或待办...',
-            border: InputBorder.none,
-            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        titleSpacing: 0,
+        title: Padding(
+          padding: const EdgeInsets.only(right: 16.0),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: '搜索笔记或待办...',
+              hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+              border: InputBorder.none,
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () => _searchController.clear(),
+              )
+                  : null,
+            ),
+            textInputAction: TextInputAction.search,
+            autofocus: true,
+            style: TextStyle(color: theme.colorScheme.onSurface),
           ),
-          autofocus: false,
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
       ),
       body: _searchQuery.isEmpty
-          ? Center(child: Text('输入关键词开始搜索', style: TextStyle(color: Theme.of(context).colorScheme.outline)))
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_rounded, size: 64, color: theme.colorScheme.outline.withOpacity(0.5)),
+            const SizedBox(height: 16),
+            Text('输入关键词搜索', style: TextStyle(color: theme.colorScheme.outline)),
+          ],
+        ),
+      )
           : ListView(
         padding: const EdgeInsets.all(16),
         children: [
           if (filteredNotes.isNotEmpty) ...[
-            Text('笔记 (${filteredNotes.length})',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary)),
-            const SizedBox(height: 8),
+            _SectionHeader(title: '笔记', count: filteredNotes.length),
             ...filteredNotes.map((note) => Card(
+              elevation: 0,
               margin: const EdgeInsets.only(bottom: 8),
+              color: theme.colorScheme.surfaceContainerLow,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5),
+              ),
               child: ListTile(
-                title: Text(note.title, maxLines: 1),
-                subtitle: Text(note.content, maxLines: 1, overflow: TextOverflow.ellipsis),
-                leading: const Icon(Icons.note),
-                onTap: () => showNoteDetailDialog(context, note),
+                title: Text(note.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+                // 🔴 关键修复：使用 plainText 而不是 content
+                subtitle: Text(
+                  note.plainText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                leading: Icon(Icons.article_outlined, color: theme.colorScheme.primary),
+                onTap: () => _openNote(note),
               ),
             )),
             const SizedBox(height: 16),
           ],
 
           if (filteredTodos.isNotEmpty) ...[
-            Text('待办 (${filteredTodos.length})',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary)),
-            const SizedBox(height: 8),
+            _SectionHeader(title: '待办', count: filteredTodos.length),
             ...filteredTodos.map((todo) => Card(
+              elevation: 0,
               margin: const EdgeInsets.only(bottom: 8),
+              color: theme.colorScheme.surfaceContainerLow,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5),
+              ),
               child: ListTile(
-                title: Text(todo.title,
+                title: Text(
+                    todo.title,
                     style: TextStyle(
-                        decoration: todo.isCompleted ? TextDecoration.lineThrough : null,
-                        color: todo.isCompleted ? Colors.grey : null
-                    )),
-                leading: Checkbox(
-                  value: todo.isCompleted,
-                  onChanged: (_) => todosProvider.toggleTodoStatus(todo.id),
+                      decoration: todo.isCompleted ? TextDecoration.lineThrough : null,
+                      color: todo.isCompleted ? theme.colorScheme.outline : theme.colorScheme.onSurface,
+                    )
                 ),
+                leading: Transform.scale(
+                  scale: 0.9,
+                  child: Checkbox(
+                    value: todo.isCompleted,
+                    onChanged: (_) => todosProvider.toggleTodoStatus(todo.id),
+                    shape: const CircleBorder(),
+                  ),
+                ),
+                onTap: () => _openTodo(todo),
               ),
             )),
           ],
 
           if (filteredNotes.isEmpty && filteredTodos.isEmpty)
-            const Center(child: Padding(
-              padding: EdgeInsets.only(top: 32.0),
-              child: Text('没有找到匹配的内容'),
+            Center(child: Padding(
+              padding: const EdgeInsets.only(top: 64.0),
+              child: Column(
+                children: [
+                  Icon(Icons.search_off_rounded, size: 48, color: theme.colorScheme.outline),
+                  const SizedBox(height: 16),
+                  const Text('没有找到相关内容'),
+                ],
+              ),
             )),
         ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final int count;
+
+  const _SectionHeader({required this.title, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0, left: 4),
+      child: Text(
+        '$title ($count)',
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

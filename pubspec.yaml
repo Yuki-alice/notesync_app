@@ -28,6 +28,7 @@ dependencies:
   # 文件抽象 (image_picker 依赖)
   cross_file: ^0.3.3
 
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
