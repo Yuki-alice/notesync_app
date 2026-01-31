@@ -95,7 +95,6 @@ class _InteractableImageState extends State<InteractableImage> {
 
   void _handleTap() {
     FocusScope.of(context).unfocus();
-    // 延时一小段时间，确保 UI 稳定后再显示菜单
     Future.delayed(const Duration(milliseconds: 50), () {
       if (mounted) _showFloatingToolbar();
     });
@@ -212,23 +211,15 @@ class _ImageEmbedBuilder extends quill.EmbedBuilder {
     );
   }
 
-  // 🔴 关键修复：使用“删除+重新插入”策略，彻底解决属性不可修改的问题
-  // 🔴 修复版：切换宽度 (分步操作，兼容性最强)
   void _toggleImageWidth(quill.QuillController controller, quill.Embed node, bool enableFullWidth) {
     final offset = getEmbedNodeOffset(controller, node);
     if (offset != -1) {
       final String imageUrl = node.value.data;
 
-      // 1. 删除旧节点
       controller.document.delete(offset, 1);
-
-      // 2. 插入新节点 (insert 只有两个参数：位置和数据)
       controller.document.insert(offset, quill.BlockEmbed.image(imageUrl));
 
-      // 3. 应用样式 (如果是满宽)
       if (enableFullWidth) {
-        // 使用 AttributeScope.inline，这通常是图片等行内元素样式的正确作用域
-        // 这样可以避免 "Apply delta rules failed" 错误
         controller.formatText(
             offset,
             1,
@@ -236,8 +227,6 @@ class _ImageEmbedBuilder extends quill.EmbedBuilder {
         );
       }
 
-      // 4. 强制刷新 UI
-      // 延时一帧确保 Quill 内部状态更新完毕
       Future.delayed(Duration.zero, () {
         controller.updateSelection(
             TextSelection.collapsed(offset: offset + 1),
@@ -247,32 +236,24 @@ class _ImageEmbedBuilder extends quill.EmbedBuilder {
     }
   }
 
-  // 🔴 稳健性修复：添加描述
   void _addCaption(quill.QuillController controller, quill.Embed node) {
     final offset = getEmbedNodeOffset(controller, node);
     if (offset != -1) {
       final index = offset + 1;
-      // 1. 插入题注文本
       const captionText = '在此添加题注';
       controller.document.insert(index, '\n$captionText');
 
-      // 2. 准备样式范围 (跳过换行符，只选中文字)
       final textStart = index + 1;
       final textLength = captionText.length;
 
-      // 3. 应用样式
-      // 小号字体
       controller.formatText(textStart, textLength, quill.Attribute.small);
-      // 居中对齐 (作用于整行)
       controller.formatText(textStart, textLength, quill.Attribute.centerAlignment);
-      // 灰色文字 (视觉优化)
       controller.formatText(
           textStart,
           textLength,
           quill.Attribute('color', quill.AttributeScope.inline, '#2F4F4F')
       );
 
-      // 4. 选中文字方便直接修改
       Future.delayed(Duration.zero, () {
         controller.updateSelection(
             TextSelection(baseOffset: textStart, extentOffset: textStart + textLength),
@@ -282,19 +263,16 @@ class _ImageEmbedBuilder extends quill.EmbedBuilder {
     }
   }
 
-  // 删除图片
   void _deleteImage(quill.QuillController controller, quill.Embed node) {
     final offset = getEmbedNodeOffset(controller, node);
     if (offset != -1) {
       controller.replaceText(offset, 1, '', const TextSelection.collapsed(offset: 0));
-      // 清理残留换行
       if (offset < controller.document.length && controller.document.toPlainText()[offset] == '\n') {
         controller.replaceText(offset, 1, '', const TextSelection.collapsed(offset: 0));
       }
     }
   }
 
-  // 节点查找辅助函数
   int getEmbedNodeOffset(quill.QuillController controller, quill.Embed node) {
     var offset = 0;
     for (final child in controller.document.root.children) {
@@ -306,7 +284,6 @@ class _ImageEmbedBuilder extends quill.EmbedBuilder {
       }
       offset += child.length;
     }
-    // 降级查找
     final docLength = controller.document.length;
     for (var i = 0; i < docLength - 1; i++) {
       final data = controller.document.queryChild(i);
@@ -437,10 +414,10 @@ class NoteEditorPage extends StatefulWidget {
 class _NoteEditorPageState extends State<NoteEditorPage> {
   late quill.QuillController _quillController;
   late TextEditingController _titleController;
-  late TextEditingController _tagController;
   final FocusNode _editorFocusNode = FocusNode();
   final FocusNode _titleFocusNode = FocusNode();
   List<String> _tags = [];
+  String? _category;
   final ImageStorageService _imageService = ImageStorageService();
 
   _ToolbarPanel _activePanel = _ToolbarPanel.none;
@@ -449,17 +426,14 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.note?.title ?? '');
-    _tagController = TextEditingController();
     _tags = widget.note?.tags.toList() ?? [];
+    _category = widget.note?.category;
     _initQuillController();
 
-    // 监听：失去焦点时处理
     _editorFocusNode.addListener(() {
       if (!_editorFocusNode.hasFocus && _activePanel != _ToolbarPanel.none) {
         Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted && !_editorFocusNode.hasFocus) {
-            // 失去焦点
-          }
+          if (mounted && !_editorFocusNode.hasFocus) {}
         });
       }
     });
@@ -498,7 +472,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     OverlayMenuManager.hide();
     _quillController.dispose();
     _titleController.dispose();
-    _tagController.dispose();
     _editorFocusNode.dispose();
     _titleFocusNode.dispose();
     super.dispose();
@@ -524,12 +497,46 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     }
   }
 
-  void _addTag(String tag) {
+  void _showAddTagDialog() {
+    final theme = Theme.of(context);
+    String tempTag = '';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('添加标签'),
+        content: TextField(
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '输入标签名称 (例如: 重要)',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.tag_rounded),
+          ),
+          onChanged: (v) => tempTag = v,
+          onSubmitted: (v) {
+            _commitTag(v);
+            Navigator.pop(ctx);
+          },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              _commitTag(tempTag);
+              Navigator.pop(ctx);
+            },
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _commitTag(String tag) {
     final trimmed = tag.trim();
     if (trimmed.isNotEmpty && !_tags.contains(trimmed)) {
       setState(() {
         _tags.add(trimmed);
-        _tagController.clear();
       });
     }
   }
@@ -549,11 +556,143 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     final contentJson = jsonEncode(_quillController.document.toDelta().toJson());
     final provider = Provider.of<NotesProvider>(context, listen: false);
     if (widget.note == null) {
-      await provider.addNote(title: title.isEmpty ? '无标题' : title, content: contentJson, tags: _tags);
+      await provider.addNote(
+        title: title.isEmpty ? '未命名笔记' : title,
+        content: contentJson,
+        tags: _tags,
+        category: _category,
+      );
     } else {
-      await provider.updateNote(widget.note!.copyWith(title: title, content: contentJson, tags: _tags, updatedAt: DateTime.now()));
+      await provider.updateNote(widget.note!.copyWith(
+          title: title,
+          content: contentJson,
+          tags: _tags,
+          category: _category,
+          updatedAt: DateTime.now()
+      ));
     }
     if (mounted) Navigator.pop(context);
+  }
+
+  void _pickCategory() async {
+    final provider = Provider.of<NotesProvider>(context, listen: false);
+    final categories = provider.categories;
+    final theme = Theme.of(context);
+    final textController = TextEditingController();
+
+    final String? selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true, // 允许弹窗随键盘高度调整
+      showDragHandle: true,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24, // 键盘避让
+          left: 24,
+          right: 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '设置分类',
+              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 24),
+
+            // 1. 输入框
+            TextField(
+              controller: textController,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: '输入新分类...',
+                prefixIcon: const Icon(Icons.create_new_folder_outlined),
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                // 后缀确认按钮
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.check_circle_rounded),
+                  color: theme.colorScheme.primary,
+                  onPressed: () => Navigator.pop(ctx, textController.text.trim()),
+                ),
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            ),
+
+            const SizedBox(height: 24),
+
+            // 2. 现有分类 (流式布局)
+            if (categories.isNotEmpty) ...[
+              Text(
+                '选择已有分类',
+                style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.bold
+                ),
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      // "无分类" 选项
+                      ActionChip(
+                        avatar: const Icon(Icons.folder_off_outlined, size: 18),
+                        label: const Text('无分类'),
+                        onPressed: () => Navigator.pop(ctx, ''), // 返回空字符串表示清除
+                        backgroundColor: theme.colorScheme.surfaceContainer,
+                        side: BorderSide(color: theme.colorScheme.outlineVariant),
+                        shape: const StadiumBorder(),
+                      ),
+                      // 动态分类
+                      ...categories.map((category) {
+                        final isSelected = _category == category;
+                        return FilterChip(
+                          label: Text(category),
+                          selected: isSelected,
+                          onSelected: (_) => Navigator.pop(ctx, category),
+                          checkmarkColor: theme.colorScheme.onSecondaryContainer,
+                          selectedColor: theme.colorScheme.secondaryContainer,
+                          backgroundColor: theme.colorScheme.surfaceContainerHigh,
+                          side: BorderSide.none,
+                          shape: const StadiumBorder(),
+                          labelStyle: TextStyle(
+                            color: isSelected
+                                ? theme.colorScheme.onSecondaryContainer
+                                : theme.colorScheme.onSurface,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+
+    // 处理结果
+    if (selected != null) {
+      setState(() {
+        _category = selected.isEmpty ? null : selected;
+      });
+    }
   }
 
   void _togglePanel(_ToolbarPanel panel) {
@@ -643,10 +782,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         backgroundColor: surfaceColor,
         scrolledUnderElevation: 0,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.close_rounded, color: theme.colorScheme.onSurfaceVariant),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: IconButton(icon: Icon(Icons.close_rounded, color: theme.colorScheme.onSurfaceVariant), onPressed: () => Navigator.pop(context)),
       ),
       body: SafeArea(
         child: Column(
@@ -658,23 +794,66 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TextField(
-                      controller: _titleController,
-                      focusNode: _titleFocusNode,
-                      decoration: InputDecoration(
-                        hintText: '标题',
-                        hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 24, fontWeight: FontWeight.bold),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 24, fontWeight: FontWeight.bold),
-                      textInputAction: TextInputAction.next,
+                        controller: _titleController,
+                        focusNode: _titleFocusNode,
+                        decoration: InputDecoration(hintText: '标题', hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 24, fontWeight: FontWeight.bold), border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+                        style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 24, fontWeight: FontWeight.bold),
+                        textInputAction: TextInputAction.next
                     ),
-                    const SizedBox(height: 16),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(children: [..._tags.map((tag) => Padding(padding: const EdgeInsets.only(right: 8), child: Chip(label: Text(tag, style: const TextStyle(fontSize: 11)), onDeleted: () => _removeTag(tag), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, labelPadding: const EdgeInsets.symmetric(horizontal: 8), backgroundColor: theme.colorScheme.surfaceContainerHigh, side: BorderSide.none, shape: const StadiumBorder()))), SizedBox(width: 60, child: TextField(controller: _tagController, decoration: InputDecoration(hintText: '+标签', hintStyle: TextStyle(fontSize: 12, color: theme.colorScheme.primary), border: InputBorder.none, isDense: true, contentPadding: const EdgeInsets.symmetric(vertical: 8)), style: TextStyle(fontSize: 12, color: theme.colorScheme.primary), onSubmitted: _addTag))]),
+                    const SizedBox(height: 12),
+
+                    // 🔴 美化后的头部信息栏：分类 + 标签流
+                    Wrap(
+                      spacing: 8, // 水平间距
+                      runSpacing: 8, // 垂直间距 (多行时)
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        // 1. 分类胶囊 (保持不变)
+                        ActionChip(
+                          avatar: Icon(
+                            _category == null ? Icons.folder_open_rounded : Icons.folder_rounded,
+                            size: 16,
+                            color: _category == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
+                          ),
+                          label: Text(_category ?? '未分类'),
+                          onPressed: _pickCategory,
+                          backgroundColor: _category == null ? theme.colorScheme.surfaceContainerHigh : theme.colorScheme.primaryContainer.withOpacity(0.3),
+                          labelStyle: TextStyle(
+                            fontSize: 12,
+                            color: _category == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
+                            fontWeight: _category == null ? FontWeight.normal : FontWeight.bold,
+                          ),
+                          side: BorderSide.none,
+                          shape: const StadiumBorder(),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+
+                        // 2. 现有标签列表 (带删除功能的胶囊)
+                        ..._tags.map((tag) => InputChip(
+                          label: Text('#$tag'),
+                          onDeleted: () => _removeTag(tag),
+                          deleteIcon: const Icon(Icons.close_rounded, size: 14),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          labelStyle: TextStyle(fontSize: 11, color: theme.colorScheme.secondary),
+                          backgroundColor: theme.colorScheme.secondaryContainer.withOpacity(0.3),
+                          side: BorderSide.none,
+                          shape: const StadiumBorder(),
+                        )),
+
+                        // 3. 添加标签按钮 (小加号)
+                        ActionChip(
+                          label: const Icon(Icons.add_rounded, size: 16),
+                          onPressed: _showAddTagDialog, // 点击弹窗
+                          backgroundColor: theme.colorScheme.surfaceContainerHigh, // 灰色背景
+                          side: BorderSide.none,
+                          shape: const CircleBorder(), // 圆形按钮
+                          padding: const EdgeInsets.all(4), // 紧凑内边距
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
                     ),
+
                     const SizedBox(height: 8),
                     Divider(height: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.3)),
                     Expanded(
@@ -687,10 +866,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                           expands: true,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           scrollable: true,
-                          // 注册构建器
-                          embedBuilders: [
-                            _ImageEmbedBuilder(),
-                          ],
+                          embedBuilders: [_ImageEmbedBuilder()],
                         ),
                       ),
                     ),

@@ -25,11 +25,14 @@ class Todo extends HiveObject {
   @HiveField(6)
   final DateTime? dueDate;
 
-  // 保留排序字段，用于拖拽功能
-  @HiveField(8)
+
+  @HiveField(7)
   final double sortOrder;
 
-  // 注意：删除了 notificationId (index 7)
+  @HiveField(8)
+  final bool isDeleted;
+
+
 
   Todo({
     required this.id,
@@ -40,6 +43,7 @@ class Todo extends HiveObject {
     this.description = '',
     this.dueDate,
     this.sortOrder = 0.0,
+    this.isDeleted = false,
   });
 
   Todo copyWith({
@@ -51,6 +55,7 @@ class Todo extends HiveObject {
     String? description,
     DateTime? dueDate,
     double? sortOrder,
+    bool? isDeleted,
   }) {
     return Todo(
       id: id ?? this.id,
@@ -61,6 +66,7 @@ class Todo extends HiveObject {
       description: description ?? this.description,
       dueDate: dueDate ?? this.dueDate,
       sortOrder: sortOrder ?? this.sortOrder,
+      isDeleted: isDeleted?? this.isDeleted,
     );
   }
 }
