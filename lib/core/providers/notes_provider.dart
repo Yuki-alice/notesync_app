@@ -19,7 +19,7 @@ class NotesProvider with ChangeNotifier {
   final Uuid _uuid = const Uuid();
 
   String? _selectedCategory;
-  String _searchQuery = ''; // 🔴 新增：搜索关键词
+  String _searchQuery = '';
 
   // 当前排序方式
   NoteSortOption _sortOption = NoteSortOption.updatedNewest;
@@ -61,12 +61,14 @@ class NotesProvider with ChangeNotifier {
         ? List<Note>.from(sourceNotes)
         : sourceNotes.where((note) => note.category == _selectedCategory).toList();
 
-    // 2. 🔴 筛选搜索关键词
+    // 2. 🔴 筛选搜索关键词 (已修复：支持搜索 标题、内容 和 标签)
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       result = result.where((n) {
         return n.title.toLowerCase().contains(query) ||
-            n.plainText.toLowerCase().contains(query);
+            n.plainText.toLowerCase().contains(query) ||
+            // 🟢 新增：支持搜索标签
+            n.tags.any((tag) => tag.toLowerCase().contains(query));
       }).toList();
     }
 
@@ -100,7 +102,6 @@ class NotesProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // 🔴 新增：设置搜索词
   void setSearchQuery(String query) {
     _searchQuery = query;
     notifyListeners();

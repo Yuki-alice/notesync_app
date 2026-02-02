@@ -6,6 +6,7 @@ import '../../../../core/providers/notes_provider.dart';
 import '../../../../models/note.dart';
 import '../../../trash/presentation/views/trash_page.dart';
 import 'note_editor_page.dart';
+import '../../../settings/presentation/views/settings_page.dart'; // 引入设置页面
 
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
@@ -27,13 +28,55 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
+  // 🟢 新增：统一风格的提示条 (SnackBar)
+  void _showStyleSnackBar(BuildContext context, String message, {bool isError = false}) {
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).clearSnackBars(); // 清除旧的
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_rounded,
+              // 修改前：theme.colorScheme.inversePrimary (反色主色)
+              // 修改后：theme.colorScheme.primary (常规主色)
+              color: isError ? theme.colorScheme.error : theme.colorScheme.primary,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                message,
+                style: TextStyle(
+
+                  color: isError ? theme.colorScheme.onErrorContainer : theme.colorScheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        behavior: SnackBarBehavior.floating, // 悬浮样式
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16), // 底部边距
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // 圆角
+
+        backgroundColor: isError ? theme.colorScheme.errorContainer : theme.colorScheme.surfaceContainerHighest,
+        elevation: 6,
+        showCloseIcon: false,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
-  // 长按菜单 (保持不变)
+  // 长按菜单
   void _showNoteOptions(BuildContext context, Note note) {
     final theme = Theme.of(context);
     final provider = Provider.of<NotesProvider>(context, listen: false);
@@ -207,7 +250,8 @@ class _NotesPageState extends State<NotesPage> {
                     await provider.updateNote(note.copyWith(category: null));
                     if (ctx.mounted) {
                       Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移出分类')));
+                      // 🟢 使用统一的 SnackBar
+                      _showStyleSnackBar(context, '已移出分类');
                     }
                   },
                   backgroundColor: theme.colorScheme.surface,
@@ -223,7 +267,8 @@ class _NotesPageState extends State<NotesPage> {
                       await provider.updateNote(note.copyWith(category: category));
                       if (ctx.mounted) {
                         Navigator.pop(ctx);
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已移动到 "$category"')));
+                        // 🟢 使用统一的 SnackBar
+                        _showStyleSnackBar(context, '已移动到 "$category"');
                       }
                     },
                     checkmarkColor: theme.colorScheme.onPrimaryContainer,
@@ -268,7 +313,8 @@ class _NotesPageState extends State<NotesPage> {
                 Navigator.pop(ctx);
                 await Provider.of<NotesProvider>(context, listen: false).deleteNote(note.id);
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('已移至回收站'), behavior: SnackBarBehavior.floating, width: 200, shape: const StadiumBorder(), backgroundColor: theme.colorScheme.inverseSurface));
+                  // 🟢 使用统一的 SnackBar
+                  _showStyleSnackBar(context, '已移至回收站');
                 }
               }, style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError, padding: const EdgeInsets.symmetric(vertical: 12), elevation: 0), child: const Text('移除'))),
             ],
@@ -349,11 +395,17 @@ class _NotesPageState extends State<NotesPage> {
                       icon: const Icon(Icons.auto_delete_outlined),
                       tooltip: '回收站',
                     ),
+                    // 设置入口
+                    IconButton(
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
+                      icon: const Icon(Icons.settings_rounded),
+                      tooltip: '设置',
+                    ),
                     const SizedBox(width: 8),
                   ],
                 ),
 
-                // 2. 🔴 搜索栏 (放在 BoxAdapter 中，随内容滚动)
+                // 2. 搜索栏
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -379,7 +431,7 @@ class _NotesPageState extends State<NotesPage> {
                   ),
                 ),
 
-                // 3. 分类栏 (同样随内容滚动)
+                // 3. 分类栏
                 if (categories.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Container(

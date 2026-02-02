@@ -422,6 +422,9 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   _ToolbarPanel _activePanel = _ToolbarPanel.none;
 
+  // 🟢 标记内容是否发生变更
+  bool _isDirty = false;
+
   @override
   void initState() {
     super.initState();
@@ -437,6 +440,22 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         });
       }
     });
+
+    // 🟢 监听标题变化
+    _titleController.addListener(_markAsDirty);
+
+    // 🟢 监听 Quill 内容变化 (修复了 item3 报错)
+    _quillController.document.changes.listen((quill.DocChange event) {
+      if (event.source == quill.ChangeSource.local) {
+        _markAsDirty();
+      }
+    });
+  }
+
+  void _markAsDirty() {
+    if (!_isDirty) {
+      setState(() => _isDirty = true);
+    }
   }
 
   void _initQuillController() {
@@ -494,6 +513,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         _quillController.updateSelection(TextSelection.collapsed(offset: index + 2), quill.ChangeSource.local);
       });
       _editorFocusNode.requestFocus();
+      _markAsDirty(); // 插入图片也是修改
     }
   }
 
@@ -537,6 +557,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     if (trimmed.isNotEmpty && !_tags.contains(trimmed)) {
       setState(() {
         _tags.add(trimmed);
+        _isDirty = true; // 标签变化也是修改
       });
     }
   }
@@ -544,18 +565,32 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   void _removeTag(String tag) {
     setState(() {
       _tags.remove(tag);
+      _isDirty = true; // 标签变化也是修改
     });
   }
 
-  Future<void> _saveNote() async {
-    final title = _titleController.text.trim();
-    if (title.isEmpty && _quillController.document.isEmpty()) {
-      if (mounted) Navigator.pop(context);
+  // 🟢 保存逻辑，支持仅保存或保存并退出
+  Future<void> _saveNote({bool closePage = false}) async {
+    // 只有当有内容变动或它是新笔记时才保存
+    // 如果没有变动且是现有笔记，直接根据 closePage 决定是否退出
+    if (!_isDirty && widget.note != null) {
+      if (closePage && mounted) Navigator.pop(context);
       return;
     }
+
+    final title = _titleController.text.trim();
+
+    // 如果是空笔记（无标题且无内容），不创建新记录，直接退出
+    if (title.isEmpty && _quillController.document.isEmpty()) {
+      if (closePage && mounted) Navigator.pop(context);
+      return;
+    }
+
     final contentJson = jsonEncode(_quillController.document.toDelta().toJson());
     final provider = Provider.of<NotesProvider>(context, listen: false);
+
     if (widget.note == null) {
+      // 新增笔记
       await provider.addNote(
         title: title.isEmpty ? '未命名笔记' : title,
         content: contentJson,
@@ -563,6 +598,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         category: _category,
       );
     } else {
+      // 更新笔记
       await provider.updateNote(widget.note!.copyWith(
           title: title,
           content: contentJson,
@@ -571,7 +607,14 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
           updatedAt: DateTime.now()
       ));
     }
-    if (mounted) Navigator.pop(context);
+
+    // 保存成功，重置脏状态
+    _isDirty = false;
+
+    // 强制刷新界面以更新“已保存”状态（如果有 UI 指示器）
+    if (mounted) setState(() {});
+
+    if (closePage && mounted) Navigator.pop(context);
   }
 
   void _pickCategory() async {
@@ -691,6 +734,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     if (selected != null) {
       setState(() {
         _category = selected.isEmpty ? null : selected;
+        _isDirty = true; // 分类变化也是修改
       });
     }
   }
@@ -776,106 +820,135 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     final theme = Theme.of(context);
     final surfaceColor = theme.colorScheme.surface;
 
-    return Scaffold(
-      backgroundColor: surfaceColor,
-      appBar: AppBar(
+    // 🟢 核心修改：使用 PopScope 拦截系统返回（如侧滑手势或物理按键）
+    return PopScope(
+      canPop: false, // 禁止直接退出
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        // 触发退出保存逻辑
+        await _saveNote(closePage: true);
+      },
+      child: Scaffold(
         backgroundColor: surfaceColor,
-        scrolledUnderElevation: 0,
-        elevation: 0,
-        leading: IconButton(icon: Icon(Icons.close_rounded, color: theme.colorScheme.onSurfaceVariant), onPressed: () => Navigator.pop(context)),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                        controller: _titleController,
-                        focusNode: _titleFocusNode,
-                        decoration: InputDecoration(hintText: '标题', hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 24, fontWeight: FontWeight.bold), border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
-                        style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 24, fontWeight: FontWeight.bold),
-                        textInputAction: TextInputAction.next
-                    ),
-                    const SizedBox(height: 12),
-
-                    // 🔴 美化后的头部信息栏：分类 + 标签流
-                    Wrap(
-                      spacing: 8, // 水平间距
-                      runSpacing: 8, // 垂直间距 (多行时)
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        // 1. 分类胶囊 (保持不变)
-                        ActionChip(
-                          avatar: Icon(
-                            _category == null ? Icons.folder_open_rounded : Icons.folder_rounded,
-                            size: 16,
-                            color: _category == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
-                          ),
-                          label: Text(_category ?? '未分类'),
-                          onPressed: _pickCategory,
-                          backgroundColor: _category == null ? theme.colorScheme.surfaceContainerHigh : theme.colorScheme.primaryContainer.withOpacity(0.3),
-                          labelStyle: TextStyle(
-                            fontSize: 12,
-                            color: _category == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
-                            fontWeight: _category == null ? FontWeight.normal : FontWeight.bold,
-                          ),
-                          side: BorderSide.none,
-                          shape: const StadiumBorder(),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                        ),
-
-                        // 2. 现有标签列表 (带删除功能的胶囊)
-                        ..._tags.map((tag) => InputChip(
-                          label: Text('#$tag'),
-                          onDeleted: () => _removeTag(tag),
-                          deleteIcon: const Icon(Icons.close_rounded, size: 14),
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                          labelStyle: TextStyle(fontSize: 11, color: theme.colorScheme.secondary),
-                          backgroundColor: theme.colorScheme.secondaryContainer.withOpacity(0.3),
-                          side: BorderSide.none,
-                          shape: const StadiumBorder(),
-                        )),
-
-                        // 3. 添加标签按钮 (小加号)
-                        ActionChip(
-                          label: const Icon(Icons.add_rounded, size: 16),
-                          onPressed: _showAddTagDialog, // 点击弹窗
-                          backgroundColor: theme.colorScheme.surfaceContainerHigh, // 灰色背景
-                          side: BorderSide.none,
-                          shape: const CircleBorder(), // 圆形按钮
-                          padding: const EdgeInsets.all(4), // 紧凑内边距
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 8),
-                    Divider(height: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.3)),
-                    Expanded(
-                      child: quill.QuillEditor.basic(
-                        controller: _quillController,
-                        focusNode: _editorFocusNode,
-                        config: quill.QuillEditorConfig(
-                          placeholder: '开始记录...',
-                          autoFocus: false,
-                          expands: true,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          scrollable: true,
-                          embedBuilders: [_ImageEmbedBuilder()],
-                        ),
-                      ),
-                    ),
-                  ],
+        appBar: AppBar(
+          backgroundColor: surfaceColor,
+          scrolledUnderElevation: 0,
+          elevation: 0,
+          // 🟢 自定义左上角返回按钮
+          leading: IconButton(
+              icon: Icon(Icons.arrow_back_rounded, color: theme.colorScheme.onSurfaceVariant),
+              // 点击返回时保存并退出
+              onPressed: () => _saveNote(closePage: true)
+          ),
+          actions: [
+            // 🟢 可选：手动保存按钮（仅当有未保存修改时显示）
+            if (_isDirty)
+              Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: TextButton.icon(
+                  onPressed: () => _saveNote(closePage: false),
+                  icon: const Icon(Icons.save_rounded, size: 18),
+                  label: const Text("保存"),
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.primary,
+                  ),
                 ),
               ),
-            ),
-            _buildBottomToolbar(theme),
           ],
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                          controller: _titleController,
+                          focusNode: _titleFocusNode,
+                          decoration: InputDecoration(hintText: '标题', hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 24, fontWeight: FontWeight.bold), border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+                          style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 24, fontWeight: FontWeight.bold),
+                          textInputAction: TextInputAction.next
+                      ),
+                      const SizedBox(height: 12),
+
+                      // 🔴 美化后的头部信息栏：分类 + 标签流
+                      Wrap(
+                        spacing: 8, // 水平间距
+                        runSpacing: 8, // 垂直间距 (多行时)
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          // 1. 分类胶囊 (保持不变)
+                          ActionChip(
+                            avatar: Icon(
+                              _category == null ? Icons.folder_open_rounded : Icons.folder_rounded,
+                              size: 16,
+                              color: _category == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
+                            ),
+                            label: Text(_category ?? '未分类'),
+                            onPressed: _pickCategory,
+                            backgroundColor: _category == null ? theme.colorScheme.surfaceContainerHigh : theme.colorScheme.primaryContainer.withOpacity(0.3),
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              color: _category == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
+                              fontWeight: _category == null ? FontWeight.normal : FontWeight.bold,
+                            ),
+                            side: BorderSide.none,
+                            shape: const StadiumBorder(),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          ),
+
+                          // 2. 现有标签列表 (带删除功能的胶囊)
+                          ..._tags.map((tag) => InputChip(
+                            label: Text('#$tag'),
+                            onDeleted: () => _removeTag(tag),
+                            deleteIcon: const Icon(Icons.close_rounded, size: 14),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            labelStyle: TextStyle(fontSize: 11, color: theme.colorScheme.secondary),
+                            backgroundColor: theme.colorScheme.secondaryContainer.withOpacity(0.3),
+                            side: BorderSide.none,
+                            shape: const StadiumBorder(),
+                          )),
+
+                          // 3. 添加标签按钮 (小加号)
+                          ActionChip(
+                            label: const Icon(Icons.add_rounded, size: 16),
+                            onPressed: _showAddTagDialog, // 点击弹窗
+                            backgroundColor: theme.colorScheme.surfaceContainerHigh, // 灰色背景
+                            side: BorderSide.none,
+                            shape: const CircleBorder(), // 圆形按钮
+                            padding: const EdgeInsets.all(4), // 紧凑内边距
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 8),
+                      Divider(height: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.3)),
+                      Expanded(
+                        child: quill.QuillEditor.basic(
+                          controller: _quillController,
+                          focusNode: _editorFocusNode,
+                          config: quill.QuillEditorConfig(
+                            placeholder: '开始记录...',
+                            autoFocus: false,
+                            expands: true,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            scrollable: true,
+                            embedBuilders: [_ImageEmbedBuilder()],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              _buildBottomToolbar(theme),
+            ],
+          ),
         ),
       ),
     );
@@ -1012,7 +1085,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                 ),
                 const SizedBox(width: 12),
                 FilledButton.tonal(
-                  onPressed: _saveNote,
+                  // 🟢 点击完成时，执行保存并退出
+                  onPressed: () => _saveNote(closePage: true),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     visualDensity: VisualDensity.compact,

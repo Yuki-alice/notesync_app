@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/providers/todos_provider.dart';
 import '../../../../widgets/common/dialogs/create_todo_dialog.dart';
 import '../../../../models/todo.dart';
+import '../../../settings/presentation/views/settings_page.dart';
 import '../../../trash/presentation/views/trash_page.dart';
 
 class TodosPage extends StatefulWidget {
@@ -73,6 +74,10 @@ class _TodosPageState extends State<TodosPage> {
                     IconButton(
                       onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TrashPage())),
                       icon: const Icon(Icons.auto_delete_outlined),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
+                      icon: const Icon(Icons.settings_rounded),
                     ),
                     const SizedBox(width: 8),
                   ],
