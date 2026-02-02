@@ -15,6 +15,9 @@ class NotesPage extends StatefulWidget {
 }
 
 class _NotesPageState extends State<NotesPage> {
+  // 搜索控制器
+  final TextEditingController _searchController = TextEditingController();
+
   void _openEditor(BuildContext context, {Note? note}) {
     Navigator.push(
       context,
@@ -24,10 +27,16 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  // 🔴 升级：长按菜单增加置顶
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // 长按菜单 (保持不变)
   void _showNoteOptions(BuildContext context, Note note) {
     final theme = Theme.of(context);
-    final provider = Provider.of<NotesProvider>(context, listen: false); // 获取 provider
+    final provider = Provider.of<NotesProvider>(context, listen: false);
 
     showModalBottomSheet(
       context: context,
@@ -42,7 +51,6 @@ class _NotesPageState extends State<NotesPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 笔记预览 (保持不变)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -76,18 +84,16 @@ class _NotesPageState extends State<NotesPage> {
                 ),
               ),
               const SizedBox(height: 24),
-
-              // 🔴 1. 置顶/取消置顶按钮
               InkWell(
                 onTap: () {
                   Navigator.pop(ctx);
-                  provider.togglePin(note.id); // 调用置顶方法
+                  provider.togglePin(note.id);
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.tertiaryContainer, // 使用第三色系区分
+                    color: theme.colorScheme.tertiaryContainer,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
@@ -110,8 +116,6 @@ class _NotesPageState extends State<NotesPage> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // 2. 移动分类 (保持不变)
               InkWell(
                 onTap: () {
                   Navigator.pop(ctx);
@@ -143,8 +147,6 @@ class _NotesPageState extends State<NotesPage> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // 3. 删除 (保持不变)
               InkWell(
                 onTap: () {
                   Navigator.pop(ctx);
@@ -252,23 +254,23 @@ class _NotesPageState extends State<NotesPage> {
         icon: Container(
           width: 72, height: 72,
           decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withOpacity(0.3), shape: BoxShape.circle),
-          child: Icon(Icons.delete_forever_rounded, size: 32, color: theme.colorScheme.error),
+          child: Icon(Icons.delete_rounded, size: 32, color: theme.colorScheme.error),
         ),
-        title: Text('永久删除?', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface), textAlign: TextAlign.center),
-        content: Text('笔记 "${note.title.isEmpty ? '未命名' : note.title}" 将被永久移除且无法恢复。\n确定要继续吗？', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant), textAlign: TextAlign.center),
+        title: Text('移入回收站?', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface), textAlign: TextAlign.center),
+        content: Text('笔记 "${note.title.isEmpty ? '未命名' : note.title}" 将被移至回收站，\n你可以在那里随时还原。', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant), textAlign: TextAlign.center),
         actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
         actions: [
           Row(
             children: [
-              Expanded(child: TextButton(onPressed: () => Navigator.pop(ctx), style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface, padding: const EdgeInsets.symmetric(vertical: 12)), child: const Text('再想想'))),
+              Expanded(child: TextButton(onPressed: () => Navigator.pop(ctx), style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface, padding: const EdgeInsets.symmetric(vertical: 12)), child: const Text('取消'))),
               const SizedBox(width: 12),
               Expanded(child: FilledButton(onPressed: () async {
                 Navigator.pop(ctx);
                 await Provider.of<NotesProvider>(context, listen: false).deleteNote(note.id);
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('笔记已删除'), behavior: SnackBarBehavior.floating, width: 200, shape: const StadiumBorder(), backgroundColor: theme.colorScheme.inverseSurface));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('已移至回收站'), behavior: SnackBarBehavior.floating, width: 200, shape: const StadiumBorder(), backgroundColor: theme.colorScheme.inverseSurface));
                 }
-              }, style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError, padding: const EdgeInsets.symmetric(vertical: 12), elevation: 0), child: const Text('确认删除'))),
+              }, style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError, padding: const EdgeInsets.symmetric(vertical: 12), elevation: 0), child: const Text('移除'))),
             ],
           ),
         ],
@@ -276,7 +278,6 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  // 🔴 排序弹窗
   void _showSortMenu(BuildContext context) {
     final provider = Provider.of<NotesProvider>(context, listen: false);
     final currentSort = provider.sortOption;
@@ -284,7 +285,7 @@ class _NotesPageState extends State<NotesPage> {
 
     showMenu<NoteSortOption>(
       context: context,
-      position: const RelativeRect.fromLTRB(100, 80, 0, 0), // 右上角位置
+      position: const RelativeRect.fromLTRB(100, 80, 0, 0),
       items: NoteSortOption.values.map((option) {
         return PopupMenuItem(
           value: option,
@@ -318,145 +319,175 @@ class _NotesPageState extends State<NotesPage> {
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('我的笔记', style: TextStyle(fontWeight: FontWeight.w600)),
-        centerTitle: false,
-        scrolledUnderElevation: 0,
-        backgroundColor: theme.colorScheme.surface,
-        // 🔴 1. 添加排序按钮
-        actions: [
-          IconButton(
-            onPressed: () => _showSortMenu(context),
-            icon: const Icon(Icons.sort_rounded),
-            tooltip: '排序',
-          ),
-          IconButton(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TrashPage())),
-            icon: const Icon(Icons.auto_delete_outlined),
-            tooltip: '回收站',
-          ),
-          const SizedBox(width: 8),
-        ],
+      // 使用 CustomScrollView 实现滚动隐藏效果
+      body: SafeArea(
+        child: Consumer<NotesProvider>(
+          builder: (ctx, provider, _) {
+            final notes = provider.filteredNotes;
+            final categories = provider.categories;
+            final selectedCategory = provider.selectedCategory;
+
+            return CustomScrollView(
+              slivers: [
+                // 1. SliverAppBar (Pinned: 标题一直显示)
+                SliverAppBar(
+                  title: const Text('我的笔记', style: TextStyle(fontWeight: FontWeight.w600)),
+                  centerTitle: false,
+                  backgroundColor: theme.colorScheme.surface,
+                  surfaceTintColor: Colors.transparent,
+                  floating: true,
+                  pinned: true, // 标题栏固定
+                  snap: true,
+                  actions: [
+                    IconButton(
+                      onPressed: () => _showSortMenu(context),
+                      icon: const Icon(Icons.sort_rounded),
+                      tooltip: '排序',
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TrashPage())),
+                      icon: const Icon(Icons.auto_delete_outlined),
+                      tooltip: '回收站',
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+
+                // 2. 🔴 搜索栏 (放在 BoxAdapter 中，随内容滚动)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: SearchBar(
+                      controller: _searchController,
+                      hintText: '搜索笔记...',
+                      leading: const Icon(Icons.search_rounded),
+                      elevation: WidgetStateProperty.all(0),
+                      backgroundColor: WidgetStateProperty.all(theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)),
+                      onChanged: (value) => provider.setSearchQuery(value),
+                      trailing: _searchController.text.isNotEmpty
+                          ? [
+                        IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () {
+                            _searchController.clear();
+                            provider.setSearchQuery('');
+                          },
+                        )
+                      ]
+                          : null,
+                    ),
+                  ),
+                ),
+
+                // 3. 分类栏 (同样随内容滚动)
+                if (categories.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Container(
+                      height: 50,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: const Text('全部'),
+                              selected: selectedCategory == null,
+                              onSelected: (bool selected) {
+                                if (selected) provider.selectCategory(null);
+                              },
+                              showCheckmark: false,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              side: BorderSide.none,
+                              backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                              selectedColor: theme.colorScheme.primaryContainer,
+                              labelStyle: TextStyle(
+                                color: selectedCategory == null ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                fontWeight: selectedCategory == null ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                          ...categories.map((category) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(category),
+                              selected: selectedCategory == category,
+                              onSelected: (bool selected) {
+                                provider.selectCategory(selected ? category : null);
+                              },
+                              showCheckmark: false,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              side: BorderSide.none,
+                              backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                              selectedColor: theme.colorScheme.primaryContainer,
+                              labelStyle: TextStyle(
+                                color: selectedCategory == category ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                                fontWeight: selectedCategory == category ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // 4. 笔记列表 (使用 SliverMasonryGrid)
+                if (notes.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.dashboard_customize_outlined, size: 64, color: theme.colorScheme.outline),
+                          const SizedBox(height: 16),
+                          Text(
+                              provider.searchQuery.isNotEmpty
+                                  ? '未找到相关笔记'
+                                  : (selectedCategory == null ? '暂无笔记' : '该分类下暂无笔记'),
+                              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline)
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    sliver: SliverMasonryGrid.count(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childCount: notes.length,
+                      itemBuilder: (context, index) {
+                        final note = notes[index];
+                        return _NoteGridCard(
+                          note: note,
+                          onTap: () => _openEditor(context, note: note),
+                          onLongPress: () => _showNoteOptions(context, note),
+                        );
+                      },
+                    ),
+                  ),
+
+                // 底部留白，防遮挡 FAB
+                const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              ],
+            );
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEditor(context),
         label: const Text('写笔记'),
         icon: const Icon(Icons.edit_rounded),
       ),
-      body: Consumer<NotesProvider>(
-        builder: (ctx, provider, _) {
-          final notes = provider.filteredNotes;
-          final categories = provider.categories;
-          final selectedCategory = provider.selectedCategory;
-
-          return Column(
-            children: [
-              if (categories.isNotEmpty)
-                Container(
-                  height: 50,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: const Text('全部'),
-                          selected: selectedCategory == null,
-                          onSelected: (bool selected) {
-                            if (selected) provider.selectCategory(null);
-                          },
-                          showCheckmark: false,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          side: BorderSide.none,
-                          backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                          selectedColor: theme.colorScheme.primaryContainer,
-                          labelStyle: TextStyle(
-                            color: selectedCategory == null ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                            fontWeight: selectedCategory == null ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                      ),
-                      ...categories.map((category) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(category),
-                          selected: selectedCategory == category,
-                          onSelected: (bool selected) {
-                            provider.selectCategory(selected ? category : null);
-                          },
-                          showCheckmark: false,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          side: BorderSide.none,
-                          backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                          selectedColor: theme.colorScheme.primaryContainer,
-                          labelStyle: TextStyle(
-                            color: selectedCategory == category ? theme.colorScheme.primary : theme.colorScheme.onSurface,
-                            fontWeight: selectedCategory == category ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                      )),
-                    ],
-                  ),
-                ),
-
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (Widget child, Animation<double> animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(animation),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: notes.isEmpty
-                      ? Center(
-                    key: ValueKey('empty_${selectedCategory ?? 'all'}'),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.dashboard_customize_outlined, size: 64, color: theme.colorScheme.outline),
-                        const SizedBox(height: 16),
-                        Text(
-                            selectedCategory == null ? '暂无笔记' : '该分类下暂无笔记',
-                            style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline)
-                        ),
-                      ],
-                    ),
-                  )
-                      : MasonryGridView.count(
-                    key: ValueKey(selectedCategory ?? 'all'),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    itemCount: notes.length,
-                    itemBuilder: (context, index) {
-                      final note = notes[index];
-                      return _NoteGridCard(
-                        note: note,
-                        onTap: () => _openEditor(context, note: note),
-                        onLongPress: () => _showNoteOptions(context, note),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
     );
   }
 }
 
-// 卡片组件
+// 卡片组件 (保持不变)
 class _NoteGridCard extends StatelessWidget {
   final Note note;
   final VoidCallback onTap;
@@ -481,7 +512,6 @@ class _NoteGridCard extends StatelessWidget {
       color: theme.colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        // 🔴 选中/按下状态显示边框 (可选)
         side: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2), width: 1),
       ),
       clipBehavior: Clip.antiAlias,
@@ -545,20 +575,32 @@ class _NoteGridCard extends StatelessWidget {
                               decoration: BoxDecoration(color: theme.colorScheme.primaryContainer.withOpacity(0.6), borderRadius: BorderRadius.circular(6)),
                               child: Text(note.category!, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onPrimaryContainer, fontWeight: FontWeight.bold, fontSize: 10)),
                             ),
-
                           ...note.tags.take(2).map((tag) => Text('#$tag', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.secondary, fontStyle: FontStyle.italic))),
                         ],
                       ),
 
                       const SizedBox(height: 8),
-                      Text(note.formattedUpdatedAt, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline.withOpacity(0.8), fontSize: 10)),
+                      // 日期部分
+                      Row(
+                        children: [
+                          Icon(Icons.access_time_rounded, size: 10, color: theme.colorScheme.outline),
+                          const SizedBox(width: 4),
+                          Text(
+                            note.formattedUpdatedAt,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.outline,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
 
-            // 🔴 2. 置顶图标 (浮在右上角)
             if (note.isPinned)
               Positioned(
                 top: 8,
@@ -566,14 +608,12 @@ class _NoteGridCard extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                      color: theme.colorScheme.surface.withOpacity(0.8), // 半透明背景
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4),
-                      ]
+                    color: theme.colorScheme.surface.withOpacity(0.8),
+                    shape: BoxShape.circle,
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4)],
                   ),
                   child: Transform.rotate(
-                    angle: 0.5, // 稍微倾斜，更俏皮
+                    angle: 0.5,
                     child: Icon(Icons.push_pin_rounded, size: 14, color: theme.colorScheme.primary),
                   ),
                 ),

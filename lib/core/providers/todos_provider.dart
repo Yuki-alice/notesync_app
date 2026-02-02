@@ -9,25 +9,52 @@ class TodosProvider with ChangeNotifier {
   List<Todo> _todos = [];
   final Uuid _uuid = const Uuid();
 
+  String _searchQuery = ''; // 🔴 新增：搜索关键词
+
   TodosProvider(this._repository) {
     loadTodos();
   }
 
-  // 🔴 修改：主列表只返回未删除的待办
+  // 原始列表 (未删除)
   List<Todo> get todos => _todos.where((t) => !t.isDeleted).toList();
 
-  // 🔴 新增：回收站列表
+  // 回收站列表
   List<Todo> get trashTodos => _todos.where((t) => t.isDeleted).toList();
 
-  void loadTodos() {
-    _todos = _repository.getAllTodos();
-    // 排序逻辑：未完成的按自定义顺序排，已完成的排最后
-    _todos.sort((a, b) {
+  String get searchQuery => _searchQuery;
+
+  // 🔴 新增：筛选后的列表 (用于 UI 显示)
+  List<Todo> get filteredTodos {
+    var result = todos;
+
+    // 搜索过滤
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      result = result.where((t) =>
+      t.title.toLowerCase().contains(query) ||
+          t.description.toLowerCase().contains(query)
+      ).toList();
+    }
+
+    // 排序逻辑：未完成在前，已完成在后；同状态下按 sortOrder 排
+    result.sort((a, b) {
       if (a.isCompleted == b.isCompleted) {
         return a.sortOrder.compareTo(b.sortOrder);
       }
       return a.isCompleted ? 1 : -1;
     });
+
+    return result;
+  }
+
+  void loadTodos() {
+    _todos = _repository.getAllTodos();
+    notifyListeners();
+  }
+
+  // 🔴 新增：设置搜索词
+  void setSearchQuery(String query) {
+    _searchQuery = query;
     notifyListeners();
   }
 
@@ -36,8 +63,6 @@ class TodosProvider with ChangeNotifier {
     String description = '',
     DateTime? dueDate,
   }) async {
-    // 获取当前最小的 sortOrder，新添加的排在最前面
-    // 注意：只计算未删除的 todos 的 sortOrder
     final activeTodos = _todos.where((t) => !t.isDeleted);
     final minSortOrder = activeTodos.isEmpty ? 0.0 : activeTodos.map((e) => e.sortOrder).reduce(min);
 
@@ -50,7 +75,7 @@ class TodosProvider with ChangeNotifier {
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
       sortOrder: minSortOrder - 1.0,
-      isDeleted: false, // 默认 false
+      isDeleted: false,
     );
 
     await _repository.addTodo(todo);
@@ -63,7 +88,6 @@ class TodosProvider with ChangeNotifier {
     loadTodos();
   }
 
-  // 🔴 修改：软删除
   Future<void> deleteTodo(String id) async {
     final index = _todos.indexWhere((t) => t.id == id);
     if (index != -1) {
@@ -73,7 +97,6 @@ class TodosProvider with ChangeNotifier {
     }
   }
 
-  // 🔴 新增：还原待办
   Future<void> restoreTodo(String id) async {
     final index = _todos.indexWhere((t) => t.id == id);
     if (index != -1) {
@@ -83,13 +106,11 @@ class TodosProvider with ChangeNotifier {
     }
   }
 
-  // 🔴 新增：永久删除
   Future<void> deleteTodoForever(String id) async {
     await _repository.deleteTodo(id);
     loadTodos();
   }
 
-  // 🔴 新增：清空回收站
   Future<void> emptyTrash() async {
     final trash = List<Todo>.from(trashTodos);
     for (var todo in trash) {
@@ -103,14 +124,17 @@ class TodosProvider with ChangeNotifier {
     loadTodos();
   }
 
-  // 拖拽排序逻辑
   Future<void> reorderTodos(int oldIndex, int newIndex) async {
-    // 🔴 关键：只获取未删除且未完成的列表进行重排序计算
-    final incompleteTodos = _todos.where((t) => !t.isCompleted && !t.isDeleted).toList();
+    // 只对当前显示列表中的未完成项进行排序
+    // 注意：如果有搜索词，拖拽排序通常会禁用，或者逻辑会很复杂
+    // 这里简单处理，建议在 UI 层有搜索词时禁用拖拽
+    final incompleteTodos = filteredTodos.where((t) => !t.isCompleted).toList();
 
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
+
+    if (oldIndex >= incompleteTodos.length || newIndex >= incompleteTodos.length) return;
 
     final item = incompleteTodos.removeAt(oldIndex);
     incompleteTodos.insert(newIndex, item);
@@ -123,9 +147,5 @@ class TodosProvider with ChangeNotifier {
       }
     }
     loadTodos();
-  }
-
-  List<Todo> searchTodos(String query) {
-    return _repository.searchTodos(query).where((t) => !t.isDeleted).toList();
   }
 }
