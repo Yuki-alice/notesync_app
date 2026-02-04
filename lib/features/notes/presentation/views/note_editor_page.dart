@@ -143,11 +143,14 @@ class _InteractableImageState extends State<InteractableImage> {
   }
 
   Widget _buildFullWidthImage() {
-    return Image.file(
-      File(widget.imageUrl),
-      fit: BoxFit.fitWidth,
-      width: double.infinity,
-      errorBuilder: _buildErrorWidget,
+    return Hero(
+      tag: widget.imageUrl,
+      child: Image.file(
+        File(widget.imageUrl),
+        fit: BoxFit.fitWidth,
+        width: double.infinity,
+        errorBuilder: _buildErrorWidget,
+      ),
     );
   }
 
@@ -159,10 +162,13 @@ class _InteractableImageState extends State<InteractableImage> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.file(
-          File(widget.imageUrl),
-          fit: BoxFit.contain,
-          errorBuilder: _buildErrorWidget,
+        child: Hero(
+          tag: widget.imageUrl,
+          child: Image.file(
+            File(widget.imageUrl),
+            fit: BoxFit.contain,
+            errorBuilder: _buildErrorWidget,
+          ),
         ),
       ),
     );
