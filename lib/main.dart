@@ -1,44 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_quill/flutter_quill.dart'; // 保持 Quill 本地化
+import 'package:flutter_quill/flutter_quill.dart';
+
+import 'core/database/simple_database_service.dart';
 import 'core/providers/app_providers.dart';
 import 'core/repositories/note_repository.dart';
 import 'core/repositories/todo_repository.dart';
 import 'app/main_screen.dart';
-import 'models/note.dart';
-import 'models/todo.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Hive 初始化
-  await Hive.initFlutter();
-  Hive.registerAdapter(NoteAdapter());
-  Hive.registerAdapter(TodoAdapter());
-
-  Box<Note> noteBox;
-  Box<Todo> todoBox;
-
-  // 容错打开 Box
-  try {
-    noteBox = await Hive.openBox<Note>('notes');
-  } catch (e) {
-    await Hive.deleteBoxFromDisk('notes');
-    noteBox = await Hive.openBox<Note>('notes');
-  }
+  // 1. 初始化数据库服务
+  final dbService = SimpleDatabaseService();
 
   try {
-    todoBox = await Hive.openBox<Todo>('todos');
+    await dbService.init();
   } catch (e) {
-    await Hive.deleteBoxFromDisk('todos');
-    todoBox = await Hive.openBox<Todo>('todos');
+    // 如果数据库遭遇无法修复的错误，启动错误页面
+    runApp(ErrorApp(error: e.toString()));
+    return;
   }
 
-  final noteRepo = NoteRepository(noteBox);
-  final todoRepo = TodoRepository(todoBox);
+  // 2. 注入依赖
+  // 使用 dbService 提供的 Box 实例来创建 Repository
+  final noteRepo = NoteRepository(dbService.noteBox);
+  final todoRepo = TodoRepository(dbService.todoBox);
 
+  // 3. 启动应用
   runApp(
     MultiProvider(
       providers: [
@@ -75,13 +65,35 @@ class MyApp extends StatelessWidget {
 
 class ErrorApp extends StatelessWidget {
   final String error;
-  final String stack;
-  const ErrorApp({super.key, required this.error, required this.stack});
+  const ErrorApp({super.key, required this.error});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        body: Center(child: Text("Error: $error")),
+        backgroundColor: Colors.red[50],
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                const Text(
+                  "应用启动失败",
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "本地数据库发生严重错误，请尝试重装应用。\n\n技术细节:\n$error",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.brown),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
