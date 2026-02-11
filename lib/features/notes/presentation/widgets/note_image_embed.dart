@@ -76,6 +76,7 @@ class ImageEmbedBuilder extends quill.EmbedBuilder {
   }
 }
 
+// --- 2. 可交互图片组件 UI ---
 class InteractableImage extends StatefulWidget {
   final File? imageFile;
   final String path;
@@ -111,8 +112,11 @@ class _InteractableImageState extends State<InteractableImage> {
   bool _isSelected = false;
 
   void _handleTap() {
-    // 强制清除焦点
+    // 🟢 1. 强制清除焦点和选区，防止光标出现
     FocusScope.of(context).unfocus();
+    // 将选区设为 -1，彻底移除光标
+    widget.controller.updateSelection(const TextSelection.collapsed(offset: -1), quill.ChangeSource.local);
+    // 强制隐藏软键盘
     SystemChannels.textInput.invokeMethod('TextInput.hide');
 
     final newValue = !_isSelected;
@@ -198,19 +202,21 @@ class _InteractableImageState extends State<InteractableImage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    // 边框宽度 (选中时显示)
     final double borderWidth = _isSelected ? 2.5 : 0.0;
+    // 图片自身的圆角
     const double imageRadius = 12.0;
+    // 🟢 外层容器圆角 = 图片圆角 + 边框宽度
     final double outerRadius = imageRadius + borderWidth;
 
     return CompositedTransformTarget(
       link: _layerLink,
       child: GestureDetector(
-        behavior: HitTestBehavior.opaque, // 确保拦截点击
+        behavior: HitTestBehavior.opaque, // 🟢 确保点击透明区域也能响应
         onTap: _handleTap,
         child: Container(
-          // 🟢 核心修复：把 margin 改为 padding
-          // 这样这部分区域就变成了组件的“内部领土”，点击这里会被 GestureDetector 捕获
-          // 从而触发 _handleTap (选中图片)，而不是触发编辑器的光标
+          // 🟢 关键修改：使用 Padding 而不是 Margin
+          // 将这 4px 的空隙纳入组件内部，这样点击空隙也会触发 _handleTap (选中图片)，而不是触发编辑器的光标
           padding: EdgeInsets.symmetric(
               vertical: widget.isFullWidth ? 16.0 : 8.0,
               horizontal: 4.0
@@ -220,17 +226,21 @@ class _InteractableImageState extends State<InteractableImage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 🟢 核心修复：使用“填充模拟边框”
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
+                // Padding 的厚度就是边框的厚度
                 padding: EdgeInsets.all(borderWidth),
                 decoration: BoxDecoration(
+                  // 边框颜色 (实际上是背景色)
                   color: _isSelected ? theme.colorScheme.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(outerRadius),
+                  // 选中时添加柔和阴影
                   boxShadow: _isSelected ? [
                     BoxShadow(
-                        color: theme.colorScheme.primary.withOpacity(0.25),
-                        blurRadius: 10,
-                        spreadRadius: 1
+                        color: theme.colorScheme.primary.withOpacity(0.2),
+                        blurRadius: 12,
+                        spreadRadius: 2
                     )
                   ] : [],
                 ),
@@ -243,6 +253,7 @@ class _InteractableImageState extends State<InteractableImage> {
                 ),
               ),
 
+              // 题注 (在边框外)
               if (widget.caption != null && widget.caption!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
@@ -300,7 +311,7 @@ class _InteractableImageState extends State<InteractableImage> {
   }
 }
 
-// --- 3. 悬浮工具栏 (保持不变) ---
+// --- 3. 悬浮工具栏 ---
 class _FloatingToolbar extends StatelessWidget {
   final bool isFullWidth;
   final bool hasCaption;
@@ -425,6 +436,7 @@ class _VerticalDivider extends StatelessWidget {
   }
 }
 
+// --- 4. 菜单管理器 ---
 class OverlayMenuManager {
   static OverlayEntry? _currentEntry;
 
@@ -436,7 +448,8 @@ class OverlayMenuManager {
         children: [
           Positioned.fill(
               child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
+                // 🟢 核心修复：改为 opaque，拦截点击事件，防止穿透到编辑器
+                  behavior: HitTestBehavior.opaque,
                   onTapDown: (_) {
                     hide();
                     onDismiss();

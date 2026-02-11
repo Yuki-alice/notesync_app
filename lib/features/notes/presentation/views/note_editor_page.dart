@@ -26,7 +26,7 @@ class NoteEditorPage extends StatefulWidget {
 class _NoteEditorPageState extends State<NoteEditorPage> {
   late quill.QuillController _quillController;
   late TextEditingController _titleController;
-
+  bool _isImageSelected = false;
   final FocusNode _editorFocusNode = FocusNode();
   final FocusNode _titleFocusNode = FocusNode();
 
@@ -38,9 +38,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   final ImageStorageService _imageService = ImageStorageService();
   ToolbarPanel _activePanel = ToolbarPanel.none;
   bool _isDirty = false;
-
-  // 🟢 图片选中状态
-  bool _isImageSelected = false;
 
   final ValueNotifier<int> _wordCountNotifier = ValueNotifier(0);
 
@@ -228,6 +225,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       },
       child: Scaffold(
         backgroundColor: surfaceColor,
+        // 🟢 允许 Scaffold 随键盘调整大小，解决 RenderFlex overflow
         resizeToAvoidBottomInset: true,
         appBar: AppBar(
           backgroundColor: surfaceColor,
@@ -257,6 +255,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
           bottom: false,
           child: Column(
             children: [
+              // 🟢 使用 Expanded 包裹滚动区域，确保占用剩余空间
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -292,7 +291,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
                     const SizedBox(height: 12),
 
-                    // 2. 元信息
+                    // 2. 元信息 (时间 | 字数)
                     ValueListenableBuilder<int>(
                       valueListenable: _wordCountNotifier,
                       builder: (context, count, _) {
@@ -313,19 +312,20 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
                     const SizedBox(height: 20),
 
-                    // 3. 分类与标签栏
+                    // 3. 🟢 优化后的分类与标签栏
                     Wrap(
-                      spacing: 12,
+                      spacing: 12, // 增加水平间距
                       runSpacing: 12,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        // 分类 Chip
+                        // 🟢 分类 Chip (饱满的胶囊样式)
                         InkWell(
                           onTap: _pickCategory,
                           borderRadius: BorderRadius.circular(20),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // 增加 Padding，不再细长
                             decoration: BoxDecoration(
+                              // 使用 MD3 风格的 Surface Container
                               color: _category == null
                                   ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
                                   : theme.colorScheme.primaryContainer,
@@ -384,13 +384,14 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                           ),
                         )),
 
-                        // 添加标签按钮
+                        // 🟢 添加标签按钮 (文字 + 图标，更清晰)
                         InkWell(
                           onTap: _showAddTagDialog,
                           borderRadius: BorderRadius.circular(20),
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
+                              // 虚线或淡色边框效果
                               border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3)),
                               borderRadius: BorderRadius.circular(20),
                             ),
@@ -427,22 +428,17 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                       config: quill.QuillEditorConfig(
                         placeholder: '记点什么...',
                         autoFocus: false,
-                        scrollable: false,
+                        scrollable: false, // 禁用内部滚动，由外层 ListView 滚动
                         expands: false,
                         padding: EdgeInsets.zero,
-                        // 🟢 核心修复：移除 readOnly 参数，改为 showCursor
-                        // 通过 controller.readOnly 属性在 onSelectionChange 中控制只读
                         showCursor: !_isImageSelected,
-
                         embedBuilders: [
                           ImageEmbedBuilder(
                             imageService: _imageService,
-                            // 🟢 监听图片选中状态
                             onSelectionChange: (isSelected) {
                               if (_isImageSelected != isSelected) {
                                 setState(() {
                                   _isImageSelected = isSelected;
-                                  // 🟢 核心修复：在这里控制控制器的只读状态
                                   _quillController.readOnly = isSelected;
                                 });
                               }
@@ -469,25 +465,24 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                       ),
                     ),
 
+                    // 底部留白
                     const SizedBox(height: 300),
                   ],
                 ),
               ),
 
-
-              if (!_isImageSelected)
-                SafeArea(
-                  top: false,
-                  child: EditorBottomToolbar(
-                    controller: _quillController,
-                    activePanel: _activePanel,
-                    onPanelChanged: _togglePanel,
-                    onUndo: _undo,
-                    onRedo: _redo,
-                    onPickImage: _pickAndInsertImage,
-                    onFinish: () => _saveNote(closePage: true),
-                  ),
+              SafeArea(
+                top: false,
+                child: EditorBottomToolbar(
+                  controller: _quillController,
+                  activePanel: _activePanel,
+                  onPanelChanged: _togglePanel,
+                  onUndo: _undo,
+                  onRedo: _redo,
+                  onPickImage: _pickAndInsertImage,
+                  onFinish: () => _saveNote(closePage: true),
                 ),
+              ),
             ],
           ),
         ),
