@@ -40,8 +40,8 @@ class _MainScreenState extends State<MainScreen> {
   void _onBottomNavTapped(int index) {
     _pageController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
+      duration: const Duration(milliseconds: 400), // 🟢 稍微调慢一点，显得更优雅
+      curve: Curves.fastOutSlowIn, // 🟢 使用更符合 Material 的曲线
     );
   }
 
@@ -54,15 +54,20 @@ class _MainScreenState extends State<MainScreen> {
       body: PageView(
         controller: _pageController,
         onPageChanged: _onPageChanged,
-        physics: const BouncingScrollPhysics(), // 🟢 增加阻尼回弹效果
+        physics: const BouncingScrollPhysics(), // 保持这个阻尼效果，体验很好
         children: _pages,
       ),
 
+      // 🟢 升级 NavigationBar 样式
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: _onBottomNavTapped,
-        backgroundColor: theme.colorScheme.surface,
-        indicatorColor: theme.colorScheme.secondaryContainer,
+        backgroundColor: theme.colorScheme.surface, // 与背景融合
+        indicatorColor: theme.colorScheme.secondaryContainer, // 选中指示器颜色
+        height: 72, // 🟢 MD3 标准推荐高度 (默认80有点高，72更精致)
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow, // 总是显示标签
+        elevation: 0, // 扁平化设计
+        animationDuration: const Duration(milliseconds: 600), // 指示器切换动画时长
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.description_outlined),

@@ -3,9 +3,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ThemeProvider with ChangeNotifier {
   bool _isDarkMode = false;
+  int _colorSeedValue = Colors.indigo.value; // 默认颜色值的整数表示
   late SharedPreferences _prefs;
 
   bool get isDarkMode => _isDarkMode;
+  Color get themeColor => Color(_colorSeedValue); // 获取当前颜色对象
+
+  // 🟢 预设的颜色列表 (MD3 推荐色)
+  static const List<Color> presetColors = [
+    Colors.indigo,
+    Colors.blue,
+    Colors.teal,
+    Colors.green,
+    Colors.orange,
+    Colors.deepOrange,
+    Colors.red,
+    Colors.pink,
+    Colors.purple,
+    Colors.blueGrey,
+  ];
+
+  ThemeMode get themeMode => _isDarkMode ? ThemeMode.dark : ThemeMode.light;
 
   ThemeProvider() {
     _loadThemePrefs();
@@ -14,6 +32,8 @@ class ThemeProvider with ChangeNotifier {
   Future<void> _loadThemePrefs() async {
     _prefs = await SharedPreferences.getInstance();
     _isDarkMode = _prefs.getBool('is_dark_mode') ?? false;
+    // 读取保存的颜色值，如果没有则默认 Indigo
+    _colorSeedValue = _prefs.getInt('theme_color_value') ?? Colors.indigo.value;
     notifyListeners();
   }
 
@@ -23,31 +43,11 @@ class ThemeProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  ThemeData get currentTheme {
-    // 使用 Material 3 的 ColorScheme
-    final brightness = _isDarkMode ? Brightness.dark : Brightness.light;
-    return ThemeData(
-      useMaterial3: true, // 启用 M3
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: Colors.blueAccent, // 种子颜色
-        brightness: brightness,
-      ),
-      // 优化 AppBar 样式
-      appBarTheme: AppBarTheme(
-        centerTitle: true,
-        elevation: 0,
-        scrolledUnderElevation: 2, // 滚动时的阴影效果
-        backgroundColor: _isDarkMode ? null : Colors.white, // 浅色模式下白色背景更干净
-      ),
-      // 优化卡片样式
-      cardTheme: CardThemeData(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        clipBehavior: Clip.antiAlias, // 裁剪内容适配圆角
-      ),
-      floatingActionButtonTheme: FloatingActionButtonThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    );
+  // 🟢 新增：设置主题色
+  Future<void> setThemeColor(Color color) async {
+    if (_colorSeedValue == color.value) return;
+    _colorSeedValue = color.value;
+    await _prefs.setInt('theme_color_value', _colorSeedValue);
+    notifyListeners();
   }
 }

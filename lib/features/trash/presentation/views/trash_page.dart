@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // 🟢 引入触感反馈
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/providers/todos_provider.dart';
-// 引入两个 Model 以便在卡片中使用其方法
 import '../../../../models/note.dart';
 import '../../../../models/todo.dart';
+// 🟢 引入我们刚刚创建的通用空状态组件
+// (请确保你已经按照上一条回答创建了 lib/widgets/common/app_empty_state.dart)
+import '../../../../widgets/common/app_empty_state.dart';
 
 class TrashPage extends StatelessWidget {
   const TrashPage({super.key});
@@ -22,7 +26,7 @@ class TrashPage extends StatelessWidget {
           title: const Text('回收站', style: TextStyle(fontWeight: FontWeight.w600)),
           centerTitle: true,
           backgroundColor: theme.colorScheme.surface,
-          surfaceTintColor: Colors.transparent, // 移除滚动时的变色
+          surfaceTintColor: Colors.transparent,
           bottom: TabBar(
             tabs: const [
               Tab(text: '笔记', icon: Icon(Icons.description_outlined)),
@@ -32,14 +36,20 @@ class TrashPage extends StatelessWidget {
             unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
             indicatorColor: theme.colorScheme.primary,
             indicatorSize: TabBarIndicatorSize.label,
-            dividerColor: Colors.transparent, // 移除 TabBar 下划线
+            dividerColor: Colors.transparent,
+            splashBorderRadius: BorderRadius.circular(16),
+            // 🟢 Tab 切换时增加轻微触感
+            onTap: (_) => HapticFeedback.selectionClick(),
           ),
           actions: [
-            // 清空按钮：使用 Tonal 风格
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: FilledButton.tonalIcon(
-                onPressed: () => _confirmEmptyTrash(context),
+                onPressed: () {
+                  // 🟢 点击清空按钮时给予反馈
+                  HapticFeedback.lightImpact();
+                  _confirmEmptyTrash(context);
+                },
                 icon: Icon(Icons.delete_sweep_rounded, color: theme.colorScheme.error),
                 label: Text('清空', style: TextStyle(color: theme.colorScheme.error)),
                 style: FilledButton.styleFrom(
@@ -60,7 +70,6 @@ class TrashPage extends StatelessWidget {
     );
   }
 
-  // 🎨 MD3 风格：清空确认弹窗
   void _confirmEmptyTrash(BuildContext context) {
     final theme = Theme.of(context);
     showDialog(
@@ -85,8 +94,12 @@ class TrashPage extends StatelessWidget {
                   child: FilledButton(
                       onPressed: () {
                         Navigator.pop(ctx);
+                        // 🟢 执行破坏性操作时给予较强反馈
+                        HapticFeedback.mediumImpact();
+
                         Provider.of<NotesProvider>(context, listen: false).emptyTrash();
                         Provider.of<TodosProvider>(context, listen: false).emptyTrash();
+
                         ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                                 content: const Text('回收站已清空'),
@@ -109,7 +122,7 @@ class TrashPage extends StatelessWidget {
   }
 }
 
-// 笔记回收列表
+// 🟢 笔记回收列表 (带动画 + 新空状态)
 class _NotesTrashList extends StatelessWidget {
   const _NotesTrashList();
 
@@ -118,28 +131,49 @@ class _NotesTrashList extends StatelessWidget {
     return Consumer<NotesProvider>(
       builder: (context, provider, _) {
         final notes = provider.trashNotes;
-        if (notes.isEmpty) return const _EmptyTrashView(message: '没有废弃的笔记');
+        if (notes.isEmpty) {
+          // 🟢 使用统一的空状态组件替换原来的 _EmptyTrashView
+          return const AppEmptyState(
+            message: '没有废弃的笔记',
+            subMessage: '删除的笔记会在这里保留一段时间',
+            icon: Icons.note_alt_outlined,
+          );
+        }
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: notes.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final note = notes[index];
-            // 使用 Note 模型自带的方法获取格式化时间
-            return _TrashItemCard(
-              item: note,
-              onRestore: () => provider.restoreNote(note.id),
-              onDeleteForever: () => provider.deleteNoteForever(note.id),
-            );
-          },
+        return AnimationLimiter(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: notes.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final note = notes[index];
+              return AnimationConfiguration.staggeredList(
+                position: index,
+                duration: const Duration(milliseconds: 375),
+                child: SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: _TrashItemCard(
+                      item: note,
+                      onRestore: () {
+                        // 🟢 还原操作反馈
+                        HapticFeedback.lightImpact();
+                        provider.restoreNote(note.id);
+                      },
+                      onDeleteForever: () => provider.deleteNoteForever(note.id),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         );
       },
     );
   }
 }
 
-// 待办回收列表
+// 🟢 待办回收列表 (带动画 + 新空状态)
 class _TodosTrashList extends StatelessWidget {
   const _TodosTrashList();
 
@@ -148,29 +182,50 @@ class _TodosTrashList extends StatelessWidget {
     return Consumer<TodosProvider>(
       builder: (context, provider, _) {
         final todos = provider.trashTodos;
-        if (todos.isEmpty) return const _EmptyTrashView(message: '没有废弃的待办');
+        if (todos.isEmpty) {
+          // 🟢 使用统一的空状态组件
+          return const AppEmptyState(
+            message: '没有废弃的待办',
+            subMessage: '完成或删除的任务可能出现在这里',
+            icon: Icons.task_alt_outlined,
+          );
+        }
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: todos.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final todo = todos[index];
-            return _TrashItemCard(
-              item: todo,
-              onRestore: () => provider.restoreTodo(todo.id),
-              onDeleteForever: () => provider.deleteTodoForever(todo.id),
-            );
-          },
+        return AnimationLimiter(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: todos.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final todo = todos[index];
+              return AnimationConfiguration.staggeredList(
+                position: index,
+                duration: const Duration(milliseconds: 375),
+                child: SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: _TrashItemCard(
+                      item: todo,
+                      onRestore: () {
+                        // 🟢 还原操作反馈
+                        HapticFeedback.lightImpact();
+                        provider.restoreTodo(todo.id);
+                      },
+                      onDeleteForever: () => provider.deleteTodoForever(todo.id),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         );
       },
     );
   }
 }
 
-// 🎨 MD3 风格：通用回收站卡片
 class _TrashItemCard extends StatelessWidget {
-  final dynamic item; // 接收 Note 或 Todo 对象
+  final dynamic item;
   final VoidCallback onRestore;
   final VoidCallback onDeleteForever;
 
@@ -186,7 +241,7 @@ class _TrashItemCard extends StatelessWidget {
     final isNote = item is Note;
     final title = isNote ? (item as Note).title : (item as Todo).title;
     final subtitle = isNote ? (item as Note).plainText : (item as Todo).description;
-    // 使用 Model 自带的时间格式化，或手动格式化待办时间
+
     final timeStr = isNote
         ? (item as Note).formattedUpdatedAt
         : (item as Todo).dueDate != null
@@ -195,18 +250,15 @@ class _TrashItemCard extends StatelessWidget {
 
     return Card(
       elevation: 0,
-      // 使用次要容器色，表示“非活跃”状态
       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        // 加一个浅色边框
         side: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            // 左侧图标：笔记或待办
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -220,7 +272,6 @@ class _TrashItemCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 16),
-            // 中间内容
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -228,7 +279,7 @@ class _TrashItemCard extends StatelessWidget {
                   Text(
                     title.isEmpty ? (isNote ? '无标题笔记' : '无标题待办') : title,
                     style: theme.textTheme.titleMedium?.copyWith(
-                      decoration: TextDecoration.lineThrough, // 删除线
+                      decoration: TextDecoration.lineThrough,
                       color: theme.colorScheme.onSurface.withOpacity(0.6),
                       fontWeight: FontWeight.w500,
                     ),
@@ -251,7 +302,7 @@ class _TrashItemCard extends StatelessWidget {
                         Icon(Icons.access_time_rounded, size: 12, color: theme.colorScheme.outline),
                         const SizedBox(width: 4),
                         Text(
-                          '删除于 $timeStr', // 提示删除时间
+                          '删除于 $timeStr',
                           style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
                         ),
                       ],
@@ -260,11 +311,9 @@ class _TrashItemCard extends StatelessWidget {
                 ],
               ),
             ),
-            // 右侧操作按钮
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 还原按钮
                 IconButton.filledTonal(
                   onPressed: onRestore,
                   icon: const Icon(Icons.restore_from_trash_rounded),
@@ -276,7 +325,6 @@ class _TrashItemCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // 永久删除按钮
                 IconButton.filledTonal(
                   onPressed: () => _confirmDeleteForever(context),
                   icon: const Icon(Icons.delete_forever_rounded),
@@ -295,7 +343,6 @@ class _TrashItemCard extends StatelessWidget {
     );
   }
 
-  // 🎨 MD3 风格：单个项目永久删除确认
   void _confirmDeleteForever(BuildContext context) {
     final theme = Theme.of(context);
     showDialog(
@@ -320,7 +367,9 @@ class _TrashItemCard extends StatelessWidget {
                   child: FilledButton(
                       onPressed: () {
                         Navigator.pop(ctx);
-                        onDeleteForever(); // 执行传入的删除回调
+                        // 🟢 删除反馈
+                        HapticFeedback.mediumImpact();
+                        onDeleteForever();
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('已永久删除'), behavior: SnackBarBehavior.floating, width: 200, shape: const StadiumBorder(), backgroundColor: theme.colorScheme.inverseSurface));
                       },
                       style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError, padding: const EdgeInsets.symmetric(vertical: 12), elevation: 0),
@@ -329,35 +378,6 @@ class _TrashItemCard extends StatelessWidget {
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyTrashView extends StatelessWidget {
-  final String message;
-  const _EmptyTrashView({required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.auto_delete_outlined, size: 64, color: theme.colorScheme.outline.withOpacity(0.5)),
-          ),
-          const SizedBox(height: 24),
-          Text(message, style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.outline)),
-          const SizedBox(height: 8),
-          Text('回收站的项目会自动保留一段时间', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outlineVariant)),
         ],
       ),
     );

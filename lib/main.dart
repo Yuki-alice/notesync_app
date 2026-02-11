@@ -1,34 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_quill/flutter_quill.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_quill/flutter_quill.dart' hide ThemeData;
 
 import 'core/database/simple_database_service.dart';
-import 'core/providers/app_providers.dart';
+import 'core/providers/theme_provider.dart';
+import 'core/providers/notes_provider.dart';
+import 'core/providers/todos_provider.dart';
 import 'core/repositories/note_repository.dart';
 import 'core/repositories/todo_repository.dart';
-import 'app/main_screen.dart';
+
+import 'core/routes/app_routes.dart';
+import 'core/routes/app_router.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. 初始化数据库服务
   final dbService = SimpleDatabaseService();
 
   try {
     await dbService.init();
   } catch (e) {
-    // 如果数据库遭遇无法修复的错误，启动错误页面
     runApp(ErrorApp(error: e.toString()));
     return;
   }
 
-  // 2. 注入依赖
-  // 使用 dbService 提供的 Box 实例来创建 Repository
   final noteRepo = NoteRepository(dbService.noteBox);
   final todoRepo = TodoRepository(dbService.todoBox);
 
-  // 3. 启动应用
   runApp(
     MultiProvider(
       providers: [
@@ -47,10 +48,74 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final seedColor = themeProvider.themeColor;
+    final textTheme =GoogleFonts.notoSansScTextTheme(Theme.of(context).textTheme);
+
     return MaterialApp(
       title: '笔记同步',
-      theme: themeProvider.currentTheme,
       debugShowCheckedModeBanner: false,
+      themeMode: themeProvider.themeMode,
+
+      initialRoute: AppRoutes.home,
+      onGenerateRoute: AppRouter.onGenerateRoute,
+
+
+      theme: ThemeData(
+        textTheme: textTheme,
+        useMaterial3: true,
+        brightness: Brightness.light,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: seedColor,
+          brightness: Brightness.light,
+          surfaceTint: seedColor.withOpacity(0.05),
+        ),
+        scaffoldBackgroundColor: const Color(0xFFFDFDFD),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          scrolledUnderElevation: 0,
+          backgroundColor: Colors.transparent,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.grey.withOpacity(0.05),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+
+      darkTheme: ThemeData(
+        textTheme: textTheme,
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: seedColor,
+          brightness: Brightness.dark,
+          surfaceTint: seedColor.withOpacity(0.1),
+        ),
+        scaffoldBackgroundColor: const Color(0xFF1A1C1E),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          scrolledUnderElevation: 0,
+          backgroundColor: Colors.transparent,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.05),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      ),
+
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -58,7 +123,6 @@ class MyApp extends StatelessWidget {
         FlutterQuillLocalizations.delegate,
       ],
       supportedLocales: FlutterQuillLocalizations.supportedLocales,
-      home: const MainScreen(),
     );
   }
 }
@@ -71,25 +135,18 @@ class ErrorApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        backgroundColor: Colors.red[50],
+        backgroundColor: Colors.red[900],
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(32.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline_rounded, size: 64, color: Colors.red),
+                const Icon(Icons.error_outline_rounded, size: 64, color: Colors.redAccent),
                 const SizedBox(height: 16),
-                const Text(
-                  "应用启动失败",
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red),
-                ),
+                const Text("应用启动失败", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
                 const SizedBox(height: 8),
-                Text(
-                  "本地数据库发生严重错误，请尝试重装应用。\n\n技术细节:\n$error",
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.brown),
-                ),
+                Text("错误详情:\n$error", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
               ],
             ),
           ),

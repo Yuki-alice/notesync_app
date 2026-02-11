@@ -23,11 +23,16 @@ dependencies:
   flutter_quill: ^11.5.0
   # 图片选择
   image_picker: ^1.0.7
-   # 获取本地存储路径
+  # 获取本地存储路径
   path_provider: ^2.1.2
   # 文件抽象 (image_picker 依赖)
   cross_file: ^0.3.3
-  animations: ^2.0.8
+
+  window_manager: ^0.4.3
+  animations: ^2.0.11
+  flutter_staggered_animations: ^1.1.1
+  google_fonts: ^6.1.0
+  flutter_svg: ^2.0.9
 
 dev_dependencies:
   flutter_test:

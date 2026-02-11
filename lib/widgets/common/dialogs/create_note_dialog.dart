@@ -76,7 +76,6 @@ class _CreateNoteDialogState extends State<CreateNoteDialog> {
       insetPadding: const EdgeInsets.all(16),
       child: Container(
         width: double.infinity,
-        // 设置最大高度，防止内容过多超出屏幕
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.8,
         ),
@@ -203,9 +202,6 @@ class _CreateNoteDialogState extends State<CreateNoteDialog> {
                         return;
                       }
 
-                      // 构建返回的 Note 对象
-                      // 如果是新建，ID 先给个空字符串，由 Provider 重新生成
-                      // 如果是编辑，保持原有 ID
                       final resultNote = Note(
                         id: widget.existingNote?.id ?? '',
                         title: title,

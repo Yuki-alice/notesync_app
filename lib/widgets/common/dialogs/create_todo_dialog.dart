@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../models/todo.dart';
 
-// 使用底部弹窗代替 Dialog，体验更好
+// 使用底部弹窗代替 Dialog
 Future<Todo?> showCreateTodoDialog({
   required BuildContext context,
   Todo? existingTodo,
 }) {
   return showModalBottomSheet<Todo>(
     context: context,
-    isScrollControlled: true, // 允许弹窗全屏或自适应高度
+    isScrollControlled: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
-    showDragHandle: true, // 显示顶部的拖动条
+    showDragHandle: true,
     useSafeArea: true,
     builder: (context) => CreateTodoSheet(existingTodo: existingTodo),
   );
@@ -29,6 +29,8 @@ class CreateTodoSheet extends StatefulWidget {
 class _CreateTodoSheetState extends State<CreateTodoSheet> {
   late TextEditingController _titleController;
   late TextEditingController _descController;
+  final FocusNode _titleFocus = FocusNode();
+
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
 
@@ -43,12 +45,19 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
       _selectedDate = todo!.dueDate;
       _selectedTime = TimeOfDay.fromDateTime(todo.dueDate!);
     }
+
+    if (widget.existingTodo == null) {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted) _titleFocus.requestFocus();
+      });
+    }
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _descController.dispose();
+    _titleFocus.dispose();
     super.dispose();
   }
 
@@ -60,12 +69,19 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
       initialDate: _selectedDate ?? now,
       firstDate: now.subtract(const Duration(days: 365)),
       lastDate: now.add(const Duration(days: 365 * 5)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme,
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (pickedDate != null) {
       setState(() {
-        // 如果之前有选具体时间，保留时间部分；否则默认设为当前时间或0点
-        final oldTime = _selectedTime ?? TimeOfDay.now();
+        final oldTime = _selectedTime ?? const TimeOfDay(hour: 9, minute: 0);
         _selectedDate = DateTime(
             pickedDate.year,
             pickedDate.month,
@@ -73,20 +89,18 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
             oldTime.hour,
             oldTime.minute
         );
-        // 如果还没选过时间，自动把时间也选上，方便用户
-        _selectedTime ??= oldTime;
+        if (_selectedTime == null) _selectedTime = oldTime;
       });
     }
   }
 
-  // 选择时间 (精确到分钟)
+  // 选择时间
   Future<void> _pickTime() async {
     final now = TimeOfDay.now();
     final pickedTime = await showTimePicker(
       context: context,
       initialTime: _selectedTime ?? now,
       builder: (BuildContext context, Widget? child) {
-        // 使用 24小时制，根据系统设定调整
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
           child: child!,
@@ -97,7 +111,6 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
     if (pickedTime != null) {
       setState(() {
         _selectedTime = pickedTime;
-        // 如果还没选日期，默认设为今天
         final baseDate = _selectedDate ?? DateTime.now();
         _selectedDate = DateTime(
           baseDate.year,
@@ -110,162 +123,250 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
     }
   }
 
-  void _clearReminder() {
-    setState(() {
-      _selectedDate = null;
-      _selectedTime = null;
-    });
+  void _submit() {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) return;
+
+    DateTime? finalDueDate;
+    if (_selectedDate != null) {
+      final t = _selectedTime ?? const TimeOfDay(hour: 0, minute: 0);
+      finalDueDate = DateTime(
+        _selectedDate!.year,
+        _selectedDate!.month,
+        _selectedDate!.day,
+        t.hour,
+        t.minute,
+      );
+    }
+
+    final result = Todo(
+      id: widget.existingTodo?.id ?? '',
+      title: title,
+      description: _descController.text.trim(),
+      dueDate: finalDueDate,
+      isCompleted: widget.existingTodo?.isCompleted ?? false,
+      createdAt: widget.existingTodo?.createdAt ?? DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    Navigator.pop(context, result);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // 动态获取键盘高度，防止输入框被遮挡
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(24, 0, 24, bottomPadding + 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 标题输入 (大字体，无边框，类似待办清单的自然输入)
-          TextField(
-            controller: _titleController,
-            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-            decoration: const InputDecoration(
-              hintText: '准备做什么？',
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
-            ),
-            autofocus: widget.existingTodo == null, // 新建时自动聚焦
-            textInputAction: TextInputAction.next,
-          ),
+    final hasDate = _selectedDate != null;
+    final hasTime = _selectedTime != null;
 
-          const SizedBox(height: 12),
+    String dateText = '';
+    if (hasDate) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final target = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day);
 
-          // 描述输入 (小字体)
-          TextField(
-            controller: _descController,
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            decoration: InputDecoration(
-              hintText: '添加描述...',
-              hintStyle: TextStyle(color: theme.colorScheme.outline),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
-              icon: Icon(Icons.notes_rounded, size: 20, color: theme.colorScheme.outline),
-            ),
-            minLines: 1,
-            maxLines: 5,
-          ),
+      if (target == today) {
+        dateText = '今天';
+      } else if (target == today.add(const Duration(days: 1))) {
+        dateText = '明天';
+      } else {
+        dateText = DateFormat('MM月dd日').format(_selectedDate!);
+      }
 
-          const SizedBox(height: 24),
+      if (hasTime) {
+        dateText += ' ${_selectedTime!.format(context)}';
+      }
+    }
 
-          // 提醒时间选择区 (Chip 风格)
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                // 日期按钮
-                ActionChip(
-                  avatar: Icon(Icons.calendar_today_rounded, size: 16, color: _selectedDate == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary),
-                  label: Text(
-                    _selectedDate == null
-                        ? '日期'
-                        : DateFormat('MM月dd日').format(_selectedDate!),
-                    style: TextStyle(
-                        color: _selectedDate == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
-                        fontWeight: _selectedDate == null ? FontWeight.normal : FontWeight.bold
+    return Container(
+      // 🟢 调整点：在键盘高度的基础上，额外增加 16 的距离
+      padding: EdgeInsets.only(bottom: bottomPadding + 16),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 1. 输入区域
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+              child: Column(
+                children: [
+                  // 标题输入框
+                  TextField(
+                    controller: _titleController,
+                    focusNode: _titleFocus,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
                     ),
-                  ),
-                  onPressed: _pickDate,
-                  backgroundColor: _selectedDate == null ? theme.colorScheme.surfaceContainerHigh : theme.colorScheme.primaryContainer.withOpacity(0.3),
-                  side: BorderSide.none,
-                  shape: const StadiumBorder(),
-                ),
-
-                const SizedBox(width: 12),
-
-                // 时间按钮
-                ActionChip(
-                  avatar: Icon(Icons.access_time_rounded, size: 16, color: _selectedTime == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary),
-                  label: Text(
-                    _selectedTime == null
-                        ? '时间'
-                        : _selectedTime!.format(context),
-                    style: TextStyle(
-                        color: _selectedTime == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
-                        fontWeight: _selectedTime == null ? FontWeight.normal : FontWeight.bold
+                    decoration: InputDecoration(
+                      hintText: '准备做什么？',
+                      hintStyle: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
+                      ),
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      prefixIcon: Icon(
+                          Icons.edit_rounded,
+                          color: theme.colorScheme.primary
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
+                    maxLines: 2,
+                    minLines: 1,
+                    textInputAction: TextInputAction.next,
                   ),
-                  onPressed: _pickTime,
-                  backgroundColor: _selectedTime == null ? theme.colorScheme.surfaceContainerHigh : theme.colorScheme.primaryContainer.withOpacity(0.3),
-                  side: BorderSide.none,
-                  shape: const StadiumBorder(),
-                ),
 
-                // 清除按钮 (仅当已设置时间时显示)
-                if (_selectedDate != null) ...[
-                  const SizedBox(width: 12),
-                  IconButton.filledTonal(
-                    onPressed: _clearReminder,
-                    icon: const Icon(Icons.close_rounded, size: 16),
-                    constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
-                    style: IconButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      backgroundColor: theme.colorScheme.surfaceContainerHigh,
+                  const SizedBox(height: 12),
+
+                  // 描述输入框
+                  TextField(
+                    controller: _descController,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                      height: 1.5,
+                      fontSize: 16,
                     ),
+                    decoration: InputDecoration(
+                      hintText: '添加详细描述...',
+                      hintStyle: TextStyle(
+                        color: theme.colorScheme.outline.withValues(alpha: 0.7),
+                        fontSize: 16,
+                      ),
+                      filled: true,
+                      // 颜色与标题框保持一致
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      prefixIcon: Icon(
+                          Icons.notes_rounded,
+                          color: theme.colorScheme.outline
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      isDense: true,
+                    ),
+                    minLines: 1,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
                   ),
-                ]
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 32),
-
-          // 底部保存按钮
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              FilledButton.icon(
-                onPressed: () {
-                  final title = _titleController.text.trim();
-                  if (title.isEmpty) return; // 标题为空不做反应
-
-                  // 构造 DateTime 对象
-                  DateTime? finalDueDate;
-                  if (_selectedDate != null) {
-                    final t = _selectedTime ?? const TimeOfDay(hour: 0, minute: 0); // 如果没选时间，默认0点
-                    finalDueDate = DateTime(
-                      _selectedDate!.year,
-                      _selectedDate!.month,
-                      _selectedDate!.day,
-                      t.hour,
-                      t.minute,
-                    );
-                  }
-
-                  final result = Todo(
-                    id: widget.existingTodo?.id ?? '',
-                    title: title,
-                    description: _descController.text.trim(),
-                    dueDate: finalDueDate,
-                    isCompleted: widget.existingTodo?.isCompleted ?? false,
-                    createdAt: widget.existingTodo?.createdAt ?? DateTime.now(),
-                    updatedAt: DateTime.now(),
-                  );
-
-                  Navigator.pop(context, result);
-                },
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                ),
-                icon: const Icon(Icons.check_rounded, size: 18),
-                label: const Text('保存'),
+                ],
               ),
-            ],
-          ),
-        ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // 2. 底部工具栏
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.1))),
+                color: theme.colorScheme.surface,
+              ),
+              child: Row(
+                children: [
+                  _buildToolbarButton(
+                    context,
+                    icon: Icons.calendar_today_rounded,
+                    label: hasDate && !hasTime ? dateText : '日期',
+                    isActive: hasDate,
+                    onTap: _pickDate,
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  _buildToolbarButton(
+                    context,
+                    icon: Icons.access_time_rounded,
+                    label: hasTime ? dateText : '时间',
+                    isActive: hasTime,
+                    onTap: _pickTime,
+                  ),
+
+                  const Spacer(),
+
+                  if (hasDate)
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedDate = null;
+                          _selectedTime = null;
+                        });
+                      },
+                      icon: const Icon(Icons.notifications_off_outlined),
+                      tooltip: '清除提醒',
+                      visualDensity: VisualDensity.compact,
+                      color: theme.colorScheme.outline,
+                    ),
+
+                  const SizedBox(width: 8),
+
+                  // 保存按钮
+                  FilledButton(
+                    onPressed: _submit,
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      elevation: 0,
+                    ),
+                    child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolbarButton(BuildContext context, {
+    required IconData icon,
+    required VoidCallback onTap,
+    required String label,
+    bool isActive = false,
+  }) {
+    final theme = Theme.of(context);
+
+    final bgColor = isActive
+        ? theme.colorScheme.primary
+        : theme.colorScheme.surfaceContainerHigh;
+
+    final fgColor = isActive
+        ? theme.colorScheme.onPrimary
+        : theme.colorScheme.onSurfaceVariant;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: fgColor),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: fgColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

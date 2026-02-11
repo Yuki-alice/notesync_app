@@ -133,6 +133,7 @@ class Note extends HiveObject {
     DateTime? updatedAt,
     List<String>? tags,
     String? category,
+    bool clearCategory = false,
     bool? isPinned,
     bool? isDeleted,
   }) {
@@ -143,7 +144,7 @@ class Note extends HiveObject {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       tags: tags ?? this.tags,
-      category: category ?? this.category,
+      category: clearCategory ? null : (category ?? this.category),
       isPinned: isPinned ?? this.isPinned,
       isDeleted: isDeleted ?? this.isDeleted,
     );
