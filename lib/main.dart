@@ -1,9 +1,11 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide ThemeData;
-
+import 'package:window_manager/window_manager.dart';
 import 'core/database/simple_database_service.dart';
 import 'core/providers/theme_provider.dart';
 import 'core/providers/notes_provider.dart';
@@ -14,10 +16,10 @@ import 'core/repositories/todo_repository.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
 
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. 初始化数据库
   final dbService = SimpleDatabaseService();
 
   try {
@@ -25,6 +27,23 @@ void main() async {
   } catch (e) {
     runApp(ErrorApp(error: e.toString()));
     return;
+  }
+
+
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    await windowManager.ensureInitialized();
+    WindowOptions windowOptions = const WindowOptions(
+      size: Size(1024, 768),
+      minimumSize: Size(400, 600),
+      center: true,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.normal,
+    );
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
   }
 
   final noteRepo = NoteRepository(dbService.noteBox);

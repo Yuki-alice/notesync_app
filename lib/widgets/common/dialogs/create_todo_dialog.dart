@@ -2,31 +2,51 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../models/todo.dart';
 
-// 使用底部弹窗代替 Dialog
+// 🟢 核心修改：自适应入口函数
 Future<Todo?> showCreateTodoDialog({
   required BuildContext context,
   Todo? existingTodo,
 }) {
-  return showModalBottomSheet<Todo>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Theme.of(context).colorScheme.surface,
-    showDragHandle: true,
-    useSafeArea: true,
-    builder: (context) => CreateTodoSheet(existingTodo: existingTodo),
-  );
+  final isDesktop = MediaQuery.of(context).size.width >= 600;
+
+  if (isDesktop) {
+    // 💻 桌面端：显示居中弹窗 (Dialog)
+    return showDialog<Todo>(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          width: 500, // 限制弹窗宽度
+          child: CreateTodoSheet(existingTodo: existingTodo, isDialog: true),
+        ),
+      ),
+    );
+  } else {
+    // 📱 移动端：显示底部抽屉 (Bottom Sheet)
+    return showModalBottomSheet<Todo>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) => CreateTodoSheet(existingTodo: existingTodo, isDialog: false),
+    );
+  }
 }
 
 class CreateTodoSheet extends StatefulWidget {
   final Todo? existingTodo;
+  final bool isDialog; // [新增] 标记是否为弹窗模式
 
-  const CreateTodoSheet({super.key, this.existingTodo});
+  const CreateTodoSheet({super.key, this.existingTodo, this.isDialog = false});
 
   @override
   State<CreateTodoSheet> createState() => _CreateTodoSheetState();
 }
 
 class _CreateTodoSheetState extends State<CreateTodoSheet> {
+  // ... (状态变量保持不变: _titleController, _descController, _selectedDate 等)
   late TextEditingController _titleController;
   late TextEditingController _descController;
   final FocusNode _titleFocus = FocusNode();
@@ -61,7 +81,7 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
     super.dispose();
   }
 
-  // 选择日期
+  // ... (保持 _pickDate, _pickTime, _submit 逻辑不变，直接复制之前的代码即可)
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final pickedDate = await showDatePicker(
@@ -157,6 +177,7 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
     final theme = Theme.of(context);
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
+    // ... (保持 dateText 逻辑不变)
     final hasDate = _selectedDate != null;
     final hasTime = _selectedTime != null;
 
@@ -179,41 +200,53 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
       }
     }
 
+
     return Container(
-      // 🟢 调整点：在键盘高度的基础上，额外增加 16 的距离
-      padding: EdgeInsets.only(bottom: bottomPadding + 16),
+      // 如果是 Dialog 模式，给一个白色/深色背景，否则是透明的（由 BottomSheet 控制）
+      color: widget.isDialog ? theme.colorScheme.surface : null,
+      padding: EdgeInsets.only(bottom: widget.isDialog ? 0 : bottomPadding + 16),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // 🟢 如果是 Dialog，加一个标题栏
+            if (widget.isDialog)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                child: Text(
+                  widget.existingTodo == null ? '新待办' : '编辑待办',
+                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+
             // 1. 输入区域
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
               child: Column(
                 children: [
-                  // 标题输入框
                   TextField(
                     controller: _titleController,
                     focusNode: _titleFocus,
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: theme.colorScheme.onSurface,
+                      fontSize: 20, // 稍微调小一点字体
                     ),
                     decoration: InputDecoration(
                       hintText: '准备做什么？',
                       hintStyle: TextStyle(
-                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
+                          color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)
                       ),
                       filled: true,
-                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       prefixIcon: Icon(
                           Icons.edit_rounded,
                           color: theme.colorScheme.primary
                       ),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
                       ),
                     ),
@@ -224,7 +257,6 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
 
                   const SizedBox(height: 12),
 
-                  // 描述输入框
                   TextField(
                     controller: _descController,
                     style: theme.textTheme.bodyLarge?.copyWith(
@@ -235,38 +267,35 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
                     decoration: InputDecoration(
                       hintText: '添加详细描述...',
                       hintStyle: TextStyle(
-                        color: theme.colorScheme.outline.withValues(alpha: 0.7),
+                        color: theme.colorScheme.outline.withOpacity(0.7),
                         fontSize: 16,
                       ),
                       filled: true,
-                      // 颜色与标题框保持一致
-                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       prefixIcon: Icon(
                           Icons.notes_rounded,
                           color: theme.colorScheme.outline
                       ),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
                       ),
                       isDense: true,
                     ),
-                    minLines: 1,
-                    maxLines: null,
+                    minLines: 3, // 默认显示多一点行数
+                    maxLines: 5,
                     keyboardType: TextInputType.multiline,
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 8),
-
             // 2. 底部工具栏
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.1))),
+                border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.1))),
                 color: theme.colorScheme.surface,
               ),
               child: Row(
@@ -307,13 +336,11 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
 
                   const SizedBox(width: 8),
 
-                  // 保存按钮
                   FilledButton(
                     onPressed: _submit,
                     style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      elevation: 0,
                     ),
                     child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
@@ -326,6 +353,7 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
     );
   }
 
+  // ... (保留 _buildToolbarButton 辅助方法)
   Widget _buildToolbarButton(BuildContext context, {
     required IconData icon,
     required VoidCallback onTap,

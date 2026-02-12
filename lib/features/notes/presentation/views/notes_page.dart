@@ -12,6 +12,7 @@ import '../../../../models/note.dart';
 import '../../../../utils/app_feedback.dart';
 import 'note_editor_page.dart';
 import '../../../../core/services/image_storage_service.dart';
+import '../widgets/note_card.dart';
 
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
@@ -21,6 +22,12 @@ class NotesPage extends StatefulWidget {
 }
 
 class _NotesPageState extends State<NotesPage> {
+  int _calculateCrossAxisCount(double width) {
+    if (width > 1600) return 5;
+    if (width > 1200) return 4;
+    if (width > 800) return 3;
+    return 2;
+  }
   final TextEditingController _searchController = TextEditingController();
 
   bool _isFabExtended = true;
@@ -477,6 +484,10 @@ class _NotesPageState extends State<NotesPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final screenWidth=MediaQuery.of(context).size.width;
+    final crossAxisCount=_calculateCrossAxisCount(screenWidth);
+
+    final isDesktop=screenWidth>=600;
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -676,10 +687,10 @@ class _NotesPageState extends State<NotesPage> {
                     )
                   else
                     SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: EdgeInsets.symmetric(horizontal: screenWidth>800?24:12),
                       sliver: AnimationLimiter(
                         child: SliverMasonryGrid.count(
-                          crossAxisCount: 2,
+                          crossAxisCount: crossAxisCount,
                           mainAxisSpacing: 12,
                           crossAxisSpacing: 12,
                           childCount: notes.length,
@@ -688,7 +699,7 @@ class _NotesPageState extends State<NotesPage> {
                             return AnimationConfiguration.staggeredGrid(
                               position: index,
                               duration: const Duration(milliseconds: 375),
-                              columnCount: 2,
+                              columnCount: crossAxisCount,
                               child: ScaleAnimation(
                                 scale: 0.9,
                                 child: FadeInAnimation(
@@ -726,14 +737,13 @@ class _NotesPageState extends State<NotesPage> {
                                       milliseconds: 600,
                                     ),
 
-                                    // 打开的页面
                                     openBuilder:
                                         (context, _) =>
                                             NoteEditorPage(note: note),
 
                                     // 关闭的内容
                                     closedBuilder: (context, openContainer) {
-                                      return _NoteGridCard(
+                                      return NoteCard(
                                         note: note,
                                         searchQuery: searchQuery,
                                         onTap: openContainer,
@@ -758,7 +768,7 @@ class _NotesPageState extends State<NotesPage> {
           ),
         ),
       ),
-      floatingActionButton: OpenContainer(
+      floatingActionButton: isDesktop?null:OpenContainer(
         transitionType: ContainerTransitionType.fadeThrough,
         openBuilder: (BuildContext context, VoidCallback _) {
           return const NoteEditorPage();
@@ -791,209 +801,3 @@ class _NotesPageState extends State<NotesPage> {
   }
 }
 
-class _NoteCoverImage extends StatelessWidget {
-  final String imagePath;
-
-  const _NoteCoverImage({required this.imagePath});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final file = File(imagePath);
-
-    if (file.isAbsolute) {
-      return Image.file(
-        file,
-        fit: BoxFit.cover,
-        errorBuilder:
-            (_, __, ___) => Center(
-              child: Icon(
-                Icons.broken_image_rounded,
-                color: theme.colorScheme.outline,
-              ),
-            ),
-      );
-    }
-
-    return FutureBuilder<File?>(
-      future: ImageStorageService().getLocalFile(imagePath),
-      builder: (context, snapshot) {
-        if (snapshot.hasData && snapshot.data != null) {
-          return Image.file(
-            snapshot.data!,
-            fit: BoxFit.cover,
-            errorBuilder:
-                (_, __, ___) => Center(
-                  child: Icon(
-                    Icons.broken_image_rounded,
-                    color: theme.colorScheme.outline,
-                  ),
-                ),
-          );
-        }
-        return Container(color: theme.colorScheme.surfaceContainerHighest);
-      },
-    );
-  }
-}
-
-class _NoteGridCard extends StatelessWidget {
-  final Note note;
-  final String searchQuery;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-
-  const _NoteGridCard({
-    super.key,
-    required this.note,
-    this.searchQuery = '',
-    required this.onTap,
-    required this.onLongPress,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final coverImage = note.firstImagePath;
-    final hasTitle = note.title.isNotEmpty;
-    final hasContent = note.plainText.isNotEmpty;
-
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      splashColor: theme.colorScheme.primary.withOpacity(0.1),
-      // 这里的 InkWell 不需要圆角，因为它在 OpenContainer 内部，会被 OpenContainer 裁剪
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (coverImage != null)
-            Hero(
-              tag: 'note_cover_${note.id}',
-              child: Container(
-                height: 140,
-                width: double.infinity,
-                // 图片背景
-                color: theme.colorScheme.surfaceContainerHighest,
-                child: _NoteCoverImage(imagePath: coverImage),
-              ),
-            ),
-
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (hasTitle) ...[
-                  SearchHighlightText(
-                    note.title,
-                    query: searchQuery,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      height: 1.2,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-
-                if (hasContent) ...[
-                  SearchHighlightText(
-                    note.plainText,
-                    query: searchQuery,
-                    maxLines: coverImage != null ? 3 : 6,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (note.category != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primaryContainer.withOpacity(
-                            0.6,
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          note.category!,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ),
-                    ...note.tags.take(2).map((tag) {
-                      // 检查标签是否匹配搜索
-                      final isMatch =
-                          searchQuery.isNotEmpty &&
-                          tag.toLowerCase().contains(searchQuery.toLowerCase());
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          // 如果匹配，给一个显眼的黄色背景
-                          color:
-                              isMatch
-                                  ? const Color(0xFFFFF176)
-                                  : Colors.transparent,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '#$tag',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color:
-                                isMatch
-                                    ? Colors.black
-                                    : theme.colorScheme.secondary, // 匹配时文字变黑
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.access_time_rounded,
-                      size: 12,
-                      color: theme.colorScheme.outline,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      note.formattedUpdatedAt,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.outline,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
