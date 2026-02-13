@@ -9,7 +9,8 @@ class NoteCard extends StatelessWidget {
   final Note note;
   final String searchQuery;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback onLongPress;    // 手机端长按
+  final VoidCallback? onSecondaryTap; // 电脑端右键 (新增)
 
   const NoteCard({
     super.key,
@@ -17,6 +18,7 @@ class NoteCard extends StatelessWidget {
     this.searchQuery = '',
     required this.onTap,
     required this.onLongPress,
+    this.onSecondaryTap,
   });
 
   @override
@@ -29,7 +31,9 @@ class NoteCard extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
+      onSecondaryTap: onSecondaryTap, // 绑定右键事件
       splashColor: theme.colorScheme.primary.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(24), // 与 OpenContainer 闭合圆角一致
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -40,8 +44,14 @@ class NoteCard extends StatelessWidget {
               child: Container(
                 height: 140,
                 width: double.infinity,
-                color: theme.colorScheme.surfaceContainerHighest,
-                child: NoteCoverImage(imagePath: coverImage),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  child: NoteCoverImage(imagePath: coverImage),
+                ),
               ),
             ),
 
@@ -85,6 +95,10 @@ class NoteCard extends StatelessWidget {
                   runSpacing: 6,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    // 置顶标识
+                    if (note.isPinned)
+                      Icon(Icons.push_pin_rounded, size: 14, color: theme.colorScheme.primary),
+
                     if (note.category != null)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -142,10 +156,8 @@ class NoteCard extends StatelessWidget {
   }
 }
 
-// 独立的图片加载组件
 class NoteCoverImage extends StatelessWidget {
   final String imagePath;
-
   const NoteCoverImage({super.key, required this.imagePath});
 
   @override

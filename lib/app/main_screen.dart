@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:notesync_app/widgets/common/dialogs/create_todo_dialog.dart';
 import 'package:provider/provider.dart';
-import '../features/notes/presentation/views/note_editor_page.dart';
 import '../features/notes/presentation/views/notes_page.dart';
 import '../features/todos/presentation/views/todos_page.dart';
-import '../utils/app_feedback.dart';
-import 'layouts/main_layout_desktop.dart';
+import '../features/notes/presentation/views/note_editor_page.dart';
+import '../widgets/common/dialogs/create_todo_dialog.dart';
 import 'layouts/main_layout_mobile.dart';
+import 'layouts/main_layout_desktop.dart';
 import '../core/routes/app_routes.dart';
 import '../core/providers/todos_provider.dart';
-
+import '../utils/app_feedback.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -20,13 +19,16 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-  late PageController _pageController;
+  // 🟢 改为可空，以便重建
+  PageController? _pageController;
+
+  // 🟢 新增：记录上一次的布局状态
+  bool? _wasDesktop;
 
   final List<Widget> _pages = const [
     NotesPage(),
     TodosPage(),
   ];
-
 
   @override
   void initState() {
@@ -36,19 +38,18 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _pageController?.dispose();
     super.dispose();
   }
 
-  // 统一的页面切换逻辑：无论是点击底部导航还是侧边栏，都走这里
   void _onNavigationChanged(int index) {
     setState(() {
       _currentIndex = index;
     });
-    _pageController.animateToPage(
+    _pageController?.animateToPage(
       index,
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.fastOutSlowIn,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
     );
   }
 
@@ -58,7 +59,7 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  void _onFabPressed() async{
+  void _onFabPressed() async {
     if (_currentIndex == 0) {
       Navigator.push(
         context,
@@ -66,9 +67,8 @@ class _MainScreenState extends State<MainScreen> {
       );
     } else if (_currentIndex == 1) {
       AppFeedback.selection();
+      final result = await showCreateTodoDialog(context: context);
 
-      final result = await showCreateTodoDialog(
-        context: context,);
       if (result != null && mounted) {
         await context.read<TodosProvider>().addTodo(
           title: result.title,
@@ -79,6 +79,7 @@ class _MainScreenState extends State<MainScreen> {
       }
     }
   }
+
   void _onSettingsTap() {
     Navigator.pushNamed(context, AppRoutes.settings);
   }
@@ -91,7 +92,20 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 600) {
+        // 判断当前是否为桌面模式
+        final isDesktop = constraints.maxWidth >= 600;
+
+        // 🟢 核心修复逻辑：
+        // 如果布局模式发生了变化（从桌面切到手机，或反之），
+        // 销毁旧控制器，创建新控制器，并强制 initialPage 为当前页面索引。
+        if (_wasDesktop != null && _wasDesktop != isDesktop) {
+          _pageController?.dispose();
+          _pageController = PageController(initialPage: _currentIndex);
+        }
+        _wasDesktop = isDesktop; // 更新状态记录
+
+        if (!isDesktop) {
+          // --- 手机模式 ---
           return MainLayoutMobile(
             selectedIndex: _currentIndex,
             onDestinationSelected: _onNavigationChanged,
@@ -103,6 +117,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
           );
         } else {
+          // --- 桌面模式 ---
           return MainLayoutDesktop(
             selectedIndex: _currentIndex,
             onDestinationSelected: _onNavigationChanged,

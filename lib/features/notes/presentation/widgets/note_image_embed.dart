@@ -1,4 +1,5 @@
 // 文件路径: lib/features/notes/presentation/widgets/note_image_embed.dart
+import 'dart:async'; // 引入 async
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,7 +8,6 @@ import '../../../../core/services/image_storage_service.dart';
 
 class ImageEmbedBuilder extends quill.EmbedBuilder {
   final ImageStorageService imageService;
-  // 回调：通知父级选中状态变化
   final ValueChanged<bool>? onSelectionChange;
 
   ImageEmbedBuilder({
@@ -36,7 +36,6 @@ class ImageEmbedBuilder extends quill.EmbedBuilder {
           caption: caption,
           controller: embedContext.controller,
           node: embedContext.node,
-          // 传入回调
           onSelectionChange: onSelectionChange,
           onWidthToggle: (newValue) => _updateAttribute(embedContext.controller, embedContext.node, 'width', newValue ? '100%' : null),
           onCaptionChange: (newCaption) => _updateAttribute(embedContext.controller, embedContext.node, 'caption', newCaption),
@@ -46,7 +45,6 @@ class ImageEmbedBuilder extends quill.EmbedBuilder {
     );
   }
 
-  // --- 辅助操作方法 ---
   void _updateAttribute(quill.QuillController controller, quill.Embed node, String key, dynamic value) {
     final offset = getEmbedNodeOffset(controller, node);
     if (offset != -1) {
@@ -111,36 +109,54 @@ class _InteractableImageState extends State<InteractableImage> {
   final LayerLink _layerLink = LayerLink();
   bool _isSelected = false;
 
-  void _handleTap() {
-    // 🟢 1. 强制清除焦点和选区，防止光标出现
-    FocusScope.of(context).unfocus();
-    // 将选区设为 -1，彻底移除光标
-    widget.controller.updateSelection(const TextSelection.collapsed(offset: -1), quill.ChangeSource.local);
-    // 强制隐藏软键盘
-    SystemChannels.textInput.invokeMethod('TextInput.hide');
-
-    final newValue = !_isSelected;
-    setState(() => _isSelected = newValue);
-
-    // 通知外部：选中状态改变
-    if (widget.onSelectionChange != null) {
-      widget.onSelectionChange!(newValue);
-    }
-
+  @override
+  void dispose() {
     if (_isSelected) {
-      _showFloatingToolbar();
-    } else {
       OverlayMenuManager.hide();
     }
+    super.dispose();
   }
 
-  // 辅助方法：重置选中状态
+  void _handleTapDown(TapDownDetails details) {
+    if (_isSelected) {
+      _resetSelection();
+      return;
+    }
+
+    setState(() => _isSelected = true);
+
+    // 🟢 核心修复：使用 Future.delayed(Duration.zero)
+    // 将“通知父级”的操作推迟到下一个事件循环，完全避开当前的 Focus/Build 流程
+    // 这样可以彻底解决 "This widget has been unmounted" 崩溃
+    Future.delayed(Duration.zero, () {
+      if (mounted && widget.onSelectionChange != null) {
+        widget.onSelectionChange!(true);
+        SystemChannels.textInput.invokeMethod('TextInput.hide');
+      }
+    });
+
+    // 计算位置
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+    final localPosition = details.localPosition;
+
+    // X轴居中，Y轴在点击位置下方
+    final menuOffset = Offset(size.width / 2, localPosition.dy + 15);
+
+    _showFloatingToolbar(menuOffset);
+  }
+
   void _resetSelection() {
     if (mounted) {
       setState(() => _isSelected = false);
-      if (widget.onSelectionChange != null) {
-        widget.onSelectionChange!(false);
-      }
+      OverlayMenuManager.hide();
+
+      // 同样推迟取消选中的通知
+      Future.delayed(Duration.zero, () {
+        if (mounted && widget.onSelectionChange != null) {
+          widget.onSelectionChange!(false);
+        }
+      });
     }
   }
 
@@ -167,7 +183,7 @@ class _InteractableImageState extends State<InteractableImage> {
               final text = textController.text.trim();
               widget.onCaptionChange(text.isEmpty ? null : text);
               Navigator.pop(ctx);
-              _resetSelection(); // 编辑完关闭选中
+              _resetSelection();
             },
             child: const Text('确定'),
           ),
@@ -176,18 +192,18 @@ class _InteractableImageState extends State<InteractableImage> {
     );
   }
 
-  void _showFloatingToolbar() {
+  void _showFloatingToolbar(Offset offset) {
     OverlayMenuManager.show(
       context: context,
       layerLink: _layerLink,
-      onDismiss: () {
-        _resetSelection();
-      },
+      offset: offset,
+      onDismiss: _resetSelection,
       child: _FloatingToolbar(
         isFullWidth: widget.isFullWidth,
         hasCaption: widget.caption != null && widget.caption!.isNotEmpty,
         onToggleWidth: () {
           widget.onWidthToggle(!widget.isFullWidth);
+          _resetSelection();
         },
         onEditCaption: _showCaptionDialog,
         onDelete: () {
@@ -201,41 +217,30 @@ class _InteractableImageState extends State<InteractableImage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    // 边框宽度 (选中时显示)
     final double borderWidth = _isSelected ? 2.5 : 0.0;
-    // 图片自身的圆角
     const double imageRadius = 12.0;
-    // 🟢 外层容器圆角 = 图片圆角 + 边框宽度
     final double outerRadius = imageRadius + borderWidth;
 
     return CompositedTransformTarget(
       link: _layerLink,
       child: GestureDetector(
-        behavior: HitTestBehavior.opaque, // 🟢 确保点击透明区域也能响应
-        onTap: _handleTap,
+        behavior: HitTestBehavior.opaque,
+        onTapDown: _handleTapDown, // 保持使用 onTapDown
         child: Container(
-          // 🟢 关键修改：使用 Padding 而不是 Margin
-          // 将这 4px 的空隙纳入组件内部，这样点击空隙也会触发 _handleTap (选中图片)，而不是触发编辑器的光标
           padding: EdgeInsets.symmetric(
               vertical: widget.isFullWidth ? 16.0 : 8.0,
               horizontal: 4.0
           ),
-          // 🟢 必须设置背景色（即使是透明），否则透明区域的点击可能会穿透
           decoration: const BoxDecoration(color: Colors.transparent),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 🟢 核心修复：使用“填充模拟边框”
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                // Padding 的厚度就是边框的厚度
                 padding: EdgeInsets.all(borderWidth),
                 decoration: BoxDecoration(
-                  // 边框颜色 (实际上是背景色)
                   color: _isSelected ? theme.colorScheme.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(outerRadius),
-                  // 选中时添加柔和阴影
                   boxShadow: _isSelected ? [
                     BoxShadow(
                         color: theme.colorScheme.primary.withOpacity(0.2),
@@ -252,8 +257,6 @@ class _InteractableImageState extends State<InteractableImage> {
                       : _buildConstrainedImage(),
                 ),
               ),
-
-              // 题注 (在边框外)
               if (widget.caption != null && widget.caption!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
@@ -331,55 +334,59 @@ class _FloatingToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        height: 48,
-        margin: const EdgeInsets.symmetric(horizontal: 24),
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 12,
-                offset: const Offset(0, 6)
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _ToolbarButton(
-              icon: isFullWidth ? Icons.close_fullscreen_rounded : Icons.fullscreen_rounded,
-              tooltip: isFullWidth ? '恢复默认' : '适应屏幕',
-              onTap: onToggleWidth,
-            ),
-            _VerticalDivider(),
-            _ToolbarButton(
-              icon: hasCaption ? Icons.edit_note_rounded : Icons.add_comment_rounded,
-              tooltip: '题注',
-              onTap: onEditCaption,
-              active: hasCaption,
-            ),
-            _VerticalDivider(),
-            _ToolbarButton(
-              icon: Icons.copy_rounded,
-              tooltip: '复制',
-              onTap: () {
-                HapticFeedback.lightImpact();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制图片'), duration: Duration(seconds: 1)));
-              },
-            ),
-            _VerticalDivider(),
-            _ToolbarButton(
-              icon: Icons.delete_outline_rounded,
-              tooltip: '删除',
-              onTap: onDelete,
-              isDestructive: true,
-            ),
-          ],
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.elasticOut,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: value,
+          alignment: Alignment.topCenter,
+          child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+        );
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.2), width: 0.5),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                  spreadRadius: -2
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ToolbarButton(
+                icon: isFullWidth ? Icons.close_fullscreen_rounded : Icons.fullscreen_rounded,
+                tooltip: isFullWidth ? '默认大小' : '适应屏幕',
+                onTap: onToggleWidth,
+              ),
+              _VerticalDivider(),
+              _ToolbarButton(
+                icon: hasCaption ? Icons.edit_note_rounded : Icons.add_comment_rounded,
+                tooltip: '题注',
+                onTap: onEditCaption,
+                active: hasCaption,
+              ),
+              _VerticalDivider(),
+              _ToolbarButton(
+                icon: Icons.delete_rounded,
+                tooltip: '删除',
+                onTap: onDelete,
+                isDestructive: true,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -406,19 +413,19 @@ class _ToolbarButton extends StatelessWidget {
     final theme = Theme.of(context);
     final color = isDestructive
         ? theme.colorScheme.error
-        : (active ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant);
+        : (active ? theme.colorScheme.primary : theme.colorScheme.onSurface);
 
     return Tooltip(
       message: tooltip,
       child: InkWell(
         onTap: () {
-          HapticFeedback.lightImpact();
+          HapticFeedback.selectionClick();
           onTap();
         },
         borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Icon(icon, size: 22, color: color),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Icon(icon, size: 20, color: color),
         ),
       ),
     );
@@ -430,8 +437,8 @@ class _VerticalDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
         width: 1,
-        height: 20,
-        color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)
+        height: 16,
+        color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.3)
     );
   }
 }
@@ -440,7 +447,13 @@ class _VerticalDivider extends StatelessWidget {
 class OverlayMenuManager {
   static OverlayEntry? _currentEntry;
 
-  static void show({required BuildContext context, required LayerLink layerLink, required VoidCallback onDismiss, required Widget child}) {
+  static void show({
+    required BuildContext context,
+    required LayerLink layerLink,
+    required Offset offset,
+    required VoidCallback onDismiss,
+    required Widget child
+  }) {
     hide();
     final overlayState = Overlay.of(context);
     _currentEntry = OverlayEntry(
@@ -448,19 +461,26 @@ class OverlayMenuManager {
         children: [
           Positioned.fill(
               child: GestureDetector(
-                // 🟢 核心修复：改为 opaque，拦截点击事件，防止穿透到编辑器
                   behavior: HitTestBehavior.opaque,
                   onTapDown: (_) {
                     hide();
                     onDismiss();
                   },
-                  child: Container(color: Colors.transparent)
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (scrollNotification) {
+                      hide();
+                      onDismiss();
+                      return true;
+                    },
+                    child: Container(color: Colors.transparent),
+                  )
               )
           ),
           CompositedTransformFollower(
               link: layerLink,
-              offset: const Offset(0, 8),
-              targetAnchor: Alignment.bottomCenter,
+              showWhenUnlinked: false,
+              offset: offset,
+              targetAnchor: Alignment.topLeft,
               followerAnchor: Alignment.topCenter,
               child: child
           ),
