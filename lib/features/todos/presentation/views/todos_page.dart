@@ -1,8 +1,7 @@
-// ... 前面的 imports 保持不变
+// 文件路径: lib/features/todos/presentation/views/todos_page.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
-
 import '../../../../core/providers/todos_provider.dart';
 import '../../../../utils/app_feedback.dart';
 import '../../../../widgets/common/dialogs/create_todo_dialog.dart';
@@ -23,7 +22,6 @@ class TodosPage extends StatefulWidget {
 }
 
 class _TodosPageState extends State<TodosPage> {
-  // ... 状态变量保持不变
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String? _selectedTodoId;
@@ -55,7 +53,6 @@ class _TodosPageState extends State<TodosPage> {
   }
 
   void _openTodoDialog(BuildContext context, {Todo? todo}) async {
-    // ... 保持不变
     AppFeedback.selection();
     final result = await showCreateTodoDialog(
       context: context,
@@ -76,11 +73,9 @@ class _TodosPageState extends State<TodosPage> {
     }
   }
 
-  // 构建列表项 (辅助方法)
   Widget _buildTodoItem(BuildContext context, Todo todo, int index, TodosProvider provider, bool isDesktop) {
     final isSelected = isDesktop && todo.id == _selectedTodoId;
     return Container(
-      // 🟢 关键：拖拽排序必须要有唯一的 Key
       key: ValueKey(todo.id),
       margin: const EdgeInsets.only(bottom: 8),
       child: TodoItem(
@@ -96,7 +91,6 @@ class _TodosPageState extends State<TodosPage> {
             setState(() => _selectedTodoId = null);
           }
         },
-        // 🟢 关键修改：无论桌面还是移动端，都允许排序（因为我们现在有了把手）
         isReorderable: true,
       ),
     );
@@ -115,22 +109,46 @@ class _TodosPageState extends State<TodosPage> {
         final completedCount = completed.length;
         final progress = _calculateProgress(completedCount, totalCount);
 
-        return CustomScrollView(
+        Widget scrollView = CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
-            // 1. SliverAppBar (保持不变)
+            // 1. SliverAppBar (加入同步状态和按钮)
             SliverAppBar(
               toolbarHeight: isDesktop ? 70 : 64,
-              title: isDesktop
-                  ? Text('待办清单', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))
-                  : const Text('我的待办', style: TextStyle(fontWeight: FontWeight.w800)),
+              // 🟢 将标题和状态云朵放在同一个 Row 里
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isDesktop ? '待办清单' : '我的待办',
+                    style: isDesktop
+                        ? theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)
+                        : const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(width: 8),
+                  const TodoSyncStatusIndicator(), // 🟢 加入状态云朵
+                ],
+              ),
               centerTitle: false,
               backgroundColor: theme.colorScheme.surface,
               surfaceTintColor: Colors.transparent,
               pinned: true,
               actions: isDesktop
-                  ? []
+                  ? [
+                // 🟢 桌面端新增：手动同步按钮
+                IconButton.filledTonal(
+                  onPressed: () => context.read<TodosProvider>().syncWithCloud(),
+                  icon: const Icon(Icons.sync_rounded),
+                  tooltip: "手动同步",
+                  style: IconButton.styleFrom(
+                    backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    foregroundColor: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 16),
+              ]
                   : [
+                // 移动端的按钮保持不变
                 IconButton(
                   onPressed: () => Navigator.pushNamed(context, AppRoutes.trash),
                   icon: const Icon(Icons.auto_delete_outlined),
@@ -142,7 +160,7 @@ class _TodosPageState extends State<TodosPage> {
               ],
             ),
 
-            // 2. 搜索栏 (保持不变)
+            // 2. 搜索栏
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -153,7 +171,7 @@ class _TodosPageState extends State<TodosPage> {
                   leading: const Icon(Icons.search, size: 20),
                   elevation: WidgetStateProperty.all(0),
                   backgroundColor: WidgetStateProperty.all(
-                      theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)
+                      theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
                   ),
                   onChanged: (value) => provider.setSearchQuery(value),
                   constraints: const BoxConstraints(minHeight: 48, maxHeight: 48),
@@ -202,9 +220,6 @@ class _TodosPageState extends State<TodosPage> {
                 ),
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-
-                  // 🟢 核心修改：统一使用 SliverReorderableList
-                  // 如果是搜索状态，则回退到 SliverList (因为搜索时不能排序)
                   sliver: isSearching
                       ? SliverList(
                     delegate: SliverChildBuilderDelegate(
@@ -219,11 +234,10 @@ class _TodosPageState extends State<TodosPage> {
                       provider.reorderTodos(oldIndex, newIndex);
                     },
                     itemBuilder: (ctx, i) => _buildTodoItem(context, incomplete[i], i, provider, isDesktop),
-                    // 拖拽时的样式代理 (透明背景，带阴影)
                     proxyDecorator: (child, index, animation) => Material(
                       elevation: 6,
-                      color: Colors.transparent, // 保持透明，显示卡片自身背景
-                      shadowColor: Colors.black.withOpacity(0.2),
+                      color: Colors.transparent,
+                      shadowColor: Colors.black.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(16),
                       child: child,
                     ),
@@ -231,7 +245,7 @@ class _TodosPageState extends State<TodosPage> {
                 ),
               ],
 
-              // --- 已完成任务列表 (保持 SliverList) ---
+              // --- 已完成任务列表 ---
               if (completed.isNotEmpty) ...[
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
@@ -240,7 +254,7 @@ class _TodosPageState extends State<TodosPage> {
                       children: [
                         Text('已完成', style: TextStyle(color: theme.colorScheme.outline, fontWeight: FontWeight.bold)),
                         const SizedBox(width: 8),
-                        Expanded(child: Divider(color: theme.colorScheme.outlineVariant.withOpacity(0.5))),
+                        Expanded(child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
                       ],
                     ),
                   ),
@@ -259,15 +273,23 @@ class _TodosPageState extends State<TodosPage> {
             ]
           ],
         );
+
+        // 🟢 为移动端包裹下拉刷新组件 (Pull-to-Refresh)
+        if (!isDesktop) {
+          return RefreshIndicator(
+            onRefresh: () async {
+              HapticFeedback.mediumImpact();
+              await context.read<TodosProvider>().syncWithCloud();
+            },
+            child: scrollView,
+          );
+        }
+
+        return scrollView;
       },
     );
   }
 
-  // ... _buildRightContent 和 build 方法保持不变
-  // ...
-  // ... (请确保复制之前的 _buildRightContent 和 build 方法，这里为了篇幅省略，逻辑不需要改动)
-
-  // 🟢 补全 _buildRightContent 和 build，以免你复制时丢失
   Widget _buildRightContent(BuildContext context, ThemeData theme, List<Todo> todos, int completedCount, double progress) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -328,7 +350,7 @@ class _TodosPageState extends State<TodosPage> {
             children: [
               Icon(Icons.touch_app_rounded,
                   size: 48,
-                  color: theme.colorScheme.outline.withOpacity(0.5)),
+                  color: theme.colorScheme.outline.withValues(alpha: 0.5)),
               const SizedBox(height: 16),
               Text(
                   "点击左侧任务进行编辑",
@@ -350,7 +372,7 @@ class _TodosPageState extends State<TodosPage> {
                 Container(
                   height: minEditorHeight,
                   decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2))),
+                    border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2))),
                   ),
                   child: detailView,
                 ),
@@ -364,7 +386,7 @@ class _TodosPageState extends State<TodosPage> {
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2))),
+                    border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2))),
                   ),
                   child: detailView,
                 ),
@@ -398,14 +420,14 @@ class _TodosPageState extends State<TodosPage> {
               child: Container(
                 width: screenWidth * 0.3,
                 decoration: BoxDecoration(
-                  border: Border(right: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2))),
+                  border: Border(right: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2))),
                 ),
                 child: _buildTodoList(context, isDesktop: true),
               ),
             ),
             Expanded(
               child: Container(
-                color: theme.colorScheme.surfaceContainerLow.withOpacity(0.3),
+                color: theme.colorScheme.surfaceContainerLow.withValues(alpha: 0.3),
                 child: _buildRightContent(context, theme, todos, completedCount, progress),
               ),
             ),
@@ -421,6 +443,79 @@ class _TodosPageState extends State<TodosPage> {
         label: const Text('新待办', style: TextStyle(fontWeight: FontWeight.bold)),
         icon: const Icon(Icons.add_task_rounded),
       ),
+    );
+  }
+}
+
+// =================================================================
+// 🟢 新增：待办同步状态指示器组件
+// =================================================================
+class TodoSyncStatusIndicator extends StatelessWidget {
+  const TodoSyncStatusIndicator({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<TodosProvider>(
+      builder: (context, provider, child) {
+        final state = provider.syncState;
+        final theme = Theme.of(context);
+
+        Widget icon;
+        String tooltip;
+
+        switch (state) {
+          case TodoSyncState.unauthenticated:
+          // 🟢 未登录状态：灰色的云朵带个锁或者斜杠
+            icon = Icon(Icons.cloud_off_rounded, color: theme.colorScheme.outlineVariant, size: 20);
+            tooltip = "未登录，仅保存在本地";
+            break;
+          case TodoSyncState.syncing:
+          // 正在同步：旋转的云朵圈
+            icon = SizedBox(
+              width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
+            );
+            tooltip = "正在与云端同步...";
+            break;
+          case TodoSyncState.success:
+          // 同步成功：绿色对勾小云朵
+            icon = const Icon(Icons.cloud_done_rounded, color: Colors.green, size: 20);
+            tooltip = "已保存到云端";
+            break;
+          case TodoSyncState.error:
+          // 同步失败：红色警告云朵
+            icon = Icon(Icons.cloud_off_rounded, color: theme.colorScheme.error, size: 20);
+            tooltip = "同步失败，请检查网络";
+            break;
+          case TodoSyncState.idle:
+          default:
+          // 空闲状态：普通的云朵
+            icon = Icon(Icons.cloud_queue_rounded, color: theme.colorScheme.onSurfaceVariant, size: 20);
+            tooltip = "已与云端同步";
+            break;
+
+        }
+
+        return Tooltip(
+          message: tooltip,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              return ScaleTransition(
+                  scale: animation,
+                  child: FadeTransition(opacity: animation, child: child)
+              );
+            },
+            child: KeyedSubtree(
+              key: ValueKey<TodoSyncState>(state),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: icon,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

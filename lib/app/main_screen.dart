@@ -1,5 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // 🟢 引入 services 以使用快捷键
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/providers/notes_provider.dart';
 import '../features/notes/presentation/views/notes_page.dart';
 import '../features/todos/presentation/views/todos_page.dart';
 import '../features/notes/presentation/views/note_editor_page.dart';
@@ -19,11 +24,10 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-  // 🟢 改为可空，以便重建
   PageController? _pageController;
-
-  // 🟢 新增：记录上一次的布局状态
   bool? _wasDesktop;
+
+  StreamSubscription<AuthState>? _authStateSubscription;
 
   final List<Widget> _pages = const [
     NotesPage(),
@@ -34,11 +38,21 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentIndex);
+    _authStateSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final AuthChangeEvent event = data.event;
+      if (event == AuthChangeEvent.signedIn) {
+        if (mounted) {
+          context.read<NotesProvider>().syncWithCloud();
+          context.read<TodosProvider>().syncWithCloud();
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
     _pageController?.dispose();
+    _authStateSubscription?.cancel();
     super.dispose();
   }
 
@@ -90,49 +104,53 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // 判断当前是否为桌面模式
-        final isDesktop = constraints.maxWidth >= 600;
-
-        // 🟢 核心修复逻辑：
-        // 如果布局模式发生了变化（从桌面切到手机，或反之），
-        // 销毁旧控制器，创建新控制器，并强制 initialPage 为当前页面索引。
-        if (_wasDesktop != null && _wasDesktop != isDesktop) {
-          _pageController?.dispose();
-          _pageController = PageController(initialPage: _currentIndex);
-        }
-        _wasDesktop = isDesktop; // 更新状态记录
-
-        if (!isDesktop) {
-          // --- 手机模式 ---
-          return MainLayoutMobile(
-            selectedIndex: _currentIndex,
-            onDestinationSelected: _onNavigationChanged,
-            body: PageView(
-              controller: _pageController,
-              onPageChanged: _onPageChanged,
-              physics: const BouncingScrollPhysics(),
-              children: _pages,
-            ),
-          );
-        } else {
-          // --- 桌面模式 ---
-          return MainLayoutDesktop(
-            selectedIndex: _currentIndex,
-            onDestinationSelected: _onNavigationChanged,
-            onFabPressed: _onFabPressed,
-            onSettingsTap: _onSettingsTap,
-            onTrashTap: _onTrashTap,
-            body: PageView(
-              controller: _pageController,
-              onPageChanged: _onPageChanged,
-              physics: const NeverScrollableScrollPhysics(),
-              children: _pages,
-            ),
-          );
-        }
+    // 🟢 包裹一层 CallbackShortcuts 实现全局快捷键
+    return CallbackShortcuts(
+      bindings: {
+        // Ctrl + N (或 Cmd + N) 触发新建操作
+        const SingleActivator(LogicalKeyboardKey.keyN, control: true): _onFabPressed,
       },
+      child: Focus( // 添加一个 Focus 节点确保快捷键能被捕获
+        autofocus: true,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isDesktop = constraints.maxWidth >= 600;
+
+            if (_wasDesktop != null && _wasDesktop != isDesktop) {
+              _pageController?.dispose();
+              _pageController = PageController(initialPage: _currentIndex);
+            }
+            _wasDesktop = isDesktop;
+
+            if (!isDesktop) {
+              return MainLayoutMobile(
+                selectedIndex: _currentIndex,
+                onDestinationSelected: _onNavigationChanged,
+                body: PageView(
+                  controller: _pageController,
+                  onPageChanged: _onPageChanged,
+                  physics: const BouncingScrollPhysics(),
+                  children: _pages,
+                ),
+              );
+            } else {
+              return MainLayoutDesktop(
+                selectedIndex: _currentIndex,
+                onDestinationSelected: _onNavigationChanged,
+                onFabPressed: _onFabPressed,
+                onSettingsTap: _onSettingsTap,
+                onTrashTap: _onTrashTap,
+                body: PageView(
+                  controller: _pageController,
+                  onPageChanged: _onPageChanged,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: _pages,
+                ),
+              );
+            }
+          },
+        ),
+      ),
     );
   }
 }

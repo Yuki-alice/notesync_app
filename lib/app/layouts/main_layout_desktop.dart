@@ -5,7 +5,6 @@ class MainLayoutDesktop extends StatelessWidget {
   final ValueChanged<int> onDestinationSelected;
   final Widget body;
   final VoidCallback? onFabPressed;
-  // 新增回调
   final VoidCallback? onSettingsTap;
   final VoidCallback? onTrashTap;
 
@@ -32,35 +31,31 @@ class MainLayoutDesktop extends StatelessWidget {
             onDestinationSelected: onDestinationSelected,
             backgroundColor: theme.colorScheme.surface,
             indicatorColor: theme.colorScheme.secondaryContainer,
-            // 稍微加宽一点侧边栏，更有质感
             minWidth: 72,
             labelType: NavigationRailLabelType.all,
-            groupAlignment: -0.8, // 内容靠上对齐
+            // 🟢 稍微向上调整对齐比例，填补移除 Logo 后的空白
+            groupAlignment: -0.85,
 
-            // 1️⃣ 头部：Logo 和 新建按钮
+            // 1️⃣ 头部：优化后的新建按钮
             leading: Column(
               children: [
-                const SizedBox(height: 12),
-                // App Logo
-                Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(Icons.edit_note_rounded, color: theme.colorScheme.onPrimaryContainer),
-                ),
-                const SizedBox(height: 20),
-                // 全局 FAB
+                const SizedBox(height: 24), // 顶部留出舒适的呼吸空间
                 if (onFabPressed != null)
                   FloatingActionButton(
                     elevation: 0,
+                    hoverElevation: 3, // 🟢 鼠标悬浮时微微抬起，增强桌面端交互感
                     onPressed: onFabPressed,
-                    backgroundColor: theme.colorScheme.primary,
-                    foregroundColor: theme.colorScheme.onPrimary,
-                    child: const Icon(Icons.add),
+                    tooltip: '新建',
+                    // 🟢 改用 primaryContainer，色彩更柔和，符合现代桌面端设计语言
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    foregroundColor: theme.colorScheme.onPrimaryContainer,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16), // 🟢 更加现代的平滑圆角
+                    ),
+                    // 🟢 使用更圆润饱满的加号图标
+                    child: const Icon(Icons.add_rounded, size: 28),
                   ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
               ],
             ),
 

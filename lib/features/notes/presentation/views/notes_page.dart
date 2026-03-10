@@ -1,18 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:notesync_app/widgets/common/dialogs/add_category_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:animations/animations.dart';
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/routes/app_routes.dart';
-import '../../../../models/note.dart';
 import '../../../../utils/app_feedback.dart';
 import 'note_editor_page.dart';
 import '../widgets/note_card.dart';
 import '../widgets/dialogs/note_options_sheet.dart';
-import '../widgets/dialogs/set_category_sheet.dart';
+
 import '../widgets/note_search_bar.dart';
 
 class NotesPage extends StatefulWidget {
@@ -93,8 +94,11 @@ class _NotesPageState extends State<NotesPage> {
 
   void _handleAddCategory(BuildContext context) async {
     final provider = context.read<NotesProvider>();
-    final String? newCategory = await showSetCategorySheet(context);
+
+    final String? newCategory = await showAddCategoryDialog(context);
+
     if (newCategory != null && newCategory.isNotEmpty) {
+      await provider.addCategory(newCategory);
       provider.selectCategory(newCategory);
       AppFeedback.light();
     }
@@ -121,8 +125,7 @@ class _NotesPageState extends State<NotesPage> {
             else
               _buildMobileHeader(context, theme),
 
-            // 2. 剩余空间 (滚动内容)
-            // Expanded 必须放在 Column 的直接子级
+
             Expanded(
               child: NotificationListener<UserScrollNotification>(
                 onNotification: _handleScrollNotification,
@@ -162,7 +165,7 @@ class _NotesPageState extends State<NotesPage> {
     final screenWidth = MediaQuery.of(context).size.width;
     final crossAxisCount = _calculateCrossAxisCount(screenWidth);
 
-    return CustomScrollView(
+    final scrollView = CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
         if (!isDesktop)
@@ -176,6 +179,7 @@ class _NotesPageState extends State<NotesPage> {
                 onClear: () {
                   AppFeedback.light();
                   context.read<NotesProvider>().setSearchQuery('');
+                  _searchFocusNode.unfocus();
                 },
               ),
             ),
@@ -214,7 +218,7 @@ class _NotesPageState extends State<NotesPage> {
                         labelPadding: const EdgeInsets.symmetric(horizontal: 4),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         side: BorderSide.none,
-                        backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                        backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                         labelStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ),
@@ -260,7 +264,7 @@ class _NotesPageState extends State<NotesPage> {
                             closedShape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(24),
                               side: BorderSide(
-                                color: theme.colorScheme.outlineVariant.withOpacity(0.3),
+                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                                 width: 1,
                               ),
                             ),
@@ -290,10 +294,22 @@ class _NotesPageState extends State<NotesPage> {
             );
           },
         ),
-
         const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
     );
+
+    // 🟢 为移动端包裹下拉刷新组件 (Pull-to-Refresh)
+    if (!isDesktop) {
+      return RefreshIndicator(
+        onRefresh: () async {
+          HapticFeedback.mediumImpact();
+          await context.read<NotesProvider>().syncWithCloud();
+        },
+        child: scrollView,
+      );
+    }
+
+    return scrollView;
   }
 
   Widget _buildDesktopHeader(BuildContext context, ThemeData theme) {
@@ -342,17 +358,39 @@ class _NotesPageState extends State<NotesPage> {
                 onClear: () {
                   AppFeedback.light();
                   context.read<NotesProvider>().setSearchQuery('');
+                  _searchFocusNode.unfocus();
                 },
               ),
             ),
           ),
           const SizedBox(width: 24),
+          const SizedBox(width: 8),
+          const SyncStatusIndicator(),
+          // 🟢 桌面端新增：手动同步按钮
+          IconButton.filledTonal(
+            onPressed: () async {
+              await context.read<NotesProvider>().syncWithCloud();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('已与云端同步最新数据'), duration: Duration(seconds: 1)),
+                );
+              }
+            },
+            icon: const Icon(Icons.sync_rounded),
+            tooltip: "同步",
+            style: IconButton.styleFrom(
+              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              foregroundColor: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 8),
+
           IconButton.filledTonal(
             onPressed: () => _showSortMenu(context),
             icon: const Icon(Icons.sort_rounded),
             tooltip: "排序",
             style: IconButton.styleFrom(
-              backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
               foregroundColor: theme.colorScheme.onSurfaceVariant,
             ),
           ),
@@ -368,6 +406,8 @@ class _NotesPageState extends State<NotesPage> {
       child: Row(
         children: [
           Text("我的笔记", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(width: 8),
+          const SyncStatusIndicator(),
           const Spacer(),
           IconButton(
             onPressed: () => _showSortMenu(context),
@@ -396,7 +436,7 @@ class _NotesPageState extends State<NotesPage> {
         showCheckmark: false,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         side: BorderSide.none,
-        backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         selectedColor: theme.colorScheme.primaryContainer,
         labelStyle: TextStyle(
           color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
@@ -411,16 +451,82 @@ class _NotesPageState extends State<NotesPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.dashboard_customize_outlined, size: 64, color: theme.colorScheme.outline.withOpacity(0.5)),
+          Icon(Icons.dashboard_customize_outlined, size: 64, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
           const SizedBox(height: 16),
           Text(
             isSearching
                 ? '未找到相关笔记'
                 : (selectedCategory == null ? '暂无笔记' : '该分类下暂无笔记'),
             style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
+
           ),
         ],
       ),
+    );
+  }
+}
+class SyncStatusIndicator extends StatelessWidget {
+  const SyncStatusIndicator({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<NotesProvider>(
+      builder: (context, provider, child) {
+        final state = provider.syncState;
+        final theme = Theme.of(context);
+
+        Widget icon;
+        String tooltip;
+
+        switch (state) {
+          case SyncState.unauthenticated:
+          // 🟢 未登录状态：灰色的云朵带个锁或者斜杠
+            icon = Icon(Icons.cloud_off_rounded, color: theme.colorScheme.outlineVariant, size: 20);
+            tooltip = "未登录，仅保存在本地";
+            break;
+          case SyncState.syncing:
+          // 正在同步：旋转的云朵
+            icon = SizedBox(
+              width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
+            );
+            tooltip = "正在与云端同步...";
+            break;
+          case SyncState.success:
+          // 同步成功：绿色对勾小云朵
+            icon = const Icon(Icons.cloud_done_rounded, color: Colors.green, size: 20);
+            tooltip = "已保存到云端";
+            break;
+          case SyncState.error:
+          // 同步失败：红色警告云朵
+            icon = Icon(Icons.cloud_off_rounded, color: theme.colorScheme.error, size: 20);
+            tooltip = "同步失败，请检查网络";
+            break;
+          case SyncState.idle:
+          default:
+          // 空闲状态：普通的云朵
+            icon = Icon(Icons.cloud_queue_rounded, color: theme.colorScheme.onSurfaceVariant, size: 20);
+            tooltip = "已与云端同步";
+            break;
+        }
+
+        return Tooltip(
+          message: tooltip,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              return ScaleTransition(scale: animation, child: FadeTransition(opacity: animation, child: child));
+            },
+            child: KeyedSubtree(
+              key: ValueKey<SyncState>(state),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: icon,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

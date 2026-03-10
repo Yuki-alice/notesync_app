@@ -33,6 +33,8 @@ dependencies:
   flutter_staggered_animations: ^1.1.1
   google_fonts: ^6.1.0
   flutter_svg: ^2.0.9
+  supabase_flutter: ^2.12.0
+  flutter_image_compress: ^2.4.0
 
 dev_dependencies:
   flutter_test:

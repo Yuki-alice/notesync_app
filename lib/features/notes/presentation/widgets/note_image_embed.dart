@@ -243,7 +243,7 @@ class _InteractableImageState extends State<InteractableImage> {
                   borderRadius: BorderRadius.circular(outerRadius),
                   boxShadow: _isSelected ? [
                     BoxShadow(
-                        color: theme.colorScheme.primary.withOpacity(0.2),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.2),
                         blurRadius: 12,
                         spreadRadius: 2
                     )
@@ -353,10 +353,10 @@ class _FloatingToolbar extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainer,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.2), width: 0.5),
+            border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2), width: 0.5),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(0.12),
+                  color: Colors.black.withValues(alpha: 0.12),
                   blurRadius: 16,
                   offset: const Offset(0, 8),
                   spreadRadius: -2
@@ -415,18 +415,15 @@ class _ToolbarButton extends StatelessWidget {
         ? theme.colorScheme.error
         : (active ? theme.colorScheme.primary : theme.colorScheme.onSurface);
 
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Icon(icon, size: 20, color: color),
-        ),
+    return InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Icon(icon, size: 20, color: color),
       ),
     );
   }
@@ -438,7 +435,7 @@ class _VerticalDivider extends StatelessWidget {
     return Container(
         width: 1,
         height: 16,
-        color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.3)
+        color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3)
     );
   }
 }

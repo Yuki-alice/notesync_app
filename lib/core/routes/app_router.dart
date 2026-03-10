@@ -1,5 +1,5 @@
-
 import 'package:flutter/material.dart';
+import 'package:notesync_app/features/auth/presentation/views/login_page.dart';
 
 import '../../app/main_screen.dart';
 import '../../features/search/presentation/views/global_search_page.dart';
@@ -28,6 +28,12 @@ class AppRouter {
           settings: settings,
         );
 
+      case AppRoutes.login:
+        return MaterialPageRoute(
+          builder: (_) => const LoginPage(),
+          settings: settings,
+        );
+
       case AppRoutes.categories:
         return MaterialPageRoute(
           builder: (_) => const CategoryManagementPage(),
@@ -41,13 +47,12 @@ class AppRouter {
         );
 
       case AppRoutes.noteEditor:
-      // 如果传递了 Note 对象，则进入编辑模式；否则进入新建模式
+        // 如果传递了 Note 对象，则进入编辑模式；否则进入新建模式
         final note = (args is Note) ? args : null;
         return MaterialPageRoute(
           builder: (_) => NoteEditorPage(note: note),
           settings: settings,
         );
-
 
       default:
         return _errorRoute();
@@ -55,11 +60,13 @@ class AppRouter {
   }
 
   static Route<dynamic> _errorRoute() {
-    return MaterialPageRoute(builder: (_) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('出错了')),
-        body: const Center(child: Text('页面未找到')),
-      );
-    });
+    return MaterialPageRoute(
+      builder: (_) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('出错了')),
+          body: const Center(child: Text('页面未找到')),
+        );
+      },
+    );
   }
 }

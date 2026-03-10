@@ -26,7 +26,7 @@ class Note extends HiveObject {
   @HiveField(6)
   final String? category;
 
-  // 🔴 新增：是否置顶
+  // 是否置顶
   @HiveField(7)
   final bool isPinned;
 
@@ -44,8 +44,6 @@ class Note extends HiveObject {
     this.isPinned = false, // 默认为 false
     this.isDeleted = false,
   });
-
-
 
   bool get isRichText {
     final trimmed = content.trim();
@@ -148,5 +146,27 @@ class Note extends HiveObject {
       isPinned: isPinned ?? this.isPinned,
       isDeleted: isDeleted ?? this.isDeleted,
     );
+  }
+
+  /// 🟢 [第二阶段新增] 提取 Delta JSON 中所有的图片路径，用于垃圾回收
+  static List<String> extractAllImagePaths(String content) {
+    final List<String> paths = [];
+    final trimmed = content.trim();
+    if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) return paths;
+
+    try {
+      final List<dynamic> delta = jsonDecode(content);
+      for (final op in delta) {
+        if (op is Map<String, dynamic> && op.containsKey('insert')) {
+          final insert = op['insert'];
+          if (insert is Map && insert.containsKey('image')) {
+            paths.add(insert['image'] as String);
+          }
+        }
+      }
+    } catch (e) {
+      // 解析失败则忽略
+    }
+    return paths;
   }
 }

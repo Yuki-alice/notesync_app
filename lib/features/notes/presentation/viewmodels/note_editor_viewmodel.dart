@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -8,6 +9,8 @@ import '../../../../core/services/image_storage_service.dart';
 import '../../../../models/note.dart';
 
 class NoteEditorViewModel extends ChangeNotifier {
+  final NotesProvider notesProvider;
+
   late quill.QuillController quillController;
   late TextEditingController titleController;
 
@@ -20,7 +23,9 @@ class NoteEditorViewModel extends ChangeNotifier {
   Note? _editingNote;
   final ImageStorageService _imageService = ImageStorageService();
 
-  NoteEditorViewModel({Note? note}) {
+  Timer? _autoSaveTimer; // 🟢 自动保存定时器
+
+  NoteEditorViewModel({Note? note, required this.notesProvider}) {
     _editingNote = note;
     _initControllers();
   }
@@ -75,6 +80,17 @@ class NoteEditorViewModel extends ChangeNotifier {
       isDirty = true;
       notifyListeners();
     }
+    _scheduleAutoSave(); // 🟢 每次内容发生变化，重置并启动自动保存倒计时
+  }
+
+  // 🟢 自动保存逻辑 (延迟 3 秒)
+  void _scheduleAutoSave() {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 3), () {
+      if (isDirty) {
+        saveNote();
+      }
+    });
   }
 
   // 图片插入逻辑
@@ -99,7 +115,7 @@ class NoteEditorViewModel extends ChangeNotifier {
   }
 
   // 保存逻辑
-  Future<void> saveNote(NotesProvider provider) async {
+  Future<void> saveNote() async {
     if (!isDirty && _editingNote != null) return;
 
     final title = titleController.text.trim();
@@ -108,7 +124,7 @@ class NoteEditorViewModel extends ChangeNotifier {
     final contentJson = jsonEncode(quillController.document.toDelta().toJson());
 
     if (_editingNote == null) {
-      final newNote = await provider.addNote(
+      final newNote = await notesProvider.addNote(
           title: title.isEmpty ? '未命名笔记' : title,
           content: contentJson,
           tags: tags,
@@ -121,9 +137,10 @@ class NoteEditorViewModel extends ChangeNotifier {
           tags: tags,
           category: category,
           updatedAt: DateTime.now());
-      await provider.updateNote(updatedNote);
+      await notesProvider.updateNote(updatedNote);
       _editingNote = updatedNote;
     }
+
     isDirty = false;
     notifyListeners();
   }
@@ -134,28 +151,25 @@ class NoteEditorViewModel extends ChangeNotifier {
     if (trimmed.isNotEmpty && !tags.contains(trimmed)) {
       tags.add(trimmed);
       _markAsDirty();
-      notifyListeners();
     }
   }
 
   void removeTag(String tag) {
     tags.remove(tag);
     _markAsDirty();
-    notifyListeners();
   }
 
   void setCategory(String? newCategory) {
     category = newCategory;
     _markAsDirty();
-    notifyListeners();
   }
 
-  // 撤销重做
   void undo() { if (quillController.hasUndo) quillController.undo(); }
   void redo() { if (quillController.hasRedo) quillController.redo(); }
 
   @override
   void dispose() {
+    _autoSaveTimer?.cancel(); // 🟢 销毁时取消定时器，防止内存泄漏
     quillController.dispose();
     titleController.dispose();
     super.dispose();

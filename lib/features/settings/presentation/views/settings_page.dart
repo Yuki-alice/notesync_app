@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/providers/theme_provider.dart';
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/providers/todos_provider.dart';
@@ -14,6 +15,8 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final provider = Provider.of<ThemeProvider>(context);
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    final isLoggedIn = currentUser != null;
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -70,6 +73,38 @@ class SettingsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildSectionTitle(context, '云端同步'),
+                  const SizedBox(height: 8),
+
+                  _buildSettingCard(
+                    context,
+                    child: ListTile(
+                      leading: Icon(
+                        isLoggedIn ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                        color: isLoggedIn ? Colors.green : theme.colorScheme.outline,
+                        size: 28,
+                      ),
+                      title: Text(isLoggedIn ? '已开启安全同步' : '未登录 (本地离线模式)'),
+                      subtitle: Text(isLoggedIn ? '当前账号: ${currentUser.email}' : '登录后即可在多设备间实时同步数据'),
+                      trailing: FilledButton.tonal(
+                        onPressed: () {
+                          if (isLoggedIn) {
+                            _showLogoutConfirmDialog(context);
+                          } else {
+                            // 假设你在 app_routes 注册了登录页
+                            Navigator.pushNamed(context, AppRoutes.login);
+                          }
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: isLoggedIn ? theme.colorScheme.errorContainer : theme.colorScheme.primaryContainer,
+                          foregroundColor: isLoggedIn ? theme.colorScheme.onErrorContainer : theme.colorScheme.onPrimaryContainer,
+                        ),
+                        child: Text(isLoggedIn ? '退出' : '登录 / 注册'),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
                   // --- 外观 ---
                   _buildSectionTitle(context, '外观'),
                   const SizedBox(height: 8),
@@ -243,7 +278,28 @@ class SettingsPage extends StatelessWidget {
       child: child,
     );
   }
-
+  void _showLogoutConfirmDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('退出后将暂停跨设备云端同步。您现有的数据仍会安全地保存在这台设备的本地，不会丢失。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton.tonal(
+            onPressed: () async {
+              await Supabase.instance.client.auth.signOut();
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已退出登录，恢复为本地模式')));
+              }
+            },
+            child: const Text('退出登录'),
+          ),
+        ],
+      ),
+    );
+  }
   void _confirmClearAllTrash(BuildContext context) {
     final theme = Theme.of(context);
     showDialog(

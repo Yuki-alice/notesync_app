@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_quill/flutter_quill.dart' hide ThemeData;
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:window_manager/window_manager.dart';
 import 'core/database/simple_database_service.dart';
 import 'core/providers/theme_provider.dart';
@@ -12,12 +12,18 @@ import 'core/providers/notes_provider.dart';
 import 'core/providers/todos_provider.dart';
 import 'core/repositories/note_repository.dart';
 import 'core/repositories/todo_repository.dart';
-
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  //初始化 Supabase
+  await Supabase.initialize(
+    url: 'https://mauzvvakcqqhrcphcgmf.supabase.co',
+    anonKey: 'sb_publishable_8HmK4iGLBFj3hk2GJ9a1Xw_yDHC6rPj',
+  );
 
   // 1. 初始化数据库
   final dbService = SimpleDatabaseService();
@@ -86,7 +92,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(
           seedColor: seedColor,
           brightness: Brightness.light,
-          surfaceTint: seedColor.withOpacity(0.05),
+          surfaceTint: seedColor.withValues(alpha: 0.05),
         ),
         scaffoldBackgroundColor: const Color(0xFFFDFDFD),
         appBarTheme: const AppBarTheme(
@@ -96,7 +102,7 @@ class MyApp extends StatelessWidget {
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: Colors.grey.withOpacity(0.05),
+          fillColor: Colors.grey.withValues(alpha: 0.05),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
@@ -116,7 +122,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(
           seedColor: seedColor,
           brightness: Brightness.dark,
-          surfaceTint: seedColor.withOpacity(0.1),
+          surfaceTint: seedColor.withValues(alpha: 0.1),
         ),
         scaffoldBackgroundColor: const Color(0xFF1A1C1E),
         appBarTheme: const AppBarTheme(
@@ -126,7 +132,7 @@ class MyApp extends StatelessWidget {
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: Colors.white.withOpacity(0.05),
+          fillColor: Colors.white.withValues(alpha: 0.05),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
