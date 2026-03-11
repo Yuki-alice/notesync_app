@@ -1,4 +1,4 @@
-// 文件路径: lib/core/services/supabase_sync_service.dart
+
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -67,7 +67,8 @@ class SupabaseSyncService {
       List<Note> pulledNotes = [];
       List<Note> pushedNotes = [];
 
-      final List<dynamic> cloudMetadata = await _supabase.from('notes').select('id, updated_at');
+      final currentUserId=_supabase.auth.currentUser!.id;
+      final List<dynamic> cloudMetadata = await _supabase.from('notes').select('id, updated_at').eq('user_id', currentUserId);
       final localNotes = _noteRepo!.getAllNotes();
       final localNotesMap = {for (var note in localNotes) note.id: note};
 
@@ -117,7 +118,7 @@ class SupabaseSyncService {
       if (idsToFetch.isNotEmpty) {
         for (var i = 0; i < idsToFetch.length; i += 50) {
           final chunk = idsToFetch.sublist(i, i + 50 > idsToFetch.length ? idsToFetch.length : i + 50);
-          final List<dynamic> cloudUpdates = await _supabase.from('notes').select().inFilter('id', chunk);
+          final List<dynamic> cloudUpdates = await _supabase.from('notes').select().inFilter('id', chunk).eq('user_id', currentUserId);
 
           for (var cloudData in cloudUpdates) {
             final cloudNoteId = cloudData['id'];
@@ -247,8 +248,8 @@ class SupabaseSyncService {
       if (lastSyncStr != null) {
         lastSyncTime = DateTime.parse(lastSyncStr);
       }
-
-      final List<dynamic> cloudMetadata = await _supabase.from('todos').select('id, updated_at');
+      final currentUserId = _supabase.auth.currentUser!.id;
+      final List<dynamic> cloudMetadata = await _supabase.from('todos').select('id, updated_at').eq('user_id', currentUserId);
       final localTodos = _todoRepo!.getAllTodos();
       final localTodosMap = {for (var todo in localTodos) todo.id: todo};
       final List<String> idsToFetch = [];
@@ -272,7 +273,7 @@ class SupabaseSyncService {
       if (idsToFetch.isNotEmpty) {
         for (var i = 0; i < idsToFetch.length; i += 50) {
           final chunk = idsToFetch.sublist(i, i + 50 > idsToFetch.length ? idsToFetch.length : i + 50);
-          final List<dynamic> cloudUpdates = await _supabase.from('todos').select().inFilter('id', chunk);
+          final List<dynamic> cloudUpdates = await _supabase.from('todos').select().inFilter('id', chunk).eq('user_id', currentUserId);
 
           for (var data in cloudUpdates) {
             final cloudTodoId = data['id'];

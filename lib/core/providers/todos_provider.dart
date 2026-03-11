@@ -285,4 +285,13 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     loadTodos();
     _triggerBackgroundSync(); // 🟢 触发同步
   }
+  Future<void> clearLocalData() async {
+    final allTodos = _repository.getAllTodos();
+    for (var todo in allTodos) {
+      await _repository.deleteTodo(todo.id); // 遍历删除 Hive 中的数据
+    }
+    _todos.clear();
+    _filteredTodos.clear();
+    notifyListeners();
+  }
 }

@@ -15,10 +15,16 @@ import 'core/repositories/todo_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
+import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent, // 状态栏背景全透明
+      statusBarIconBrightness: Brightness.dark, // 状态栏图标和字体设为深色
+    ),
+  );
   //初始化 Supabase
   await Supabase.initialize(
     url: 'https://mauzvvakcqqhrcphcgmf.supabase.co',

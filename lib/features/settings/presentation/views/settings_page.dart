@@ -7,6 +7,7 @@ import '../../../../core/providers/todos_provider.dart';
 // 🟢 引入新页面
 import '../../../../core/routes/app_routes.dart';
 import 'category_management_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -283,18 +284,35 @@ class SettingsPage extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('退出登录'),
-        content: const Text('退出后将暂停跨设备云端同步。您现有的数据仍会安全地保存在这台设备的本地，不会丢失。'),
+        content: const Text('退出登录将清除此设备上的本地缓存数据。\n您的数据已安全保存在云端，下次登录即可恢复。是否继续？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton.tonal(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.errorContainer,
+              foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+            ),
             onPressed: () async {
+              // 1. 退出 Supabase 账号
               await Supabase.instance.client.auth.signOut();
+
+              // 2. 🟢 彻底清除同步时间戳 (让下一个账号完全重新拉取)
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('last_sync_time');
+              await prefs.remove('last_todo_sync_time');
+
               if (ctx.mounted) {
+                // 3. 🟢 清空本地 Hive 数据库残留
+                context.read<NotesProvider>().clearLocalData();
+                context.read<TodosProvider>().clearLocalData();
+
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已退出登录，恢复为本地模式')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('已退出登录并清除本地缓存')),
+                );
               }
             },
-            child: const Text('退出登录'),
+            child: const Text('确认退出'),
           ),
         ],
       ),

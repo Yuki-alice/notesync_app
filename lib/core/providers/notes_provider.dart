@@ -9,7 +9,7 @@ import '../../models/note.dart';
 import '../../core/services/image_storage_service.dart';
 import '../../core/services/supabase_sync_service.dart';
 
-enum SyncState{idle,syncing,success,error, unauthenticated}
+enum SyncState { idle, syncing, success, error, unauthenticated }
 
 enum NoteSortOption {
   updatedNewest('最近修改'),
@@ -86,10 +86,10 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
 
     try {
       await _syncService.syncNotes(
-          onTextSyncComplete: () {
-            _plainTextCache.clear();
-            loadNotes();
-          }
+        onTextSyncComplete: () {
+          _plainTextCache.clear();
+          loadNotes();
+        },
       );
 
       _plainTextCache.clear();
@@ -101,7 +101,6 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       Future.delayed(const Duration(milliseconds: 2500), () {
         if (_syncState == SyncState.success) _setSyncState(SyncState.idle);
       });
-
     } catch (e) {
       _setSyncState(SyncState.error); // 触发：同步失败
       // 失败展示 3 秒后恢复
@@ -110,299 +109,302 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       });
     }
   }
-    /// 🟢 后台防抖同步（静默触发，不阻塞 UI）
-    void _triggerBackgroundSync() {
-      _syncTimer?.cancel();
-      // 等待 5 秒钟，如果这期间用户没有新的操作，就在后台默默同步
-      _syncTimer = Timer(const Duration(seconds: 5), () {
-        syncWithCloud();
-      });
-    }
 
-    // Getters
-    List<Note> get notes =>
-        _notes.where((n) => !n.isDeleted).toList();
-    List<Note> get trashNotes =>
-        _notes.where((n) => n.isDeleted).toList();
-    List<Note> get filteredNotes =>
-    _filteredNotes;
+  /// 🟢 后台防抖同步（静默触发，不阻塞 UI）
+  void _triggerBackgroundSync() {
+    _syncTimer?.cancel();
+    // 等待 5 秒钟，如果这期间用户没有新的操作，就在后台默默同步
+    _syncTimer = Timer(const Duration(seconds: 5), () {
+      syncWithCloud();
+    });
+  }
 
-    String? get selectedCategory =>
-    _selectedCategory;
-    String get searchQuery =>
-    _searchQuery;
-    NoteSortOption get sortOption =>
-    _sortOption;
+  // Getters
+  List<Note> get notes => _notes.where((n) => !n.isDeleted).toList();
+  List<Note> get trashNotes => _notes.where((n) => n.isDeleted).toList();
+  List<Note> get filteredNotes => _filteredNotes;
 
-    List<String> get categories {
-      final Set<String> uniqueCategories = {};
-      uniqueCategories.addAll(_manualCategories);
-      for (var note in notes) {
-        if (note.category != null && note.category!.isNotEmpty) {
-          uniqueCategories.add(note.category!);
-        }
+  String? get selectedCategory => _selectedCategory;
+  String get searchQuery => _searchQuery;
+  NoteSortOption get sortOption => _sortOption;
+
+  List<String> get categories {
+    final Set<String> uniqueCategories = {};
+    uniqueCategories.addAll(_manualCategories);
+    for (var note in notes) {
+      if (note.category != null && note.category!.isNotEmpty) {
+        uniqueCategories.add(note.category!);
       }
-      return uniqueCategories.toList()
-        ..sort();
+    }
+    return uniqueCategories.toList()..sort();
+  }
+
+  // --- 手动分类持久化 ---
+  Future<void> _loadManualCategories() async {
+    final prefs = await SharedPreferences.getInstance();
+    _manualCategories = prefs.getStringList('custom_categories') ?? [];
+    notifyListeners();
+  }
+
+  Future<void> _saveManualCategories() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('custom_categories', _manualCategories);
+  }
+
+  Future<void> addCategory(String category) async {
+    if (category.trim().isEmpty) return;
+    final cleanName = category.trim();
+    if (categories.contains(cleanName)) return;
+
+    _manualCategories.add(cleanName);
+    await _saveManualCategories();
+    notifyListeners();
+  }
+
+  String _getNotePlainText(Note note) {
+    if (_plainTextCache.containsKey(note.id)) {
+      return _plainTextCache[note.id]!;
+    }
+    final text = note.plainText;
+    _plainTextCache[note.id] = text;
+    return text;
+  }
+
+  void loadNotes() {
+    _notes = _repository.getAllNotes();
+    _applyFilters();
+  }
+
+  void _applyFilters() {
+    final sourceNotes = notes;
+
+    var result =
+        _selectedCategory == null
+            ? List<Note>.from(sourceNotes)
+            : sourceNotes
+                .where((note) => note.category == _selectedCategory)
+                .toList();
+
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      result =
+          result.where((n) {
+            final cachedPlainText = _getNotePlainText(n).toLowerCase();
+            return n.title.toLowerCase().contains(query) ||
+                cachedPlainText.contains(query) ||
+                n.tags.any((tag) => tag.toLowerCase().contains(query));
+          }).toList();
     }
 
-    // --- 手动分类持久化 ---
-    Future<void> _loadManualCategories() async {
-      final prefs = await SharedPreferences.getInstance();
-      _manualCategories = prefs.getStringList('custom_categories') ?? [];
-      notifyListeners();
-    }
-
-    Future<void> _saveManualCategories() async {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList('custom_categories', _manualCategories);
-    }
-
-    Future<void> addCategory(String category) async {
-      if (category
-          .trim()
-          .isEmpty) return;
-      final cleanName = category.trim();
-      if (categories.contains(cleanName)) return;
-
-      _manualCategories.add(cleanName);
-      await _saveManualCategories();
-      notifyListeners();
-    }
-
-    String _getNotePlainText(Note note) {
-      if (_plainTextCache.containsKey(note.id)) {
-        return _plainTextCache[note.id]!;
+    result.sort((a, b) {
+      if (a.isPinned != b.isPinned) {
+        return a.isPinned ? -1 : 1;
       }
-      final text = note.plainText;
-      _plainTextCache[note.id] = text;
-      return text;
-    }
+      switch (_sortOption) {
+        case NoteSortOption.updatedNewest:
+          return b.updatedAt.compareTo(a.updatedAt);
+        case NoteSortOption.createdNewest:
+          return b.createdAt.compareTo(a.createdAt);
+        case NoteSortOption.titleAZ:
+          return a.title.compareTo(b.title);
+      }
+    });
 
-    void loadNotes() {
-      _notes = _repository.getAllNotes();
+    _filteredNotes = result;
+    notifyListeners();
+  }
+
+  void selectCategory(String? category) {
+    _selectedCategory = category;
+    _applyFilters();
+  }
+
+  void setSearchQuery(String query) {
+    if (_searchQuery == query) return;
+    _searchQuery = query;
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
       _applyFilters();
-    }
+    });
+  }
 
-    void _applyFilters() {
-      final sourceNotes = notes;
+  void changeSortOption(NoteSortOption option) {
+    _sortOption = option;
+    _applyFilters();
+  }
 
-      var result = _selectedCategory == null
-          ? List<Note>.from(sourceNotes)
-          : sourceNotes
-          .where((note) => note.category == _selectedCategory)
-          .toList();
-
-      if (_searchQuery.isNotEmpty) {
-        final query = _searchQuery.toLowerCase();
-        result = result.where((n) {
-          final cachedPlainText = _getNotePlainText(n).toLowerCase();
-          return n.title.toLowerCase().contains(query) ||
-              cachedPlainText.contains(query) ||
-              n.tags.any((tag) => tag.toLowerCase().contains(query));
-        }).toList();
-      }
-
-      result.sort((a, b) {
-        if (a.isPinned != b.isPinned) {
-          return a.isPinned ? -1 : 1;
-        }
-        switch (_sortOption) {
-          case NoteSortOption.updatedNewest:
-            return b.updatedAt.compareTo(a.updatedAt);
-          case NoteSortOption.createdNewest:
-            return b.createdAt.compareTo(a.createdAt);
-          case NoteSortOption.titleAZ:
-            return a.title.compareTo(b.title);
-        }
-      });
-
-      _filteredNotes = result;
-      notifyListeners();
-    }
-
-    void selectCategory(String? category) {
-      _selectedCategory = category;
-      _applyFilters();
-    }
-
-    void setSearchQuery(String query) {
-      if (_searchQuery == query) return;
-      _searchQuery = query;
-      if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-      _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-        _applyFilters();
-      });
-    }
-
-    void changeSortOption(NoteSortOption option) {
-      _sortOption = option;
-      _applyFilters();
-    }
-
-    Future<void> togglePin(String id) async {
-      final index = _notes.indexWhere((n) => n.id == id);
-      if (index != -1) {
-        final note = _notes[index];
-        await updateNote(note.copyWith(isPinned: !note.isPinned));
-      }
-    }
-
-    Future<Note> addNote({
-      required String title,
-      required String content,
-      List<String> tags = const [],
-      String? category,
-    }) async {
-      final note = Note(
-        id: _uuid.v4(),
-        title: title,
-        content: content,
-        tags: tags,
-        category: category,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        isPinned: false,
-        isDeleted: false,
-      );
-      await _repository.addNote(note);
-      _plainTextCache[note.id] = note.plainText;
-      loadNotes();
-      _triggerBackgroundSync();
-      return note;
-    }
-
-    Future<void> updateNote(Note note) async {
-      final updatedNote = note.copyWith(updatedAt: DateTime.now());
-      await _repository.updateNote(updatedNote);
-      _plainTextCache[updatedNote.id] = updatedNote.plainText;
-      loadNotes();
-      _triggerBackgroundSync();
-    }
-
-    Future<void> deleteNote(String id) async {
-      final index = _notes.indexWhere((n) => n.id == id);
-      if (index != -1) {
-        final note = _notes[index];
-        // 🟢 [关键修改] 移入回收站时，更新 updatedAt 为当前时间。
-        // 这样这个时间就等同于 "deletedAt" (被删除的时间)，作为 30 天倒计时的起点。
-        await _repository.updateNote(note.copyWith(
-            isDeleted: true,
-            updatedAt: DateTime.now()
-        ));
-        loadNotes();
-        _triggerBackgroundSync();
-      }
-    }
-
-    Future<void> restoreNote(String id) async {
-      final index = _notes.indexWhere((n) => n.id == id);
-      if (index != -1) {
-        final note = _notes[index];
-        // 🟢 恢复笔记时，也将修改时间重置为当前时间
-        await _repository.updateNote(note.copyWith(
-            isDeleted: false,
-            updatedAt: DateTime.now()
-        ));
-        loadNotes();
-        _triggerBackgroundSync();
-      }
-    }
-
-    Future<void> deleteNoteForever(String id) async {
-      await _repository.deleteNote(id);
-      _plainTextCache.remove(id);
-      loadNotes();
-      _runImageGC();
-      _triggerBackgroundSync();
-    }
-
-    Future<void> emptyTrash() async {
-      final trash = List<Note>.from(trashNotes);
-      for (var note in trash) {
-        await _repository.deleteNote(note.id);
-        _plainTextCache.remove(note.id);
-      }
-      loadNotes();
-      _runImageGC();
-      _triggerBackgroundSync();
-    }
-
-    // --- 🟢 [新增核心逻辑] 自动清理 30 天前的垃圾 ---
-    Future<void> _cleanUpOldTrash() async {
-      final now = DateTime.now();
-      bool hasDeletedAny = false;
-
-      // 使用当前 trashNotes 的拷贝来遍历，避免遍历时修改列表导致报错
-      final currentTrash = List<Note>.from(trashNotes);
-
-      for (var note in currentTrash) {
-        // 因为在 deleteNote 时我们更新了 updatedAt，这里直接算差值就是呆在回收站的天数
-        final difference = now
-            .difference(note.updatedAt)
-            .inDays;
-
-        // 超过 30 天，无情抹除
-        if (difference >= 30) {
-          await _repository.deleteNote(note.id);
-          _plainTextCache.remove(note.id);
-          hasDeletedAny = true;
-        }
-      }
-
-      // 如果真的删除了过期笔记，通知 UI 刷新并清理图片垃圾
-      if (hasDeletedAny) {
-        loadNotes();
-        _runImageGC();
-      }
-    }
-
-    Future<void> _runImageGC() async {
-      final allNotes = _repository.getAllNotes();
-      await _imageService.cleanUpUnusedImages(allNotes);
-    }
-
-    // --- 分类管理逻辑 ---
-
-    Future<void> renameCategory(String oldName, String newName) async {
-      if (oldName == newName) return;
-
-      final targetNotes = _notes.where((n) => n.category == oldName).toList();
-      for (var note in targetNotes) {
-        final updated = note.copyWith(
-            category: newName, updatedAt: DateTime.now());
-        await _repository.updateNote(updated);
-      }
-
-      if (_manualCategories.contains(oldName)) {
-        final index = _manualCategories.indexOf(oldName);
-        _manualCategories[index] = newName;
-        await _saveManualCategories();
-      } else {
-        if (!_manualCategories.contains(newName)) {
-          _manualCategories.add(newName);
-          await _saveManualCategories();
-        }
-      }
-
-      loadNotes();
-    }
-
-    Future<void> deleteCategory(String categoryName) async {
-      final targetNotes = _notes
-          .where((n) => n.category == categoryName)
-          .toList();
-      for (var note in targetNotes) {
-        final updated = note.copyWith(
-            clearCategory: true, updatedAt: DateTime.now());
-        await _repository.updateNote(updated);
-      }
-
-      if (_manualCategories.contains(categoryName)) {
-        _manualCategories.remove(categoryName);
-        await _saveManualCategories();
-      }
-
-      loadNotes();
+  Future<void> togglePin(String id) async {
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index != -1) {
+      final note = _notes[index];
+      await updateNote(note.copyWith(isPinned: !note.isPinned));
     }
   }
+
+  Future<Note> addNote({
+    required String title,
+    required String content,
+    List<String> tags = const [],
+    String? category,
+  }) async {
+    final note = Note(
+      id: _uuid.v4(),
+      title: title,
+      content: content,
+      tags: tags,
+      category: category,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      isPinned: false,
+      isDeleted: false,
+    );
+    await _repository.addNote(note);
+    _plainTextCache[note.id] = note.plainText;
+    loadNotes();
+    _triggerBackgroundSync();
+    return note;
+  }
+
+  Future<void> updateNote(Note note) async {
+    final updatedNote = note.copyWith(updatedAt: DateTime.now());
+    await _repository.updateNote(updatedNote);
+    _plainTextCache[updatedNote.id] = updatedNote.plainText;
+    loadNotes();
+    _triggerBackgroundSync();
+  }
+
+  Future<void> deleteNote(String id) async {
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index != -1) {
+      final note = _notes[index];
+      // 🟢 [关键修改] 移入回收站时，更新 updatedAt 为当前时间。
+      // 这样这个时间就等同于 "deletedAt" (被删除的时间)，作为 30 天倒计时的起点。
+      await _repository.updateNote(
+        note.copyWith(isDeleted: true, updatedAt: DateTime.now()),
+      );
+      loadNotes();
+      _triggerBackgroundSync();
+    }
+  }
+
+  Future<void> restoreNote(String id) async {
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index != -1) {
+      final note = _notes[index];
+      // 🟢 恢复笔记时，也将修改时间重置为当前时间
+      await _repository.updateNote(
+        note.copyWith(isDeleted: false, updatedAt: DateTime.now()),
+      );
+      loadNotes();
+      _triggerBackgroundSync();
+    }
+  }
+
+  Future<void> deleteNoteForever(String id) async {
+    await _repository.deleteNote(id);
+    _plainTextCache.remove(id);
+    loadNotes();
+    _runImageGC();
+    _triggerBackgroundSync();
+  }
+
+  Future<void> emptyTrash() async {
+    final trash = List<Note>.from(trashNotes);
+    for (var note in trash) {
+      await _repository.deleteNote(note.id);
+      _plainTextCache.remove(note.id);
+    }
+    loadNotes();
+    _runImageGC();
+    _triggerBackgroundSync();
+  }
+
+  // --- 🟢 [新增核心逻辑] 自动清理 30 天前的垃圾 ---
+  Future<void> _cleanUpOldTrash() async {
+    final now = DateTime.now();
+    bool hasDeletedAny = false;
+
+    // 使用当前 trashNotes 的拷贝来遍历，避免遍历时修改列表导致报错
+    final currentTrash = List<Note>.from(trashNotes);
+
+    for (var note in currentTrash) {
+      // 因为在 deleteNote 时我们更新了 updatedAt，这里直接算差值就是呆在回收站的天数
+      final difference = now.difference(note.updatedAt).inDays;
+
+      // 超过 30 天，无情抹除
+      if (difference >= 30) {
+        await _repository.deleteNote(note.id);
+        _plainTextCache.remove(note.id);
+        hasDeletedAny = true;
+      }
+    }
+
+    // 如果真的删除了过期笔记，通知 UI 刷新并清理图片垃圾
+    if (hasDeletedAny) {
+      loadNotes();
+      _runImageGC();
+    }
+  }
+
+  Future<void> _runImageGC() async {
+    final allNotes = _repository.getAllNotes();
+    await _imageService.cleanUpUnusedImages(allNotes);
+  }
+
+  // --- 分类管理逻辑 ---
+
+  Future<void> renameCategory(String oldName, String newName) async {
+    if (oldName == newName) return;
+
+    final targetNotes = _notes.where((n) => n.category == oldName).toList();
+    for (var note in targetNotes) {
+      final updated = note.copyWith(
+        category: newName,
+        updatedAt: DateTime.now(),
+      );
+      await _repository.updateNote(updated);
+    }
+
+    if (_manualCategories.contains(oldName)) {
+      final index = _manualCategories.indexOf(oldName);
+      _manualCategories[index] = newName;
+      await _saveManualCategories();
+    } else {
+      if (!_manualCategories.contains(newName)) {
+        _manualCategories.add(newName);
+        await _saveManualCategories();
+      }
+    }
+
+    loadNotes();
+  }
+
+  Future<void> deleteCategory(String categoryName) async {
+    final targetNotes =
+        _notes.where((n) => n.category == categoryName).toList();
+    for (var note in targetNotes) {
+      final updated = note.copyWith(
+        clearCategory: true,
+        updatedAt: DateTime.now(),
+      );
+      await _repository.updateNote(updated);
+    }
+
+    if (_manualCategories.contains(categoryName)) {
+      _manualCategories.remove(categoryName);
+      await _saveManualCategories();
+    }
+
+    loadNotes();
+  }
+
+  Future<void> clearLocalData() async {
+    final allNotes = _repository.getAllNotes();
+    for (var note in allNotes) {
+      await _repository.deleteNote(note.id); // 遍历删除 Hive 中的数据
+    }
+    _notes.clear();
+    _filteredNotes.clear();
+    notifyListeners();
+  }
+}
