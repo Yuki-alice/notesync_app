@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:window_manager/window_manager.dart';
 import 'core/database/simple_database_service.dart';
+import 'core/providers/auth_provider.dart';
 import 'core/providers/theme_provider.dart';
 import 'core/providers/notes_provider.dart';
 import 'core/providers/todos_provider.dart';
@@ -16,6 +17,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
 import 'package:flutter/services.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -65,6 +67,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => NotesProvider(noteRepo)),
         ChangeNotifierProvider(create: (_) => TodosProvider(todoRepo)),
       ],

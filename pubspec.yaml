@@ -22,9 +22,9 @@ dependencies:
   # 富文本编辑器
   flutter_quill: ^11.5.0
   # 图片选择
-  image_picker: ^1.0.7
+  image_picker: ^1.2.1
   # 获取本地存储路径
-  path_provider: ^2.1.2
+  path_provider: ^2.1.5
   # 文件抽象 (image_picker 依赖)
   cross_file: ^0.3.3
 
@@ -35,6 +35,7 @@ dependencies:
   flutter_svg: ^2.0.9
   supabase_flutter: ^2.12.0
   flutter_image_compress: ^2.4.0
+  crop_image: ^1.0.17
 
 dev_dependencies:
   flutter_test:

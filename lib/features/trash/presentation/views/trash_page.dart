@@ -7,6 +7,7 @@ import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/providers/todos_provider.dart';
 import '../../../../models/note.dart';
 import '../../../../models/todo.dart';
+import '../../../../utils/toast_utils.dart';
 import '../../../../widgets/common/app_empty_state.dart';
 
 class TrashPage extends StatelessWidget {
@@ -95,15 +96,8 @@ class TrashPage extends StatelessWidget {
                         Provider.of<NotesProvider>(context, listen: false).emptyTrash();
                         Provider.of<TodosProvider>(context, listen: false).emptyTrash();
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: const Text('回收站已清空'),
-                                behavior: SnackBarBehavior.floating,
-                                width: 200,
-                                shape: const StadiumBorder(),
-                                backgroundColor: theme.colorScheme.inverseSurface
-                            )
-                        );
+                        ToastUtils.showError(context, '回收站已清空');
+
                       },
                       style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError, padding: const EdgeInsets.symmetric(vertical: 12), elevation: 0),
                       child: const Text('全部清空')
@@ -402,7 +396,7 @@ class _TrashItemCard extends StatelessWidget {
                         Navigator.pop(ctx);
                         HapticFeedback.mediumImpact();
                         onDeleteForever();
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('已永久删除'), behavior: SnackBarBehavior.floating, width: 200, shape: const StadiumBorder(), backgroundColor: theme.colorScheme.inverseSurface));
+                        ToastUtils.showError(context,'已永久删除');
                       },
                       style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError, padding: const EdgeInsets.symmetric(vertical: 12), elevation: 0),
                       child: const Text('删除')

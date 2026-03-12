@@ -80,9 +80,9 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       _setSyncState(SyncState.unauthenticated);
       return;
     }
-    if (_syncState == SyncState.syncing) return; // 防止重复点击重复同步
+    if (_syncState == SyncState.syncing) return;
 
-    _setSyncState(SyncState.syncing); // 触发：正在同步
+    _setSyncState(SyncState.syncing);
 
     try {
       await _syncService.syncNotes(
@@ -92,24 +92,23 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
         },
       );
 
+      // 🟢 修复：每次同步笔记后，强制同步一次分类
+      await _loadManualCategories();
+
       _plainTextCache.clear();
       loadNotes();
 
-      _setSyncState(SyncState.success); // 触发：同步成功
-
-      // 成功展示 2.5 秒后，自动恢复到空闲状态
+      _setSyncState(SyncState.success);
       Future.delayed(const Duration(milliseconds: 2500), () {
         if (_syncState == SyncState.success) _setSyncState(SyncState.idle);
       });
     } catch (e) {
-      _setSyncState(SyncState.error); // 触发：同步失败
-      // 失败展示 3 秒后恢复
+      _setSyncState(SyncState.error);
       Future.delayed(const Duration(seconds: 3), () {
         if (_syncState == SyncState.error) _setSyncState(SyncState.idle);
       });
     }
   }
-
   /// 🟢 后台防抖同步（静默触发，不阻塞 UI）
   void _triggerBackgroundSync() {
     _syncTimer?.cancel();
@@ -142,15 +141,51 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   // --- 手动分类持久化 ---
   Future<void> _loadManualCategories() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // 1. 先读取本地缓存（保证页面秒开）
     _manualCategories = prefs.getStringList('custom_categories') ?? [];
     notifyListeners();
+
+    // 2. 主动向云端请求最新数据进行合并（解决多设备不同步）
+    try {
+      final res = await Supabase.instance.client.auth.getUser(); // 强制网络请求
+      final user = res.user;
+      if (user != null && user.userMetadata != null) {
+        final cloudCategories = user.userMetadata!['custom_categories'];
+        if (cloudCategories != null && cloudCategories is List) {
+          final List<String> cloudList = List<String>.from(cloudCategories);
+
+          // 合并本地与云端分类并去重
+          final Set<String> merged = {..._manualCategories, ...cloudList};
+          _manualCategories = merged.toList();
+
+          // 重新存入本地
+          await prefs.setStringList('custom_categories', _manualCategories);
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('拉取云端分类失败: $e');
+    }
   }
 
   Future<void> _saveManualCategories() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('custom_categories', _manualCategories);
-  }
 
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      final currentData = Map<String, dynamic>.from(user.userMetadata ?? {});
+      currentData['custom_categories'] = _manualCategories;
+      try {
+        await Supabase.instance.client.auth.updateUser(
+          UserAttributes(data: currentData),
+        );
+      } catch (e) {
+        debugPrint('分类同步到云端失败: $e');
+      }
+    }
+  }
   Future<void> addCategory(String category) async {
     if (category.trim().isEmpty) return;
     final cleanName = category.trim();
@@ -401,10 +436,11 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   Future<void> clearLocalData() async {
     final allNotes = _repository.getAllNotes();
     for (var note in allNotes) {
-      await _repository.deleteNote(note.id); // 遍历删除 Hive 中的数据
+      await _repository.deleteNote(note.id);
     }
     _notes.clear();
     _filteredNotes.clear();
+    _manualCategories.clear();
     notifyListeners();
   }
 }

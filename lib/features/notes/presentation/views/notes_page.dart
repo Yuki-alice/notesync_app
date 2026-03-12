@@ -10,6 +10,7 @@ import 'package:animations/animations.dart';
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../utils/app_feedback.dart';
+import '../../../../utils/toast_utils.dart';
 import 'note_editor_page.dart';
 import '../widgets/note_card.dart';
 import '../widgets/dialogs/note_options_sheet.dart';
@@ -166,7 +167,8 @@ class _NotesPageState extends State<NotesPage> {
     final crossAxisCount = _calculateCrossAxisCount(screenWidth);
 
     final scrollView = CustomScrollView(
-      physics: const BouncingScrollPhysics(),
+      // 🟢 修复 3：强制开启始终可滚动，确保内容很少或为空时，也能触发下拉刷新
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       slivers: [
         if (!isDesktop)
           SliverToBoxAdapter(
@@ -191,7 +193,8 @@ class _NotesPageState extends State<NotesPage> {
               final categories = provider.categories;
               final selectedCategory = provider.selectedCategory;
 
-              if (categories.isEmpty) return const SizedBox.shrink();
+              // 🟢 修复 1：删除了这里的 if (categories.isEmpty) return const SizedBox.shrink();
+              // 确保无论有没有分类，“全部”和“+”按钮永远存在！
 
               return Container(
                 height: 50,
@@ -371,9 +374,7 @@ class _NotesPageState extends State<NotesPage> {
             onPressed: () async {
               await context.read<NotesProvider>().syncWithCloud();
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已与云端同步最新数据'), duration: Duration(seconds: 1)),
-                );
+                ToastUtils.showSuccess(context, '已与云端同步最新数据');
               }
             },
             icon: const Icon(Icons.sync_rounded),
