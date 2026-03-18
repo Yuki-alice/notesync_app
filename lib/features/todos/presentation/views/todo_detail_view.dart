@@ -1,4 +1,6 @@
+// 文件路径: lib/features/todos/presentation/views/todo_detail_view.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/providers/todos_provider.dart';
@@ -21,79 +23,87 @@ class TodoDetailView extends StatefulWidget {
 
 class _TodoDetailViewState extends State<TodoDetailView> {
   late TextEditingController _titleController;
-  late TextEditingController _descController;
-
-  // 避免频繁写入数据库，使用 Debounce 或在失去焦点/销毁时保存
-  // 这里为了简单直观，采用失去焦点时保存
+  late TextEditingController _newSubTaskController;
   final FocusNode _titleFocus = FocusNode();
-  final FocusNode _descFocus = FocusNode();
+  final FocusNode _newSubTaskFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController();
-    _descController = TextEditingController();
-
-    _titleFocus.addListener(_onFocusChange);
-    _descFocus.addListener(_onFocusChange);
+    _newSubTaskController = TextEditingController();
+    _titleFocus.addListener(_onTitleFocusChange);
   }
 
-  void _onFocusChange() {
-    if (!_titleFocus.hasFocus && !_descFocus.hasFocus) {
-      _saveChanges();
+  void _onTitleFocusChange() {
+    if (!_titleFocus.hasFocus) {
+      _saveTitle();
     }
   }
 
   @override
   void dispose() {
-    _titleFocus.removeListener(_onFocusChange);
-    _descFocus.removeListener(_onFocusChange);
+    _titleFocus.removeListener(_onTitleFocusChange);
     _titleController.dispose();
-    _descController.dispose();
+    _newSubTaskController.dispose();
     _titleFocus.dispose();
-    _descFocus.dispose();
+    _newSubTaskFocus.dispose();
     super.dispose();
   }
 
-  // 获取当前 Todo 数据
-  Todo? _getTodo(BuildContext context) {
-    final provider = Provider.of<TodosProvider>(context, listen: false);
+  Todo? _getTodo() {
     try {
-      return provider.todos.firstWhere((t) => t.id == widget.todoId);
+      return context.read<TodosProvider>().todos.firstWhere((t) => t.id == widget.todoId);
     } catch (e) {
       return null;
     }
   }
 
-  // 初始化数据填充 (当 todoId 变化时)
-  @override
-  void didUpdateWidget(covariant TodoDetailView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.todoId != widget.todoId) {
-      // 切换了待办，重新加载数据
-      final todo = _getTodo(context);
-      if (todo != null) {
-        _titleController.text = todo.title;
-        _descController.text = todo.description;
-      }
-    }
-  }
-
-  void _saveChanges() {
-    final todo = _getTodo(context);
+  void _saveTitle() {
+    final todo = _getTodo();
     if (todo == null) return;
 
     final newTitle = _titleController.text.trim();
-    final newDesc = _descController.text.trim();
-
-    if (newTitle != todo.title || newDesc != todo.description) {
-      final updated = todo.copyWith(
-        title: newTitle.isEmpty ? '无标题待办' : newTitle,
-        description: newDesc,
+    if (newTitle != todo.title && newTitle.isNotEmpty) {
+      context.read<TodosProvider>().updateTodo(todo.copyWith(
+        title: newTitle,
         updatedAt: DateTime.now(),
-      );
-      context.read<TodosProvider>().updateTodo(updated);
+      ));
     }
+  }
+
+  void _addSubTask() {
+    final title = _newSubTaskController.text.trim();
+    if (title.isEmpty) return;
+
+    final todo = _getTodo();
+    if (todo == null) return;
+
+    final newTask = SubTask(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: title,
+    );
+
+    final updatedSubTasks = List<SubTask>.from(todo.subTasks)..add(newTask);
+
+    context.read<TodosProvider>().updateTodo(todo.copyWith(
+      subTasks: updatedSubTasks,
+      updatedAt: DateTime.now(),
+    ));
+
+    _newSubTaskController.clear();
+    _newSubTaskFocus.requestFocus();
+  }
+
+  void _removeSubTask(SubTask subTask) {
+    final todo = _getTodo();
+    if (todo == null) return;
+
+    final updatedSubTasks = todo.subTasks.where((t) => t.id != subTask.id).toList();
+    context.read<TodosProvider>().updateTodo(todo.copyWith(
+      subTasks: updatedSubTasks,
+      updatedAt: DateTime.now(),
+    ));
   }
 
   Future<void> _pickDate(Todo todo) async {
@@ -105,24 +115,22 @@ class _TodoDetailViewState extends State<TodoDetailView> {
       lastDate: now.add(const Duration(days: 365 * 5)),
     );
     if (picked != null && mounted) {
-      // 保留原有时间，或者默认设为 9:00 / 0:00，这里简化处理保留原有时间或设为 00:00
-      final newDate = DateTime(picked.year, picked.month, picked.day,
-          todo.dueDate?.hour ?? 9, todo.dueDate?.minute ?? 0);
-
-      context.read<TodosProvider>().updateTodo(todo.copyWith(dueDate: newDate));
-      AppFeedback.light();
+      final time = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 9, minute: 0));
+      if (time != null && mounted) {
+        final newDate = DateTime(picked.year, picked.month, picked.day, time.hour, time.minute);
+        context.read<TodosProvider>().updateTodo(todo.copyWith(dueDate: newDate, updatedAt: DateTime.now()));
+        AppFeedback.light();
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // 监听数据变化以更新 UI
     final provider = context.watch<TodosProvider>();
     Todo? todo;
     try {
       todo = provider.todos.firstWhere((t) => t.id == widget.todoId);
     } catch (e) {
-      // 找不到 ID (可能被删除了)，显示空状态
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -137,17 +145,13 @@ class _TodoDetailViewState extends State<TodoDetailView> {
       );
     }
 
-    // 只有在获得焦点时才不覆盖输入框内容，否则保持和 Model 同步
-    // 这里做一个简单的处理：如果未获得焦点，则强制同步一次，确保切换任务时内容正确
     if (!_titleFocus.hasFocus) _titleController.text = todo.title;
-    if (!_descFocus.hasFocus) _descController.text = todo.description;
 
     final theme = Theme.of(context);
     final isDone = todo.isCompleted;
 
     return Column(
       children: [
-        // 1. 顶部工具栏
         Container(
           height: 64,
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -160,7 +164,12 @@ class _TodoDetailViewState extends State<TodoDetailView> {
               IconButton(
                 onPressed: () {
                   AppFeedback.medium();
-                  context.read<TodosProvider>().toggleTodoStatus(todo!.id);
+                  final updatedSubTasks = todo!.subTasks.map((t) => t.copyWith(isCompleted: !isDone)).toList();
+                  context.read<TodosProvider>().updateTodo(todo.copyWith(
+                    isCompleted: !isDone,
+                    subTasks: updatedSubTasks,
+                    updatedAt: DateTime.now(),
+                  ));
                 },
                 tooltip: isDone ? "标记为未完成" : "完成任务",
                 icon: Icon(
@@ -169,18 +178,12 @@ class _TodoDetailViewState extends State<TodoDetailView> {
                 ),
               ),
               const Spacer(),
-              // 日期显示与选择
               TextButton.icon(
                 onPressed: () => _pickDate(todo!),
-                icon: Icon(Icons.calendar_today_rounded, size: 16,
-                    color: todo.dueDate == null ? theme.colorScheme.outline : theme.colorScheme.primary),
+                icon: Icon(Icons.calendar_today_rounded, size: 16, color: todo.dueDate == null ? theme.colorScheme.outline : theme.colorScheme.primary),
                 label: Text(
-                  todo.dueDate == null
-                      ? "设置日期"
-                      : DateFormat('MM-dd HH:mm').format(todo.dueDate!),
-                  style: TextStyle(
-                      color: todo.dueDate == null ? theme.colorScheme.outline : theme.colorScheme.primary
-                  ),
+                  todo.dueDate == null ? "设置提醒" : DateFormat('MM-dd HH:mm').format(todo.dueDate!),
+                  style: TextStyle(color: todo.dueDate == null ? theme.colorScheme.outline : theme.colorScheme.primary),
                 ),
               ),
               const SizedBox(width: 8),
@@ -188,7 +191,7 @@ class _TodoDetailViewState extends State<TodoDetailView> {
                 onPressed: () {
                   AppFeedback.heavy();
                   context.read<TodosProvider>().deleteTodo(todo!.id);
-                  widget.onClose(); // 删除后关闭详情
+                  widget.onClose();
                 },
                 icon: Icon(Icons.delete_outline_rounded, color: theme.colorScheme.error),
                 tooltip: "删除",
@@ -203,14 +206,12 @@ class _TodoDetailViewState extends State<TodoDetailView> {
           ),
         ),
 
-        // 2. 编辑区域
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 标题编辑
                 TextField(
                   controller: _titleController,
                   focusNode: _titleFocus,
@@ -220,45 +221,72 @@ class _TodoDetailViewState extends State<TodoDetailView> {
                     color: isDone ? theme.colorScheme.outline : theme.colorScheme.onSurface,
                   ),
                   decoration: const InputDecoration(
-                    hintText: "准备做什么？",
+                    hintText: "待办清单",
                     border: InputBorder.none,
+                    filled: false,
+                    contentPadding: EdgeInsets.zero,
                   ),
                   maxLines: null,
-                  onSubmitted: (_) => _saveChanges(), // 回车保存
-                ),
-
-                const SizedBox(height: 16),
-
-                // 描述编辑
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: TextField(
-                    controller: _descController,
-                    focusNode: _descFocus,
-                    style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
-                    decoration: InputDecoration(
-                      hintText: "添加详细描述、备注...",
-                      hintStyle: TextStyle(color: theme.colorScheme.outline.withOpacity(0.7)),
-                      border: InputBorder.none,
-                      icon: Icon(Icons.notes_rounded, color: theme.colorScheme.outline),
-                    ),
-                    maxLines: null,
-                    minLines: 5,
-                  ),
+                  onSubmitted: (_) => _saveTitle(),
                 ),
 
                 const SizedBox(height: 24),
 
-                // 底部元数据
+                if (todo.subTasks.isNotEmpty) ...[
+                  ...todo.subTasks.map((subTask) {
+                    // 🟢 核心修改：使用封装好的专属编辑组件，彻底解决键盘焦点丢失的问题
+                    return _EditableSubTaskRow(
+                      key: ValueKey(subTask.id),
+                      subTask: subTask,
+                      theme: theme,
+                      onToggle: () {
+                        HapticFeedback.lightImpact();
+                        final updatedSubTasks = todo!.subTasks.map((t) =>
+                        t.id == subTask.id ? t.copyWith(isCompleted: !t.isCompleted) : t
+                        ).toList();
+                        context.read<TodosProvider>().updateTodo(todo.copyWith(
+                            subTasks: updatedSubTasks, updatedAt: DateTime.now()
+                        ));
+                      },
+                      onDelete: () => _removeSubTask(subTask),
+                      onTitleChanged: (newTitle) {
+                        if (newTitle.isEmpty) {
+                          _removeSubTask(subTask); // 文本被清空时直接自动删除
+                        } else {
+                          final updatedSubTasks = todo!.subTasks.map((t) =>
+                          t.id == subTask.id ? t.copyWith(title: newTitle) : t
+                          ).toList();
+                          context.read<TodosProvider>().updateTodo(todo.copyWith(
+                              subTasks: updatedSubTasks, updatedAt: DateTime.now()
+                          ));
+                        }
+                      },
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                ],
+
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      "创建于 ${DateFormat('yyyy-MM-dd HH:mm').format(todo.createdAt)}",
-                      style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+                    Icon(Icons.crop_square_rounded, size: 22, color: theme.colorScheme.primary.withOpacity(0.4)),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextField(
+                        controller: _newSubTaskController,
+                        focusNode: _newSubTaskFocus,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _addSubTask(),
+                        style: const TextStyle(fontSize: 16),
+                        decoration: InputDecoration(
+                          hintText: "准备做什么 (回车连续添加)...",
+                          hintStyle: TextStyle(color: theme.colorScheme.outline.withOpacity(0.6), fontSize: 16),
+                          border: InputBorder.none,
+                          filled: false,
+                          contentPadding: EdgeInsets.zero,
+                          isDense: true,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -267,6 +295,133 @@ class _TodoDetailViewState extends State<TodoDetailView> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// 🟢 专属封装：防焦点丢失的智能子待办编辑行
+class _EditableSubTaskRow extends StatefulWidget {
+  final SubTask subTask;
+  final ThemeData theme;
+  final VoidCallback onToggle;
+  final VoidCallback onDelete;
+  final ValueChanged<String> onTitleChanged;
+
+  const _EditableSubTaskRow({
+    super.key,
+    required this.subTask,
+    required this.theme,
+    required this.onToggle,
+    required this.onDelete,
+    required this.onTitleChanged,
+  });
+
+  @override
+  State<_EditableSubTaskRow> createState() => _EditableSubTaskRowState();
+}
+
+class _EditableSubTaskRowState extends State<_EditableSubTaskRow> {
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.subTask.title);
+    _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus) {
+      final newTitle = _controller.text.trim();
+      if (newTitle != widget.subTask.title) {
+        widget.onTitleChanged(newTitle);
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _EditableSubTaskRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 监听云端同步过来的标题变化（当不在输入状态时更新）
+    if (widget.subTask.title != oldWidget.subTask.title && !_focusNode.hasFocus) {
+      _controller.text = widget.subTask.title;
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = widget.subTask.isCompleted;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 复选框
+          InkWell(
+            onTap: widget.onToggle,
+            borderRadius: BorderRadius.circular(6),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 22, height: 22,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                color: isDone ? widget.theme.colorScheme.primary : Colors.transparent,
+                border: Border.all(
+                  color: isDone ? widget.theme.colorScheme.primary : widget.theme.colorScheme.outline.withOpacity(0.6),
+                  width: isDone ? 0 : 2,
+                ),
+              ),
+              child: AnimatedScale(
+                scale: isDone ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.elasticOut,
+                child: Icon(Icons.check, size: 16, color: widget.theme.colorScheme.onPrimary),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // 文本输入区
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              style: widget.theme.textTheme.titleMedium?.copyWith(
+                color: isDone ? widget.theme.colorScheme.outline : widget.theme.colorScheme.onSurface,
+                decoration: isDone ? TextDecoration.lineThrough : null,
+              ),
+              decoration: InputDecoration(
+                hintText: "子待办内容...",
+                hintStyle: TextStyle(color: widget.theme.colorScheme.outlineVariant),
+                border: InputBorder.none,
+                filled: false,
+                contentPadding: EdgeInsets.zero,
+                isDense: true,
+              ),
+              onSubmitted: (val) {
+                final newTitle = val.trim();
+                if (newTitle != widget.subTask.title) {
+                  widget.onTitleChanged(newTitle);
+                }
+              },
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, size: 18),
+            color: widget.theme.colorScheme.outlineVariant,
+            onPressed: widget.onDelete,
+          ),
+        ],
+      ),
     );
   }
 }

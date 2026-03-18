@@ -16,7 +16,8 @@ class SimpleDatabaseService {
   /// 包含 Hive 初始化、Adapter 注册和 Box 打开
   Future<void> init() async {
     await Hive.initFlutter();
-
+    Hive.registerAdapter(TodoAdapter());
+    Hive.registerAdapter(SubTaskAdapter());
     // 注册 Adapters (防止重复注册)
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(NoteAdapter());

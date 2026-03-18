@@ -1,4 +1,4 @@
-
+// 文件路径: lib/core/services/supabase_sync_service.dart
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -18,6 +18,33 @@ class SupabaseSyncService {
 
   SupabaseSyncService([this._noteRepo, this._todoRepo]);
 
+  // =================================================================
+  // 🪦 墓碑机制：记录被彻底删除的 ID
+  // =================================================================
+  static const String _deletedTodosKey = 'deleted_todo_ids';
+  static const String _deletedNotesKey = 'deleted_note_ids';
+
+  Future<void> recordDeletedTodoId(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final deletedIds = prefs.getStringList(_deletedTodosKey) ?? [];
+    if (!deletedIds.contains(id)) {
+      deletedIds.add(id);
+      await prefs.setStringList(_deletedTodosKey, deletedIds);
+    }
+  }
+
+  Future<void> recordDeletedNoteId(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final deletedIds = prefs.getStringList(_deletedNotesKey) ?? [];
+    if (!deletedIds.contains(id)) {
+      deletedIds.add(id);
+      await prefs.setStringList(_deletedNotesKey, deletedIds);
+    }
+  }
+
+  // =================================================================
+  // ✅ 笔记 (Notes) 同步模块
+  // =================================================================
   static const String _lastNoteSyncKey = 'last_sync_time';
   static const String _imageBucket = 'note_images';
 
@@ -58,6 +85,19 @@ class SupabaseSyncService {
     }
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // 1. 处理墓碑：优先清理云端
+      final deletedIds = prefs.getStringList(_deletedNotesKey) ?? [];
+      if (deletedIds.isNotEmpty) {
+        try {
+          await _supabase.from('notes').delete().inFilter('id', deletedIds);
+          await prefs.setStringList(_deletedNotesKey, []);
+          print('🗑️ 成功清空云端笔记回收站数据: ${deletedIds.length} 条');
+        } catch (e) {
+          print('🗑️ ❌ 云端笔记回收站清理失败: $e');
+        }
+      }
+
       final lastSyncStr = prefs.getString(_lastNoteSyncKey);
       DateTime? lastSyncTime;
       if (lastSyncStr != null) {
@@ -67,22 +107,22 @@ class SupabaseSyncService {
       List<Note> pulledNotes = [];
       List<Note> pushedNotes = [];
 
-      final currentUserId=_supabase.auth.currentUser!.id;
+      final currentUserId = _supabase.auth.currentUser!.id;
       final List<dynamic> cloudMetadata = await _supabase.from('notes').select('id, updated_at').eq('user_id', currentUserId);
       final localNotes = _noteRepo!.getAllNotes();
       final localNotesMap = {for (var note in localNotes) note.id: note};
 
       final List<String> idsToFetch = [];
       final Set<String> pulledIds = {};
-
-      // 🟢 核心修复 1：记录云端目前拥有的所有 ID
       final Set<String> cloudIds = {};
 
+      // PULL 阶段
       for (var meta in cloudMetadata) {
         final cloudId = meta['id'] as String;
-        final cloudUpdatedAt = DateTime.parse(meta['updated_at']).toLocal();
+        if (deletedIds.contains(cloudId)) continue;
 
-        cloudIds.add(cloudId); // 记录云端存在的 ID
+        final cloudUpdatedAt = DateTime.parse(meta['updated_at']).toLocal();
+        cloudIds.add(cloudId);
 
         final localNote = localNotesMap[cloudId];
 
@@ -90,15 +130,12 @@ class SupabaseSyncService {
           idsToFetch.add(cloudId);
           pulledIds.add(cloudId);
         } else {
-          if (cloudUpdatedAt.difference(localNote.updatedAt).inSeconds.abs() < 2) {
-            continue;
-          }
+          if (cloudUpdatedAt.difference(localNote.updatedAt).inSeconds.abs() < 2) continue;
 
           bool cloudChanged = lastSyncTime != null && cloudUpdatedAt.isAfter(lastSyncTime);
           bool localChanged = lastSyncTime != null && localNote.updatedAt.isAfter(lastSyncTime);
 
           if (cloudChanged && localChanged) {
-            print('⚠️ 侦测到数据冲突！正在生成冲突副本: ${localNote.title}');
             final conflictedNote = localNote.copyWith(
               id: const Uuid().v4(),
               title: '${localNote.title} (冲突副本)',
@@ -135,16 +172,21 @@ class SupabaseSyncService {
         }
       }
 
-      // =================================================================
-      // PHASE 2: PUSH 本地新数据
-      // =================================================================
+      // 🟢 PUSH 阶段 & 幽灵数据抹除
       List<Map<String, dynamic>> notesToPush = [];
+      List<String> notesToDeleteLocally = [];
 
       for (var note in _noteRepo!.getAllNotes()) {
         if (pulledIds.contains(note.id)) continue;
 
-        // 🟢 核心修复 2：如果云端根本没有这个 ID，无视时间戳，直接强制 Push！
         bool isMissingInCloud = !cloudIds.contains(note.id);
+
+        // 👻 终极幽灵防御机制
+        if (isMissingInCloud && lastSyncTime != null && !note.updatedAt.isAfter(lastSyncTime)) {
+          // 这个数据以前同步过，但现在云端没了，且本地没修改过 -> 另一台设备把它彻底删除了！本地也必须抹除。
+          notesToDeleteLocally.add(note.id);
+          continue;
+        }
 
         if (isMissingInCloud || lastSyncTime == null || note.updatedAt.isAfter(lastSyncTime)) {
           notesToPush.add(_noteToMap(note));
@@ -152,23 +194,29 @@ class SupabaseSyncService {
         }
       }
 
+      // 执行本地物理删除
+      for (var id in notesToDeleteLocally) {
+        await _noteRepo!.deleteNote(id);
+      }
+
       await _uploadImages(pushedNotes);
       if (notesToPush.isNotEmpty) {
         await _supabase.from('notes').upsert(notesToPush);
       }
       if (onTextSyncComplete != null) {
-        onTextSyncComplete();
+        onTextSyncComplete(); // 这里会刷新 UI，刚才被抹除的幽灵数据会从列表中消失
       }
       await _downloadImages(pulledNotes);
 
       await prefs.setString(_lastNoteSyncKey, DateTime.now().toUtc().toIso8601String());
-      print('✅ 笔记同步完成！拉取: $pullCount 条，推送: ${notesToPush.length} 条');
+      print('✅ 笔记同步完成！拉取: $pullCount 条，推送: ${notesToPush.length} 条，抹除本地幽灵: ${notesToDeleteLocally.length} 条');
 
     } catch (e) {
       print('❌ 笔记同步失败: $e');
     }
   }
 
+  // ------------------------- 图片处理逻辑不变 -------------------------
   Future<void> _uploadImages(List<Note> pushedNotes) async {
     if (pushedNotes.isEmpty) return;
     final storage = _supabase.storage.from(_imageBucket);
@@ -179,9 +227,7 @@ class SupabaseSyncService {
       imagesToUpload.addAll(Note.extractAllImagePaths(note.content));
     }
 
-    List<Future<void>> uploadTasks = imagesToUpload
-        .where((path) => !p.isAbsolute(path))
-        .map((rawPath) async {
+    List<Future<void>> uploadTasks = imagesToUpload.where((path) => !p.isAbsolute(path)).map((rawPath) async {
       try {
         final normalizedPath = rawPath.replaceAll('\\', '/');
         final fileName = normalizedPath.split('/').last;
@@ -208,9 +254,7 @@ class SupabaseSyncService {
       imagesToDownload.addAll(Note.extractAllImagePaths(note.content));
     }
 
-    List<Future<void>> downloadTasks = imagesToDownload
-        .where((path) => !p.isAbsolute(path))
-        .map((rawPath) async {
+    List<Future<void>> downloadTasks = imagesToDownload.where((path) => !p.isAbsolute(path)).map((rawPath) async {
       try {
         final normalizedPath = rawPath.replaceAll('\\', '/');
         final fileName = normalizedPath.split('/').last;
@@ -230,42 +274,52 @@ class SupabaseSyncService {
   }
 
   // =================================================================
-  // ✅ 待办 (Todos) 同步模块
+  // ✅ 待办 (Todos) 同步模块 (同款幽灵防御升级)
   // =================================================================
   static const String _lastTodoSyncKey = 'last_todo_sync_time';
 
   Future<void> syncTodos({Function()? onSyncComplete}) async {
     if (_todoRepo == null) return;
-    if (_supabase.auth.currentUser == null) {
-      print('⚠️ 未登录，暂停待办同步');
-      return;
-    }
+    if (_supabase.auth.currentUser == null) return;
 
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // 1. 处理墓碑
+      final deletedIds = prefs.getStringList(_deletedTodosKey) ?? [];
+      if (deletedIds.isNotEmpty) {
+        try {
+          await _supabase.from('todos').delete().inFilter('id', deletedIds);
+          await prefs.setStringList(_deletedTodosKey, []);
+          print('🗑️ 成功清空云端回收站待办: ${deletedIds.length} 条');
+        } catch (e) {
+          print('🗑️ ❌ 云端回收站待办清理失败: $e');
+        }
+      }
+
       final lastSyncStr = prefs.getString(_lastTodoSyncKey);
       DateTime? lastSyncTime;
-      if (lastSyncStr != null) {
-        lastSyncTime = DateTime.parse(lastSyncStr);
-      }
+      if (lastSyncStr != null) lastSyncTime = DateTime.parse(lastSyncStr);
+
       final currentUserId = _supabase.auth.currentUser!.id;
       final List<dynamic> cloudMetadata = await _supabase.from('todos').select('id, updated_at').eq('user_id', currentUserId);
       final localTodos = _todoRepo!.getAllTodos();
       final localTodosMap = {for (var todo in localTodos) todo.id: todo};
       final List<String> idsToFetch = [];
-
-      // 🟢 核心修复 3：记录云端待办 ID
+      final Set<String> pulledIds = {}; // 🟢 记录被拉取的 ID
       final Set<String> cloudIds = {};
 
       for (var meta in cloudMetadata) {
         final cloudId = meta['id'] as String;
-        final cloudUpdatedAt = DateTime.parse(meta['updated_at']).toLocal();
+        if (deletedIds.contains(cloudId)) continue;
 
-        cloudIds.add(cloudId); // 记录
+        final cloudUpdatedAt = DateTime.parse(meta['updated_at']).toLocal();
+        cloudIds.add(cloudId);
 
         final localTodo = localTodosMap[cloudId];
         if (localTodo == null || cloudUpdatedAt.isAfter(localTodo.updatedAt)) {
           idsToFetch.add(cloudId);
+          pulledIds.add(cloudId); // 加入拉取名单，防止等下直接又给推回去了
         }
       }
 
@@ -277,6 +331,13 @@ class SupabaseSyncService {
 
           for (var data in cloudUpdates) {
             final cloudTodoId = data['id'];
+
+            List<SubTask> parsedSubTasks = [];
+            if (data['sub_tasks'] != null) {
+              final List<dynamic> stList = data['sub_tasks'] as List<dynamic>;
+              parsedSubTasks = stList.map((e) => SubTask.fromMap(e as Map<String, dynamic>)).toList();
+            }
+
             final updatedTodo = Todo(
               id: data['id'],
               title: data['title'] ?? '',
@@ -287,6 +348,7 @@ class SupabaseSyncService {
               isCompleted: data['is_completed'] ?? false,
               isDeleted: data['is_deleted'] ?? false,
               sortOrder: (data['sort_order'] as num?)?.toDouble() ?? 0.0,
+              subTasks: parsedSubTasks,
             );
 
             if (localTodosMap.containsKey(cloudTodoId)) {
@@ -299,11 +361,20 @@ class SupabaseSyncService {
         }
       }
 
+      // 🟢 PUSH 阶段 & 幽灵待办抹除
       List<Map<String, dynamic>> todosToPush = [];
-      for (var todo in _todoRepo!.getAllTodos()) {
+      List<String> todosToDeleteLocally = [];
 
-        // 🟢 核心修复 4：云端缺失直接强制上传
+      for (var todo in _todoRepo!.getAllTodos()) {
+        if (pulledIds.contains(todo.id)) continue;
+
         bool isMissingInCloud = !cloudIds.contains(todo.id);
+
+        // 👻 防御幽灵数据
+        if (isMissingInCloud && lastSyncTime != null && !todo.updatedAt.isAfter(lastSyncTime)) {
+          todosToDeleteLocally.add(todo.id);
+          continue;
+        }
 
         if (isMissingInCloud || lastSyncTime == null || todo.updatedAt.isAfter(lastSyncTime)) {
           todosToPush.add({
@@ -317,8 +388,14 @@ class SupabaseSyncService {
             'is_deleted': todo.isDeleted,
             'sort_order': todo.sortOrder,
             'user_id': _supabase.auth.currentUser!.id,
+            'sub_tasks': todo.subTasks.map((st) => st.toMap()).toList(),
           });
         }
+      }
+
+      // 物理删除本地幽灵
+      for (var id in todosToDeleteLocally) {
+        await _todoRepo!.deleteTodo(id);
       }
 
       if (todosToPush.isNotEmpty) {
@@ -328,7 +405,7 @@ class SupabaseSyncService {
       await prefs.setString(_lastTodoSyncKey, DateTime.now().toUtc().toIso8601String());
       if (onSyncComplete != null) onSyncComplete();
 
-      print('✅ 待办同步完成！拉取: $pullCount 条，推送: ${todosToPush.length} 条');
+      print('✅ 待办同步完成！拉取: $pullCount 条，推送: ${todosToPush.length} 条，抹除本地幽灵: ${todosToDeleteLocally.length} 条');
 
     } catch (e) {
       print('❌ 待办同步失败: $e');

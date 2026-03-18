@@ -339,6 +339,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     await _repository.deleteNote(id);
     _plainTextCache.remove(id);
     loadNotes();
+    await _syncService.recordDeletedNoteId(id);
     _runImageGC();
     _triggerBackgroundSync();
   }
@@ -348,6 +349,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     for (var note in trash) {
       await _repository.deleteNote(note.id);
       _plainTextCache.remove(note.id);
+      await _syncService.recordDeletedNoteId(note.id);
     }
     loadNotes();
     _runImageGC();

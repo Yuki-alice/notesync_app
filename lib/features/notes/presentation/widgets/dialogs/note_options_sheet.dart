@@ -3,63 +3,69 @@ import 'package:provider/provider.dart';
 
 import '../../../../../core/providers/notes_provider.dart';
 import '../../../../../models/note.dart';
+import '../../../../../utils/toast_utils.dart';
+import '../../../../../widgets/common/dialogs/app_dialog.dart';
 
-
-// 🟢 入口方法：根据屏幕宽度自动选择展示方式
-void showNoteOptionsSheet(BuildContext context, Note note) {
-  final screenWidth = MediaQuery.of(context).size.width;
+// 🟢 1. 将参数命名为 parentContext，代表这是“底层页面”的上下文
+void showNoteOptionsSheet(BuildContext parentContext, Note note) {
+  final screenWidth = MediaQuery.of(parentContext).size.width;
   final isDesktop = screenWidth >= 600;
 
   if (isDesktop) {
-    // 💻 电脑端：显示为居中弹窗 (Dialog)
     showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+      context: parentContext,
+      builder: (dialogContext) => AlertDialog( // dialogContext 是弹窗自己的上下文
+        backgroundColor: Theme.of(dialogContext).colorScheme.surfaceContainer,
         surfaceTintColor: Colors.transparent,
-        // 限制弹窗宽度，使其精致紧凑
         scrollable: true,
         contentPadding: const EdgeInsets.symmetric(vertical: 24, horizontal: 24),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        // 直接复用内容组件，但限制宽度
         content: SizedBox(
           width: 320,
-          child: _NoteOptionsContent(note: note, isDesktop: true),
+          child: _NoteOptionsContent(
+            note: note,
+            isDesktop: true,
+            parentContext: parentContext, // 🟢 2. 将存活的 parentContext 传进去
+          ),
         ),
       ),
     );
   } else {
-    // 📱 手机端：显示为底部抽屉 (BottomSheet)
     showModalBottomSheet(
-      context: context,
+      context: parentContext,
       showDragHandle: true,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Theme.of(parentContext).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          child: _NoteOptionsContent(note: note, isDesktop: false),
+          child: _NoteOptionsContent(
+            note: note,
+            isDesktop: false,
+            parentContext: parentContext, // 🟢 2. 将存活的 parentContext 传进去
+          ),
         ),
       ),
     );
   }
 }
 
-// 🟢 核心内容组件 (抽离出来，供双端复用)
 class _NoteOptionsContent extends StatelessWidget {
   final Note note;
   final bool isDesktop;
+  final BuildContext parentContext; // 🟢 3. 接收底层页面的 Context
 
   const _NoteOptionsContent({
     required this.note,
     this.isDesktop = false,
+    required this.parentContext,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) { // 这个 context 属于当前的弹窗
     final theme = Theme.of(context);
     final provider = Provider.of<NotesProvider>(context, listen: false);
 
@@ -123,12 +129,15 @@ class _NoteOptionsContent extends StatelessWidget {
         _OptionTile(
           icon: note.isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
           title: note.isPinned ? '取消置顶' : '置顶笔记',
-          // 使用 Tonal 颜色风格
           color: theme.colorScheme.secondaryContainer,
           onColor: theme.colorScheme.onSecondaryContainer,
           onTap: () {
-            Navigator.pop(context);
+            Navigator.pop(context); // 关闭弹窗
             provider.togglePin(note.id);
+            // 🟢 4. 使用始终存活的 parentContext 弹出 Toast
+            if (parentContext.mounted) {
+              ToastUtils.showInfo(parentContext, note.isPinned ? '已取消置顶' : '已置顶 ');
+            }
           },
         ),
 
@@ -145,10 +154,10 @@ class _NoteOptionsContent extends StatelessWidget {
               color: theme.colorScheme.onSurface.withOpacity(0.5)
           ),
           onTap: () {
-            Navigator.pop(context); // 先关闭当前弹窗
-            // 延迟一点显示下一个弹窗，体验更流畅
+            Navigator.pop(context);
             Future.delayed(const Duration(milliseconds: 150), () {
-              _showMoveCategoryDialog(context, note, provider);
+              // 🟢 5. 把 parentContext 传给二级弹窗
+              _showMoveCategoryDialog(parentContext, note, provider);
             });
           },
         ),
@@ -161,12 +170,14 @@ class _NoteOptionsContent extends StatelessWidget {
           color: theme.colorScheme.errorContainer.withOpacity(0.5),
           onColor: theme.colorScheme.error,
           onTap: () async {
-            // 电脑端直接显示确认框在当前层级之上可能体验更好，但为了逻辑简单，先关闭当前层
             Navigator.pop(context);
-            final confirm = await _confirmDelete(context, note);
+            // 🟢 6. 使用 parentContext 开启确认弹窗
+            final confirm = await _confirmDelete(parentContext, note);
             if (confirm == true) {
               await provider.deleteNote(note.id);
-              if (context.mounted) _showSnackBar(context, '已移至回收站');
+              if (parentContext.mounted) {
+                ToastUtils.showError(parentContext, '已移至回收站 🗑️');
+              }
             }
           },
         ),
@@ -174,103 +185,68 @@ class _NoteOptionsContent extends StatelessWidget {
     );
   }
 
-  // 内部辅助方法：移动分类弹窗
-  void _showMoveCategoryDialog(BuildContext context, Note note, NotesProvider provider) {
-    final theme = Theme.of(context);
+  void _showMoveCategoryDialog(BuildContext parentContext, Note note, NotesProvider provider) {
+    final theme = Theme.of(parentContext);
     final categories = provider.categories;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: theme.colorScheme.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        title: const Text('移动到...'),
-        content: SizedBox(
-          width: 300, // 限制宽度
-          child: SingleChildScrollView(
-            child: Wrap(
-              spacing: 8, runSpacing: 8,
-              children: [
-                ActionChip(
-                  avatar: const Icon(Icons.folder_off_outlined, size: 18),
-                  label: const Text('未分类'),
-                  onPressed: () async {
-                    await provider.updateNote(note.copyWith(clearCategory: true));
-                    if (ctx.mounted) { Navigator.pop(ctx); _showSnackBar(context, '已移出分类'); }
-                  },
-                  backgroundColor: theme.colorScheme.surface,
-                  side: BorderSide.none,
-                  shape: const StadiumBorder(),
-                ),
-                ...categories.map((category) {
-                  final isCurrent = note.category == category;
-                  return FilterChip(
-                    label: Text(category),
-                    selected: isCurrent,
-                    onSelected: (_) async {
-                      await provider.updateNote(note.copyWith(category: category));
-                      if (ctx.mounted) { Navigator.pop(ctx); _showSnackBar(context, '已移动到 "$category"'); }
-                    },
-                    checkmarkColor: theme.colorScheme.onPrimaryContainer,
-                    selectedColor: theme.colorScheme.primaryContainer,
-                    backgroundColor: theme.colorScheme.surface,
-                    side: BorderSide.none,
-                    shape: const StadiumBorder(),
-                  );
-                }),
-              ],
+    AppDialog.showCustom(
+      context: parentContext,
+      title: '移动分类',
+      icon: Icons.drive_file_move_rounded,
+      contentWidget: SizedBox(
+        width: 360, // 🟢 核心修复：将 double.maxFinite 改为具体的宽度（比如 360 或 400）
+        child: Wrap(
+          spacing: 8, runSpacing: 8,
+          alignment: WrapAlignment.center, // 居中排列
+          children: [
+            ActionChip(
+              avatar: const Icon(Icons.folder_off_outlined, size: 18),
+              label: const Text('未分类'),
+              onPressed: () async {
+                Navigator.pop(parentContext);
+                await provider.updateNote(note.copyWith(clearCategory: true));
+                if (parentContext.mounted) ToastUtils.showSuccess(parentContext, '已移出分类 ✨');
+              },
+              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              side: BorderSide.none,
+              shape: const StadiumBorder(),
             ),
-          ),
+            ...categories.map((category) {
+              final isCurrent = note.category == category;
+              return FilterChip(
+                label: Text(category),
+                selected: isCurrent,
+                onSelected: (_) async {
+                  Navigator.pop(parentContext);
+                  await provider.updateNote(note.copyWith(category: category));
+                  if (parentContext.mounted) ToastUtils.showSuccess(parentContext, '已移动到 "$category" ✨');
+                },
+                checkmarkColor: theme.colorScheme.onPrimaryContainer,
+                selectedColor: theme.colorScheme.primaryContainer,
+                backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                side: BorderSide.none,
+                shape: const StadiumBorder(),
+              );
+            }),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-        ],
       ),
     );
   }
 
-  // 内部辅助方法：确认删除
-  Future<bool?> _confirmDelete(BuildContext context, Note note) async {
-    final theme = Theme.of(context);
-    return await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: theme.colorScheme.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        icon: Container(
-          width: 64, height: 64,
-          decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withOpacity(0.3), shape: BoxShape.circle),
-          child: Icon(Icons.delete_rounded, size: 28, color: theme.colorScheme.error),
-        ),
-        title: const Text('确认删除?'),
-        content: const Text('笔记将被移至回收站，\n你可以在那里随时还原。', textAlign: TextAlign.center),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError),
-            child: const Text('移除'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        width: 400, // 电脑端限制宽度，居中显示
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
-      ),
+  Future<bool?> _confirmDelete(BuildContext parentContext, Note note) async {
+    return await AppDialog.showConfirm(
+      context: parentContext,
+      title: '确认删除?',
+      content: '笔记将被移至回收站，\n你可以在那里随时还原。',
+      icon: Icons.delete_rounded,
+      confirmText: '移至回收站',
+      isDestructive: true,
     );
   }
 }
 
-// 🟢 统一的操作按钮样式
+// 统一的操作按钮样式保持不变
 class _OptionTile extends StatelessWidget {
   final IconData icon;
   final String title;

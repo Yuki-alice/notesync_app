@@ -1,3 +1,4 @@
+// 文件路径: lib/core/providers/todos_provider.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,8 +7,7 @@ import '../../core/repositories/todo_repository.dart';
 import '../../models/todo.dart';
 import '../../core/services/supabase_sync_service.dart';
 
-// 🟢 这里同样可以加上 SyncState 状态，供未来 UI 显示同步云朵使用
-enum TodoSyncState { idle, syncing, success, error,unauthenticated }
+enum TodoSyncState { idle, syncing, success, error, unauthenticated }
 
 class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
   final TodoRepository _repository;
@@ -19,20 +19,17 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
   String _searchQuery = '';
 
   Timer? _debounceTimer;
-  Timer? _syncTimer; // 🟢 防抖同步定时器
+  Timer? _syncTimer;
 
   TodoSyncState _syncState = TodoSyncState.idle;
   TodoSyncState get syncState => _syncState;
 
   TodosProvider(this._repository) {
-    // 🟢 注册应用生命周期监听 (切回前台时自动同步)
     WidgetsBinding.instance.addObserver(this);
-
-    // 🟢 实例化同步服务 (这里我们传入 null 作为 NoteRepo，只传 TodoRepo)
     _syncService = SupabaseSyncService(null, _repository);
 
     loadTodos();
-    syncWithCloud(); // 应用启动时主动同步一次
+    syncWithCloud();
   }
 
   @override
@@ -59,7 +56,6 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// 🟢 主动触发同步 (支持下拉刷新等场景)
   Future<void> syncWithCloud() async {
     if (Supabase.instance.client.auth.currentUser == null) {
       _setSyncState(TodoSyncState.unauthenticated);
@@ -71,7 +67,7 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     try {
       await _syncService.syncTodos(
           onSyncComplete: () {
-            loadTodos(); // 远端数据合并完后，重新加载并刷新 UI
+            loadTodos();
           }
       );
 
@@ -87,7 +83,6 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
-  /// 🟢 后台防抖同步 (增删改查时默默调用)
   void _triggerBackgroundSync() {
     _syncTimer?.cancel();
     _syncTimer = Timer(const Duration(seconds: 3), () {
@@ -151,13 +146,15 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // =================================================================
-  // ✏️ 增删改查逻辑 (全部接入了触发器)
+  // ✏️ 增删改查逻辑
   // =================================================================
 
+  // 🟢 核心修改：在参数里加上 subTasks，并传入给 Todo 模型
   Future<void> addTodo({
     required String title,
     String? description,
     DateTime? dueDate,
+    List<SubTask> subTasks = const [], // 🌟 新增参数
   }) async {
     double newSortOrder = 0.0;
     if (activeTodos.isNotEmpty) {
@@ -173,19 +170,20 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
       sortOrder: newSortOrder,
       isDeleted: false,
       createdAt: DateTime.now(),
-      updatedAt: DateTime.now(), // 🟢 保证时间戳是最新的
+      updatedAt: DateTime.now(),
+      subTasks: subTasks, // 🌟 传入给新对象
     );
 
     await _repository.addTodo(todo);
     loadTodos();
-    _triggerBackgroundSync(); // 🟢 触发同步
+    _triggerBackgroundSync();
   }
 
   Future<void> updateTodo(Todo todo) async {
     final updatedTodo = todo.copyWith(updatedAt: DateTime.now());
     await _repository.updateTodo(updatedTodo);
     loadTodos();
-    _triggerBackgroundSync(); // 🟢 触发同步
+    _triggerBackgroundSync();
   }
 
   Future<void> toggleTodoStatus(String id) async {
@@ -201,7 +199,7 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
 
       await _repository.updateTodo(updatedTodo);
       loadTodos();
-      _triggerBackgroundSync(); // 🟢 触发同步
+      _triggerBackgroundSync();
     }
   }
 
@@ -222,7 +220,6 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
 
       if (todo.sortOrder != newOrder) {
         hasChanges = true;
-        // 🟢 拖拽改变顺序，也需要更新 updatedAt，通知云端这是最新的排序状态
         final updatedTodo = todo.copyWith(sortOrder: newOrder, updatedAt: DateTime.now());
 
         final indexInMain = _todos.indexWhere((t) => t.id == todo.id);
@@ -235,7 +232,7 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     await Future.wait(dbTasks);
 
     if (hasChanges) {
-      _triggerBackgroundSync(); // 🟢 触发同步
+      _triggerBackgroundSync();
     }
   }
 
@@ -246,14 +243,15 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
       final deletedTodo = todo.copyWith(isDeleted: true, updatedAt: DateTime.now());
       await _repository.updateTodo(deletedTodo);
       loadTodos();
-      _triggerBackgroundSync(); // 🟢 触发同步
+      _triggerBackgroundSync();
     }
   }
 
   Future<void> deleteTodoForever(String id) async {
     await _repository.deleteTodo(id);
     loadTodos();
-    _triggerBackgroundSync(); // 🟢 彻底删除也需要触发同步
+    await _syncService.recordDeletedTodoId(id);
+    _triggerBackgroundSync();
   }
 
   Future<void> restoreTodo(String id) async {
@@ -263,7 +261,7 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
       final restoredTodo = todo.copyWith(isDeleted: false, updatedAt: DateTime.now());
       await _repository.updateTodo(restoredTodo);
       loadTodos();
-      _triggerBackgroundSync(); // 🟢 触发同步
+      _triggerBackgroundSync();
     }
   }
 
@@ -271,9 +269,10 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     final trash = trashTodos;
     for (var todo in trash) {
       await _repository.deleteTodo(todo.id);
+      await _syncService.recordDeletedTodoId(todo.id);
     }
     loadTodos();
-    _triggerBackgroundSync(); // 🟢 触发同步
+    _triggerBackgroundSync();
   }
 
   Future<void> clearCompleted() async {
@@ -283,12 +282,13 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
       await _repository.updateTodo(deletedTodo);
     }
     loadTodos();
-    _triggerBackgroundSync(); // 🟢 触发同步
+    _triggerBackgroundSync();
   }
+
   Future<void> clearLocalData() async {
     final allTodos = _repository.getAllTodos();
     for (var todo in allTodos) {
-      await _repository.deleteTodo(todo.id); // 遍历删除 Hive 中的数据
+      await _repository.deleteTodo(todo.id);
     }
     _todos.clear();
     _filteredTodos.clear();

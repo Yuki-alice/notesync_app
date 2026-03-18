@@ -1,3 +1,4 @@
+// 文件路径: lib/features/trash/presentation/views/trash_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -16,52 +17,63 @@ class TrashPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDesktop = MediaQuery.of(context).size.width >= 900;
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        appBar: AppBar(
-          title: const Text('回收站', style: TextStyle(fontWeight: FontWeight.w600)),
-          centerTitle: true,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+      ),
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
           backgroundColor: theme.colorScheme.surface,
-          surfaceTintColor: Colors.transparent,
-          bottom: TabBar(
-            tabs: const [
-              Tab(text: '笔记', icon: Icon(Icons.description_outlined)),
-              Tab(text: '待办', icon: Icon(Icons.check_circle_outlined)),
-            ],
-            labelColor: theme.colorScheme.primary,
-            unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
-            indicatorColor: theme.colorScheme.primary,
-            indicatorSize: TabBarIndicatorSize.label,
-            dividerColor: Colors.transparent,
-            splashBorderRadius: BorderRadius.circular(16),
-            onTap: (_) => HapticFeedback.selectionClick(),
-          ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: FilledButton.tonalIcon(
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  _confirmEmptyTrash(context);
-                },
-                icon: Icon(Icons.delete_sweep_rounded, color: theme.colorScheme.error),
-                label: Text('清空', style: TextStyle(color: theme.colorScheme.error)),
-                style: FilledButton.styleFrom(
-                  backgroundColor: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+          // 🟢 1. 回归克制的标准 AppBar，全端居中标题，不再搞花哨的折叠
+          appBar: AppBar(
+            title: const Text('回收站', style: TextStyle(fontWeight: FontWeight.w600)),
+            centerTitle: true,
+            backgroundColor: theme.colorScheme.surface.withOpacity(0.95),
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            bottom: TabBar(
+              tabs: const [
+                Tab(text: '笔记', icon: Icon(Icons.description_outlined)),
+                Tab(text: '待办', icon: Icon(Icons.check_circle_outlined)),
+              ],
+              labelColor: theme.colorScheme.primary,
+              unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
+              indicatorColor: theme.colorScheme.primary,
+              indicatorSize: TabBarIndicatorSize.label,
+              dividerColor: theme.colorScheme.outlineVariant.withOpacity(0.2),
+              splashBorderRadius: BorderRadius.circular(16),
+              onTap: (_) => HapticFeedback.selectionClick(),
+            ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: FilledButton.tonalIcon(
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    _confirmEmptyTrash(context);
+                  },
+                  icon: Icon(Icons.delete_sweep_rounded, color: theme.colorScheme.error),
+                  label: Text('清空', style: TextStyle(color: theme.colorScheme.error)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: theme.colorScheme.errorContainer.withOpacity(0.5),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        body: const TabBarView(
-          children: [
-            _NotesTrashList(),
-            _TodosTrashList(),
-          ],
+            ],
+          ),
+          body: const TabBarView(
+            children: [
+              _NotesTrashList(),
+              _TodosTrashList(),
+            ],
+          ),
         ),
       ),
     );
@@ -76,7 +88,7 @@ class TrashPage extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         icon: Container(
           width: 72, height: 72,
-          decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withValues(alpha: 0.3), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withOpacity(0.3), shape: BoxShape.circle),
           child: Icon(Icons.delete_forever_rounded, size: 32, color: theme.colorScheme.error),
         ),
         title: Text('清空回收站?', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface), textAlign: TextAlign.center),
@@ -92,12 +104,9 @@ class TrashPage extends StatelessWidget {
                       onPressed: () {
                         Navigator.pop(ctx);
                         HapticFeedback.mediumImpact();
-
                         Provider.of<NotesProvider>(context, listen: false).emptyTrash();
                         Provider.of<TodosProvider>(context, listen: false).emptyTrash();
-
                         ToastUtils.showError(context, '回收站已清空');
-
                       },
                       style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError, padding: const EdgeInsets.symmetric(vertical: 12), elevation: 0),
                       child: const Text('全部清空')
@@ -111,7 +120,6 @@ class TrashPage extends StatelessWidget {
   }
 }
 
-//通用的 30 天自动清理提示 Banner
 class _AutoCleanBanner extends StatelessWidget {
   const _AutoCleanBanner();
 
@@ -122,9 +130,9 @@ class _AutoCleanBanner extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.3)),
       ),
       child: Row(
         children: [
@@ -145,6 +153,10 @@ class _AutoCleanBanner extends StatelessWidget {
   }
 }
 
+
+
+// 🟢 删掉 _DesktopConstrainedView 类，我们不再需要死板的居中约束了！
+
 class _NotesTrashList extends StatelessWidget {
   const _NotesTrashList();
 
@@ -162,35 +174,57 @@ class _NotesTrashList extends StatelessWidget {
         }
 
         return AnimationLimiter(
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            // 🟢 +1 是因为要在列表最上方插入 Banner
-            itemCount: notes.length + 1,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return const _AutoCleanBanner(); // 🟢 顶部提示
-              }
+          child: CustomScrollView(
+            // 🟢 1. 删除了这里错误的 padding
+            slivers: [
+              // 2. 给顶部的 Banner 加上 padding
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: _AutoCleanBanner(),
+                ),
+              ),
 
-              final note = notes[index - 1]; // 🟢 调整索引
-              return AnimationConfiguration.staggeredList(
-                position: index,
-                duration: const Duration(milliseconds: 375),
-                child: SlideAnimation(
-                  verticalOffset: 50.0,
-                  child: FadeInAnimation(
-                    child: _TrashItemCard(
-                      item: note,
-                      onRestore: () {
-                        HapticFeedback.lightImpact();
-                        provider.restoreNote(note.id);
-                      },
-                      onDeleteForever: () => provider.deleteNoteForever(note.id),
-                    ),
+              // 🟢 3. 使用 SliverPadding 来包裹网格内容
+              SliverPadding(
+                padding: EdgeInsets.only(
+                  left: 16, right: 16,
+                  bottom: MediaQuery.of(context).padding.bottom + 24,
+                ),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 450,
+                    mainAxisExtent: 116,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                      final note = notes[index];
+                      return AnimationConfiguration.staggeredGrid(
+                        position: index,
+                        duration: const Duration(milliseconds: 375),
+                        columnCount: 3,
+                        child: SlideAnimation(
+                          verticalOffset: 50.0,
+                          child: FadeInAnimation(
+                            child: _TrashItemCard(
+                              item: note,
+                              onRestore: () {
+                                HapticFeedback.lightImpact();
+                                provider.restoreNote(note.id);
+                              },
+                              onDeleteForever: () => provider.deleteNoteForever(note.id),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    childCount: notes.length,
                   ),
                 ),
-              );
-            },
+              ),
+            ],
           ),
         );
       },
@@ -215,34 +249,56 @@ class _TodosTrashList extends StatelessWidget {
         }
 
         return AnimationLimiter(
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: todos.length + 1, // 🟢 +1
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return const _AutoCleanBanner(); // 🟢 顶部提示
-              }
+          child: CustomScrollView(
+            // 🟢 同理，删除了这里的 padding
+            slivers: [
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: _AutoCleanBanner(),
+                ),
+              ),
 
-              final todo = todos[index - 1]; // 🟢 调整索引
-              return AnimationConfiguration.staggeredList(
-                position: index,
-                duration: const Duration(milliseconds: 375),
-                child: SlideAnimation(
-                  verticalOffset: 50.0,
-                  child: FadeInAnimation(
-                    child: _TrashItemCard(
-                      item: todo,
-                      onRestore: () {
-                        HapticFeedback.lightImpact();
-                        provider.restoreTodo(todo.id);
-                      },
-                      onDeleteForever: () => provider.deleteTodoForever(todo.id),
-                    ),
+              // 🟢 使用 SliverPadding 包裹
+              SliverPadding(
+                padding: EdgeInsets.only(
+                  left: 16, right: 16,
+                  bottom: MediaQuery.of(context).padding.bottom + 24,
+                ),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 450,
+                    mainAxisExtent: 116,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                      final todo = todos[index];
+                      return AnimationConfiguration.staggeredGrid(
+                        position: index,
+                        duration: const Duration(milliseconds: 375),
+                        columnCount: 3,
+                        child: SlideAnimation(
+                          verticalOffset: 50.0,
+                          child: FadeInAnimation(
+                            child: _TrashItemCard(
+                              item: todo,
+                              onRestore: () {
+                                HapticFeedback.lightImpact();
+                                provider.restoreTodo(todo.id);
+                              },
+                              onDeleteForever: () => provider.deleteTodoForever(todo.id),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    childCount: todos.length,
                   ),
                 ),
-              );
-            },
+              ),
+            ],
           ),
         );
       },
@@ -250,8 +306,9 @@ class _TodosTrashList extends StatelessWidget {
   }
 }
 
-// _TrashItemCard 保持不变 ...
-class _TrashItemCard extends StatelessWidget {
+// 🟢 3. 提取原有的极简卡片，加入 Hover 态和透明度，让它在 PC 端具有桌面软件特有的精致感
+// 🟢 替换文件底部的 _TrashItemCard 和 _TrashItemCardState 类
+class _TrashItemCard extends StatefulWidget {
   final dynamic item;
   final VoidCallback onRestore;
   final VoidCallback onDeleteForever;
@@ -263,108 +320,149 @@ class _TrashItemCard extends StatelessWidget {
   });
 
   @override
+  State<_TrashItemCard> createState() => _TrashItemCardState();
+}
+
+class _TrashItemCardState extends State<_TrashItemCard> {
+  bool _isHovering = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isNote = item is Note;
-    final title = isNote ? (item as Note).title : (item as Todo).title;
-    final subtitle = isNote ? (item as Note).plainText : (item as Todo).description;
+    final isNote = widget.item is Note;
+    final title = isNote ? (widget.item as Note).title : (widget.item as Todo).title;
+
+    String subtitle = '';
+    if (isNote) {
+      subtitle = (widget.item as Note).plainText;
+    } else {
+      final todo = widget.item as Todo;
+      if (todo.subTasks.isNotEmpty) {
+        subtitle = '包含 ${todo.subTasks.length} 个子待办';
+      }
+    }
+
+    final isDesktop = MediaQuery.of(context).size.width >= 900;
 
     final timeStr = isNote
-        ? (item as Note).formattedUpdatedAt
-        : (item as Todo).dueDate != null
-        ? DateFormat('yyyy/MM/dd').format((item as Todo).dueDate!)
+        ? (widget.item as Note).formattedUpdatedAt
+        : (widget.item as Todo).dueDate != null
+        ? DateFormat('yyyy/MM/dd').format((widget.item as Todo).dueDate!)
         : '';
 
-    return Card(
-      elevation: 0,
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHigh,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                isNote ? Icons.description_outlined : Icons.check_circle_outlined,
-                color: theme.colorScheme.onSurfaceVariant,
-                size: 20,
-              ),
+    return Opacity(
+      opacity: 0.8,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovering = true),
+        onExit: (_) => setState(() => _isHovering = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          decoration: BoxDecoration(
+            color: _isHovering
+                ? theme.colorScheme.surfaceContainerHigh
+                : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _isHovering
+                  ? theme.colorScheme.outlineVariant
+                  : theme.colorScheme.outlineVariant.withOpacity(0.2),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title.isEmpty ? (isNote ? '无标题笔记' : '无标题待办') : title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      decoration: TextDecoration.lineThrough,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  if (timeStr.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.access_time_rounded, size: 12, color: theme.colorScheme.outline),
-                        const SizedBox(width: 4),
-                        Text(
-                          '删除于 $timeStr',
-                          style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
-                        ),
-                      ],
-                    )
-                  ]
-                ],
-              ),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                IconButton.filledTonal(
-                  onPressed: onRestore,
-                  icon: const Icon(Icons.restore_from_trash_rounded),
-                  tooltip: '还原',
-                  style: IconButton.styleFrom(
-                    backgroundColor: theme.colorScheme.secondaryContainer,
-                    foregroundColor: theme.colorScheme.onSecondaryContainer,
-                    visualDensity: VisualDensity.compact,
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHigh,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isNote ? Icons.description_outlined : Icons.check_circle_outlined,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    size: 20,
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton.filledTonal(
-                  onPressed: () => _confirmDeleteForever(context),
-                  icon: const Icon(Icons.delete_forever_rounded),
-                  tooltip: '彻底删除',
-                  style: IconButton.styleFrom(
-                    backgroundColor: theme.colorScheme.errorContainer,
-                    foregroundColor: theme.colorScheme.error,
-                    visualDensity: VisualDensity.compact,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        title.isEmpty ? (isNote ? '无标题笔记' : '无标题待办') : title,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          decoration: TextDecoration.lineThrough,
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      if (timeStr.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.access_time_rounded, size: 12, color: theme.colorScheme.outline),
+                            const SizedBox(width: 4),
+                            // 🟢 核心修复：用 Flexible 包裹文本，彻底防止缩放窗口时溢出！
+                            Flexible(
+                              child: Text(
+                                '删除于 $timeStr',
+                                style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+                                maxLines: 1, // 限制 1 行
+                                overflow: TextOverflow.ellipsis, // 空间不够时显示省略号
+                              ),
+                            ),
+                          ],
+                        )
+                      ]
+                    ],
+                  ),
+                ),
+                AnimatedOpacity(
+                  opacity: (!isDesktop || _isHovering) ? 1.0 : 0.4,
+                  duration: const Duration(milliseconds: 200),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton.filledTonal(
+                        onPressed: widget.onRestore,
+                        icon: const Icon(Icons.restore_from_trash_rounded),
+                        tooltip: '还原',
+                        style: IconButton.styleFrom(
+                          backgroundColor: theme.colorScheme.secondaryContainer,
+                          foregroundColor: theme.colorScheme.onSecondaryContainer,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        onPressed: () => _confirmDeleteForever(context),
+                        icon: const Icon(Icons.delete_forever_rounded),
+                        tooltip: '彻底删除',
+                        style: IconButton.styleFrom(
+                          backgroundColor: theme.colorScheme.errorContainer,
+                          foregroundColor: theme.colorScheme.error,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -379,7 +477,7 @@ class _TrashItemCard extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         icon: Container(
           width: 72, height: 72,
-          decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withValues(alpha: 0.3), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withOpacity(0.3), shape: BoxShape.circle),
           child: Icon(Icons.delete_forever_rounded, size: 32, color: theme.colorScheme.error),
         ),
         title: Text('永久删除?', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface), textAlign: TextAlign.center),
@@ -395,7 +493,7 @@ class _TrashItemCard extends StatelessWidget {
                       onPressed: () {
                         Navigator.pop(ctx);
                         HapticFeedback.mediumImpact();
-                        onDeleteForever();
+                        widget.onDeleteForever();
                         ToastUtils.showError(context,'已永久删除');
                       },
                       style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError, padding: const EdgeInsets.symmetric(vertical: 12), elevation: 0),

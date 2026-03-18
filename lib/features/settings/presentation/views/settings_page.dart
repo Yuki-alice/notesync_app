@@ -10,7 +10,9 @@ import '../../../../core/providers/todos_provider.dart';
 import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../utils/toast_utils.dart';
-import '../viewmodels/profile_viewmodel.dart'; // 引入我们刚刚写的 ViewModel
+import '../../../../widgets/common/dialogs/app_dialog.dart';
+import '../../../../widgets/common/dialogs/app_sheet.dart';
+import '../viewmodels/profile_viewmodel.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -108,11 +110,13 @@ class SettingsPage extends StatelessWidget {
 
                   const SizedBox(height: 32),
 
-                  // 3. 笔记管理
+                  // 3. 笔记管理 (🟢 加入了专业模式开关)
                   _buildSectionTitle(context, '笔记'),
                   _buildSettingGroup(
                     context,
                     children: [
+                      const _ProModeSwitchTile(), // 🟢 独立封装的专业模式开关组件
+                      const Divider(height: 1, indent: 64),
                       ListTile(
                         title: const Text('分类管理', style: TextStyle(fontWeight: FontWeight.w600)),
                         subtitle: const Text('添加、重命名或删除分类'),
@@ -142,7 +146,7 @@ class SettingsPage extends StatelessWidget {
 
                   const SizedBox(height: 40),
 
-                  // 5. 退出登录按钮 (仅登录时显示)
+                  // 5. 退出登录按钮
                   if (authProvider.isAuthenticated) ...[
                     _buildSettingGroup(
                       context,
@@ -180,9 +184,6 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  // ==========================================
-  // 构建用户模块
-  // ==========================================
   Widget _buildProfileSection(BuildContext context, AuthProvider auth, ThemeData theme) {
     if (auth.isAuthenticated) {
       return Material(
@@ -198,7 +199,6 @@ class SettingsPage extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             child: Row(
               children: [
-                // 动态头像渲染 (🟢 增加了本地私有目录缓存读取，离线秒开)
                 Container(
                   width: 64, height: 64,
                   decoration: BoxDecoration(shape: BoxShape.circle, color: theme.colorScheme.primaryContainer),
@@ -238,7 +238,6 @@ class SettingsPage extends StatelessWidget {
         ),
       );
     } else {
-      // ✅ 未登录：由于这里调用的是 _buildSettingGroup，因此直角悬停问题也一并被修复了
       return _buildSettingGroup(
         context,
         children: [
@@ -255,9 +254,6 @@ class SettingsPage extends StatelessWidget {
     }
   }
 
-  // ==========================================
-  // 辅助组件构建
-  // ==========================================
   Widget _buildSectionTitle(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 16, bottom: 12),
@@ -277,14 +273,11 @@ class SettingsPage extends StatelessWidget {
       child: Column(children: children),
     );
   }
-  // ==========================================
-  // 业务逻辑与弹窗
-  // ==========================================
+
   void _showEditProfileSheet(BuildContext context, AuthProvider auth) {
-    showModalBottomSheet(
+    AppSheet.show(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      desktopMaxWidth: 480,
       builder: (ctx) => ChangeNotifierProvider(
         create: (_) => ProfileViewModel(auth),
         child: const EditProfileSheet(),
@@ -292,63 +285,93 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  void _showLogoutConfirmDialog(BuildContext context, AuthProvider authProvider) {
-    showDialog(
+  void _showLogoutConfirmDialog(BuildContext context, AuthProvider authProvider) async {
+    final confirm = await AppDialog.showConfirm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('退出登录将清除此设备上的本地缓存数据。\n您的数据已安全保存在云端，下次登录即可恢复。是否继续？'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton.tonal(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.errorContainer, foregroundColor: Theme.of(context).colorScheme.onErrorContainer),
-            onPressed: () async {
-              await authProvider.signOut();
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('last_sync_time');
-              await prefs.remove('last_todo_sync_time');
-
-              if (ctx.mounted) {
-                context.read<NotesProvider>().clearLocalData();
-                context.read<TodosProvider>().clearLocalData();
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('确认退出'),
-          ),
-        ],
-      ),
+      title: '退出登录',
+      content: '退出登录将清除此设备上的本地缓存数据。\n您的数据已安全保存在云端，下次登录即可恢复。',
+      icon: Icons.logout_rounded,
+      confirmText: '确认退出',
+      isDestructive: true,
     );
+
+    if (confirm == true) {
+      await authProvider.signOut();
+      if (context.mounted) {
+        context.read<NotesProvider>().clearLocalData();
+        context.read<TodosProvider>().clearLocalData();
+        ToastUtils.showInfo(context, '已安全退出账号');
+      }
+    }
   }
 
-  void _confirmClearAllTrash(BuildContext context) {
-    showDialog(
+  void _confirmClearAllTrash(BuildContext context) async {
+    final confirm = await AppDialog.showConfirm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('清空回收站'),
-        content: const Text('笔记和待办事项的回收站都将被清空，此操作不可恢复。'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Provider.of<NotesProvider>(context, listen: false).emptyTrash();
-              Provider.of<TodosProvider>(context, listen: false).emptyTrash();
-              ToastUtils.showError(context, '回收站已清空');
-            },
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-            child: const Text('全部清空'),
-          ),
-        ],
+      title: '清空回收站',
+      content: '笔记和待办事项的回收站都将被彻底清空，\n此操作不可恢复。',
+      icon: Icons.delete_sweep_rounded,
+      confirmText: '全部清空',
+      isDestructive: true,
+    );
+
+    if (confirm == true && context.mounted) {
+      Provider.of<NotesProvider>(context, listen: false).emptyTrash();
+      Provider.of<TodosProvider>(context, listen: false).emptyTrash();
+      ToastUtils.showError(context, '回收站已清空');
+    }
+  }
+}
+
+// 🟢 独立封装的专业模式开关组件
+class _ProModeSwitchTile extends StatefulWidget {
+  const _ProModeSwitchTile();
+
+  @override
+  State<_ProModeSwitchTile> createState() => _ProModeSwitchTileState();
+}
+
+class _ProModeSwitchTileState extends State<_ProModeSwitchTile> {
+  bool _isProMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreference();
+  }
+
+  Future<void> _loadPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isProMode = prefs.getBool('isProMode') ?? false;
+    });
+  }
+
+  Future<void> _toggleMode(bool value) async {
+    setState(() => _isProMode = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isProMode', value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SwitchListTile(
+      value: _isProMode,
+      onChanged: _toggleMode,
+      title: const Text('专业编辑模式', style: TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: const Text('支持 Markdown 语法 (如 "# " 生成标题)'),
+      secondary: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(color: theme.colorScheme.secondaryContainer, shape: BoxShape.circle),
+        child: Icon(Icons.code_rounded, color: theme.colorScheme.onSecondaryContainer),
       ),
     );
   }
 }
 
 // ==========================================
-// 个人资料编辑面板 (包含生日与裁剪)
+// 个人资料编辑面板 (包含生日与裁剪) 保持不变
 // ==========================================
 class EditProfileSheet extends StatefulWidget {
   const EditProfileSheet({super.key});
@@ -387,7 +410,7 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: Theme.of(context).colorScheme.copyWith(
-              primary: Theme.of(context).colorScheme.primary, // 主色调统一
+              primary: Theme.of(context).colorScheme.primary,
             ),
           ),
           child: child!,
@@ -410,18 +433,17 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
         ? "${_selectedBirthday!.year}-${_selectedBirthday!.month.toString().padLeft(2, '0')}-${_selectedBirthday!.day.toString().padLeft(2, '0')}"
         : null;
 
-    return Container(
-      padding: EdgeInsets.fromLTRB(24, 24, 24, bottomPadding + 24),
-      decoration: BoxDecoration(color: theme.colorScheme.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(32))),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24, 0, 24, bottomPadding + 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)))),
-          Text('编辑个人资料', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          Center(
+            child: Text('编辑个人资料', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          ),
           const SizedBox(height: 24),
 
-          // 🟢 头像区域：点击唤起裁剪器
           Center(
             child: GestureDetector(
               onTap: vm.isLoading ? null : () => vm.pickAndCropImage(context),
@@ -447,31 +469,27 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
           ),
           const SizedBox(height: 32),
 
-          // 昵称输入
           TextFormField(
             controller: _nameController,
             enabled: !vm.isLoading,
             decoration: InputDecoration(
-                labelText: '用户昵称',
-                prefixIcon: const Icon(Icons.person_outline_rounded),
-                filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)
+              labelText: '用户昵称',
+              prefixIcon: const Icon(Icons.person_outline_rounded),
+              filled: true,
+              fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: theme.colorScheme.primary, width: 2)),
             ),
             onChanged: (val) => setState(() {}),
           ),
           const SizedBox(height: 16),
 
-          // 🟢 生日选择器
           InkWell(
             onTap: vm.isLoading ? null : () => _selectBirthday(context),
             borderRadius: BorderRadius.circular(16),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(16),
-              ),
+              decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(16)),
               child: Row(
                 children: [
                   Icon(Icons.cake_outlined, color: theme.colorScheme.onSurfaceVariant),
@@ -483,11 +501,8 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                         Text('生日', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                         const SizedBox(height: 2),
                         Text(
-                          birthdayStr ?? '设置你的生日 ',
-                          style: TextStyle(
-                              fontSize: 16,
-                              color: birthdayStr != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)
-                          ),
+                          birthdayStr ?? '设置你的生日 (未来会有小惊喜哦)',
+                          style: TextStyle(fontSize: 16, color: birthdayStr != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                         ),
                       ],
                     ),
@@ -499,17 +514,15 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
           ),
           const SizedBox(height: 32),
 
-          // 提交按钮
           FilledButton(
             onPressed: vm.isLoading ? null : () async {
               final errorMsg = await vm.saveProfile(_nameController.text, birthdayStr);
               if (!context.mounted) return;
-
               if (errorMsg == null) {
                 Navigator.pop(context);
-                ToastUtils.showSuccess(context,'个人资料已完美同步 ✨');
+                ToastUtils.showSuccess(context, '个人资料已完美同步 ✨');
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: Colors.redAccent));
+                ToastUtils.showError(context, errorMsg);
               }
             },
             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
@@ -522,12 +535,10 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
     );
   }
 
-  // 🟢 智能头像回显 (本地优先 -> 云端优先 -> 默认)
   Widget _buildAvatarImage(ProfileViewModel vm, AuthProvider auth, ThemeData theme) {
     if (vm.localSelectedImage != null) {
       return Image.file(vm.localSelectedImage!, fit: BoxFit.cover);
     }
-    // 优先读取本地永久缓存，实现真正的离线可用
     if (auth.localAvatarPath != null && File(auth.localAvatarPath!).existsSync()) {
       return Image.file(File(auth.localAvatarPath!), fit: BoxFit.cover);
     }

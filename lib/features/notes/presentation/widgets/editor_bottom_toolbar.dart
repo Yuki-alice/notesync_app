@@ -1,8 +1,8 @@
+// 文件路径: lib/features/notes/presentation/widgets/editor_bottom_toolbar.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 
-// 定义工具栏激活面板枚举
-enum ToolbarPanel { none, textStyle, paragraphStyle, color }
+enum ToolbarPanel { none, format }
 
 class EditorBottomToolbar extends StatelessWidget {
   final quill.QuillController controller;
@@ -29,290 +29,318 @@ class EditorBottomToolbar extends StatelessWidget {
     final theme = Theme.of(context);
     final panelBgColor = theme.colorScheme.surfaceContainer;
     final iconColor = theme.colorScheme.onSurfaceVariant;
-    final activeIconColor = theme.colorScheme.primary;
-    const double toolbarIconSize = 24;
 
     return Container(
       decoration: BoxDecoration(
         color: panelBgColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, -4),
           )
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 动态面板区域 (样式、颜色选择器等)
-          AnimatedSize(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.fastOutSlowIn,
-            child: activePanel != ToolbarPanel.none
-                ? Container(
-              decoration: BoxDecoration(
-                border: Border(
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 格式面板（二级菜单）
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.fastOutSlowIn,
+              child: activePanel != ToolbarPanel.none
+                  ? Container(
+                decoration: BoxDecoration(
+                  border: Border(
                     bottom: BorderSide(
-                        color: theme.colorScheme.outlineVariant.withOpacity(0.15),
-                        width: 0.8)),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    panelBgColor.withOpacity(0.95),
-                    panelBgColor,
-                  ],
-                ),
-              ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                transitionBuilder: (child, anim) => FadeTransition(
-                    opacity: anim,
-                    child: SizeTransition(sizeFactor: anim, child: child)),
-                child: _buildActivePanelContent(context),
-              ),
-            )
-                : const SizedBox.shrink(),
-          ),
-
-          // 固定工具栏按钮行
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        _ToolbarIconButton(
-                            icon: Icons.undo_rounded,
-                            tooltip: '撤销',
-                            onPressed: onUndo,
-                            isActive: false,
-                            activeColor: activeIconColor,
-                            inactiveColor: iconColor,
-                            iconSize: toolbarIconSize),
-                        const SizedBox(width: 8),
-                        _ToolbarIconButton(
-                            icon: Icons.redo_rounded,
-                            tooltip: '重做',
-                            onPressed: onRedo,
-                            isActive: false,
-                            activeColor: activeIconColor,
-                            inactiveColor: iconColor,
-                            iconSize: toolbarIconSize),
-                        Container(
-                            height: 20,
-                            width: 1,
-                            color: theme.colorScheme.outlineVariant.withOpacity(0.3),
-                            margin: const EdgeInsets.symmetric(horizontal: 12)),
-                        _ToolbarIconButton(
-                            icon: Icons.text_fields_outlined,
-                            tooltip: '文本样式',
-                            isActive: activePanel == ToolbarPanel.textStyle,
-                            onPressed: () => onPanelChanged(ToolbarPanel.textStyle),
-                            activeColor: activeIconColor,
-                            inactiveColor: iconColor,
-                            iconSize: toolbarIconSize),
-                        const SizedBox(width: 8),
-                        _ToolbarIconButton(
-                            icon: Icons.text_snippet_outlined,
-                            tooltip: '段落样式',
-                            isActive: activePanel == ToolbarPanel.paragraphStyle,
-                            onPressed: () => onPanelChanged(ToolbarPanel.paragraphStyle),
-                            activeColor: activeIconColor,
-                            inactiveColor: iconColor,
-                            iconSize: toolbarIconSize),
-                        const SizedBox(width: 8),
-                        _ToolbarIconButton(
-                            icon: Icons.palette_outlined,
-                            tooltip: '颜色',
-                            isActive: activePanel == ToolbarPanel.color,
-                            onPressed: () => onPanelChanged(ToolbarPanel.color),
-                            activeColor: activeIconColor,
-                            inactiveColor: iconColor,
-                            iconSize: toolbarIconSize),
-                        const SizedBox(width: 8),
-                        _ToolbarIconButton(
-                            icon: Icons.insert_photo_outlined,
-                            tooltip: '插入图片',
-                            isActive: false,
-                            onPressed: onPickImage,
-                            activeColor: activeIconColor,
-                            inactiveColor: iconColor,
-                            iconSize: toolbarIconSize),
-                      ],
+                      color: theme.colorScheme.outlineVariant.withOpacity(0.15),
+                      width: 0.5,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                FilledButton.tonal(
-                  onPressed: onFinish,
-                  style: FilledButton.styleFrom(
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      visualDensity: VisualDensity.compact,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12))),
-                  child: const Text('完成', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: SizeTransition(sizeFactor: anim, child: child),
+                  ),
+                  child: _buildFormatPanel(context),
                 ),
-              ],
+              )
+                  : const SizedBox.shrink(),
             ),
-          ),
-        ],
+
+            // 一级工具栏
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  _ToolbarIconButton(
+                    icon: Icons.undo_outlined,
+                    onPressed: onUndo,
+                    inactiveColor: iconColor,
+                  ),
+                  _ToolbarIconButton(
+                    icon: Icons.redo_outlined,
+                    onPressed: onRedo,
+                    inactiveColor: iconColor,
+                  ),
+                  _ToolbarIconButton(
+                    icon: Icons.image_outlined,
+                    onPressed: onPickImage,
+                    inactiveColor: iconColor,
+                  ),
+                  const SizedBox(width: 4),
+                  quill.QuillToolbarToggleStyleButton(
+                    controller: controller,
+                    attribute: quill.Attribute.unchecked,
+                    options: _getToggleStyleOptions(
+                      context,
+                      Icons.check_circle_outlined,
+                      tooltip: '待办清单',
+                      isSecondaryPanel: false,
+                    ),
+                  ),
+                  _buildAaButton(context),
+                  const Spacer(),
+                  FilledButton.tonal(
+                    onPressed: onFinish,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      foregroundColor: theme.colorScheme.onPrimaryContainer,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                      minimumSize: const Size(60, 36),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      '完成',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildActivePanelContent(BuildContext context) {
+  Widget _buildAaButton(BuildContext context) {
     final theme = Theme.of(context);
-    switch (activePanel) {
-      case ToolbarPanel.textStyle:
-        return _buildPanelRow([
-          quill.QuillToolbarToggleStyleButton(
+    final isActive = activePanel == ToolbarPanel.format;
+    final color = isActive ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        color: isActive ? color.withOpacity(0.12) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () => onPanelChanged(isActive ? ToolbarPanel.none : ToolbarPanel.format),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 40),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Aa',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              if (!isActive) ...[
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.unfold_more_outlined,
+                  size: 14,
+                  color: color.withOpacity(0.5),
+                ),
+              ]
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormatPanel(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      key: const ValueKey(ToolbarPanel.format),
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      alignment: Alignment.centerLeft,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            // 文本样式组
+            quill.QuillToolbarToggleStyleButton(
               controller: controller,
               attribute: quill.Attribute.bold,
-              options: _getToggleStyleOptions(context, Icons.format_bold_rounded,
-                  tooltip: '加粗')),
-          quill.QuillToolbarToggleStyleButton(
+              options: _getToggleStyleOptions(context, Icons.format_bold_outlined, tooltip: '加粗'),
+            ),
+            quill.QuillToolbarToggleStyleButton(
               controller: controller,
               attribute: quill.Attribute.italic,
-              options: _getToggleStyleOptions(context, Icons.format_italic_rounded,
-                  tooltip: '斜体')),
-          quill.QuillToolbarToggleStyleButton(
+              options: _getToggleStyleOptions(context, Icons.format_italic_outlined, tooltip: '斜体'),
+            ),
+            quill.QuillToolbarToggleStyleButton(
               controller: controller,
               attribute: quill.Attribute.underline,
-              options: _getToggleStyleOptions(
-                  context, Icons.format_underlined_rounded,
-                  tooltip: '下划线')),
-          quill.QuillToolbarToggleStyleButton(
+              options: _getToggleStyleOptions(context, Icons.format_underlined_outlined, tooltip: '下划线'),
+            ),
+            quill.QuillToolbarToggleStyleButton(
               controller: controller,
               attribute: quill.Attribute.strikeThrough,
-              options: _getToggleStyleOptions(
-                  context, Icons.format_strikethrough_rounded,
-                  tooltip: '删除线')),
-          quill.QuillToolbarToggleStyleButton(
-              controller: controller,
-              attribute: quill.Attribute.inlineCode,
-              options: _getToggleStyleOptions(context, Icons.code_rounded,
-                  tooltip: '代码')),
-        ]);
-      case ToolbarPanel.paragraphStyle:
-        return _buildPanelRow([
-          quill.QuillToolbarToggleStyleButton(
-              controller: controller,
-              attribute: quill.Attribute.h1,
-              options: _getToggleStyleOptions(context, Icons.looks_one_rounded,
-                  tooltip: '标题 1')),
-          quill.QuillToolbarToggleStyleButton(
-              controller: controller,
-              attribute: quill.Attribute.h2,
-              options: _getToggleStyleOptions(context, Icons.looks_two_rounded,
-                  tooltip: '标题 2')),
-          quill.QuillToolbarToggleStyleButton(
+              options: _getToggleStyleOptions(context, Icons.format_strikethrough_outlined, tooltip: '删除线'),
+            ),
+            _buildDivider(context),
+
+            // 列表组
+            quill.QuillToolbarToggleStyleButton(
               controller: controller,
               attribute: quill.Attribute.ul,
-              options: _getToggleStyleOptions(
-                  context, Icons.format_list_bulleted_rounded,
-                  tooltip: '无序列表')),
-          quill.QuillToolbarToggleStyleButton(
+              options: _getToggleStyleOptions(context, Icons.format_list_bulleted_outlined, tooltip: '无序列表'),
+            ),
+            quill.QuillToolbarToggleStyleButton(
               controller: controller,
               attribute: quill.Attribute.ol,
-              options: _getToggleStyleOptions(
-                  context, Icons.format_list_numbered_rounded,
-                  tooltip: '有序列表')),
-          quill.QuillToolbarToggleStyleButton(
+              options: _getToggleStyleOptions(context, Icons.format_list_numbered_outlined, tooltip: '有序列表'),
+            ),
+            quill.QuillToolbarToggleStyleButton(
               controller: controller,
               attribute: quill.Attribute.blockQuote,
-              options: _getToggleStyleOptions(context, Icons.format_quote_rounded,
-                  tooltip: '引用')),
-        ]);
-      case ToolbarPanel.color:
-        return _buildPanelRow([
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            const Text("A",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            quill.QuillToolbarColorButton(
-                controller: controller,
-                isBackground: false,
-                options: _getColorButtonOptions(context, '字体颜色',
-                    iconData: Icons.format_color_text_outlined))
-          ]),
-          const SizedBox(width: 20),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.highlight_rounded, size: 18),
-            quill.QuillToolbarColorButton(
-                controller: controller,
-                isBackground: true,
-                options: _getColorButtonOptions(context, '背景高亮',
-                    iconData: Icons.format_color_fill_outlined))
-          ]),
-          const SizedBox(width: 20),
-          quill.QuillToolbarClearFormatButton(
+              options: _getToggleStyleOptions(context, Icons.format_quote_outlined, tooltip: '引用'),
+            ),
+            _buildDivider(context),
+
+            // 标题组
+            quill.QuillToolbarToggleStyleButton(
+              controller: controller,
+              attribute: quill.Attribute.h1,
+              options: _getToggleStyleOptions(context, Icons.format_size_outlined, tooltip: '大标题'),
+            ),
+            quill.QuillToolbarToggleStyleButton(
+              controller: controller,
+              attribute: quill.Attribute.h2,
+              options: _getToggleStyleOptions(context, Icons.title_outlined, tooltip: '中标题'),
+            ),
+            _buildDivider(context),
+
+            // 颜色与清除格式组
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                quill.QuillToolbarColorButton(
+                  controller: controller,
+                  isBackground: false,
+                  options: _getColorButtonOptions(context, '字体颜色'),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                quill.QuillToolbarColorButton(
+                  controller: controller,
+                  isBackground: true,
+                  options: _getColorButtonOptions(context, '背景高亮', iconData: Icons.format_color_fill_outlined),
+                ),
+              ],
+            ),
+            quill.QuillToolbarClearFormatButton(
               controller: controller,
               options: quill.QuillToolbarClearFormatButtonOptions(
-                  tooltip: '清除格式',
-                  iconData: Icons.format_clear_rounded,
-                  iconTheme: quill.QuillIconTheme(
-                      iconButtonUnselectedData: quill.IconButtonData(
-                          style: IconButton.styleFrom(
-                              foregroundColor: theme.colorScheme.onSurface))))),
-        ]);
-      case ToolbarPanel.none:
-        return const SizedBox.shrink();
-    }
+                tooltip: '清除格式',
+                iconData: Icons.format_clear_outlined,
+                iconTheme: quill.QuillIconTheme(
+                  iconButtonUnselectedData: quill.IconButtonData(
+                    style: IconButton.styleFrom(
+                      foregroundColor: theme.colorScheme.onSurfaceVariant,
+                      iconSize: 22,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _buildPanelRow(List<Widget> children) {
+  Widget _buildDivider(BuildContext context) {
     return Container(
-        key: ValueKey(activePanel),
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        alignment: Alignment.center,
-        child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-                mainAxisAlignment: MainAxisAlignment.center, children: children)));
+      height: 16,
+      width: 1,
+      color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.3),
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+    );
   }
 
-  // 样式辅助方法
   quill.QuillToolbarToggleStyleButtonOptions _getToggleStyleOptions(
-      BuildContext context, IconData icon,
-      {String? tooltip, bool isSecondaryPanel = true}) {
+      BuildContext context,
+      IconData icon, {
+        String? tooltip,
+        bool isSecondaryPanel = true,
+      }) {
     final theme = Theme.of(context);
     return quill.QuillToolbarToggleStyleButtonOptions(
       iconData: icon,
       tooltip: tooltip,
       iconTheme: quill.QuillIconTheme(
-          iconButtonSelectedData: quill.IconButtonData(
-              style: IconButton.styleFrom(
-                  backgroundColor: isSecondaryPanel
-                      ? theme.colorScheme.primary.withOpacity(0.1)
-                      : theme.colorScheme.primaryContainer,
-                  foregroundColor: theme.colorScheme.primary)),
-          iconButtonUnselectedData: quill.IconButtonData(
-              style: IconButton.styleFrom(
-                  foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7)))),
+        iconButtonSelectedData: quill.IconButtonData(
+          style: IconButton.styleFrom(
+            backgroundColor: isSecondaryPanel
+                ? theme.colorScheme.primary.withOpacity(0.12)
+                : Colors.transparent,
+            foregroundColor: theme.colorScheme.primary,
+            iconSize: 22,
+          ),
+        ),
+        iconButtonUnselectedData: quill.IconButtonData(
+          style: IconButton.styleFrom(
+            foregroundColor: theme.colorScheme.onSurfaceVariant,
+            iconSize: 22,
+          ),
+        ),
+      ),
     );
   }
 
   quill.QuillToolbarColorButtonOptions _getColorButtonOptions(
-      BuildContext context, String tooltip,
-      {IconData? iconData}) {
+      BuildContext context,
+      String tooltip, {
+        IconData? iconData,
+      }) {
     final theme = Theme.of(context);
     return quill.QuillToolbarColorButtonOptions(
-        tooltip: tooltip,
-        iconData: iconData,
-        iconTheme: quill.QuillIconTheme(
-            iconButtonUnselectedData: quill.IconButtonData(
-                style: IconButton.styleFrom(
-                    foregroundColor:
-                    theme.colorScheme.onSurface.withOpacity(0.7)))));
+      tooltip: tooltip,
+      iconData: iconData,
+      iconTheme: quill.QuillIconTheme(
+        iconButtonUnselectedData: quill.IconButtonData(
+          style: IconButton.styleFrom(
+            foregroundColor: theme.colorScheme.onSurfaceVariant,
+            iconSize: 22,
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -320,37 +348,38 @@ class _ToolbarIconButton extends StatelessWidget {
   final IconData icon;
   final bool isActive;
   final VoidCallback onPressed;
-  final Color activeColor;
-  final Color inactiveColor;
-  final String? tooltip;
-  final double iconSize;
+  final Color? activeColor;
+  final Color? inactiveColor;
 
-  const _ToolbarIconButton(
-      {required this.icon,
-        required this.isActive,
-        required this.onPressed,
-        required this.activeColor,
-        required this.inactiveColor,
-        this.tooltip,
-        this.iconSize = 24});
+  const _ToolbarIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.isActive = false,
+    this.activeColor,
+    this.inactiveColor,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final aColor = activeColor ?? theme.colorScheme.primary;
+    final iColor = inactiveColor ?? theme.colorScheme.onSurfaceVariant;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-          color: isActive ? activeColor.withOpacity(0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12)),
+        color: isActive ? aColor.withOpacity(0.12) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: IconButton(
-          onPressed: onPressed,
-          icon: Icon(icon),
-          tooltip: tooltip,
-          color: isActive ? activeColor : inactiveColor,
-          iconSize: iconSize,
-          padding: const EdgeInsets.all(8),
-          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-          style: IconButton.styleFrom(
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap)),
+        onPressed: onPressed,
+        icon: Icon(icon),
+        color: isActive ? aColor : iColor,
+        iconSize: 22,
+        padding: const EdgeInsets.all(8),
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+        style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+      ),
     );
   }
 }

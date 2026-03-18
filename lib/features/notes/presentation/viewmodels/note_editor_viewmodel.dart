@@ -1,3 +1,4 @@
+// 文件路径: lib/features/notes/presentation/viewmodels/note_editor_viewmodel.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -10,11 +11,11 @@ import '../../../../models/note.dart';
 
 class NoteEditorViewModel extends ChangeNotifier {
   final NotesProvider notesProvider;
+  final bool isProMode; // 🟢 新增：专业模式（Markdown 自动拦截）开关
 
   late quill.QuillController quillController;
   late TextEditingController titleController;
 
-  // 状态
   List<String> tags = [];
   String? category;
   bool isDirty = false;
@@ -22,10 +23,16 @@ class NoteEditorViewModel extends ChangeNotifier {
 
   Note? _editingNote;
   final ImageStorageService _imageService = ImageStorageService();
+  Timer? _autoSaveTimer;
 
-  Timer? _autoSaveTimer; // 🟢 自动保存定时器
+  bool _isAutoFormatting = false;
 
-  NoteEditorViewModel({Note? note, required this.notesProvider}) {
+  // 🟢 构造函数要求传入 isProMode
+  NoteEditorViewModel({
+    Note? note,
+    required this.notesProvider,
+    this.isProMode = false,
+  }) {
     _editingNote = note;
     _initControllers();
   }
@@ -35,7 +42,6 @@ class NoteEditorViewModel extends ChangeNotifier {
     tags = _editingNote?.tags.toList() ?? [];
     category = _editingNote?.category;
 
-    // 初始化 Quill
     try {
       if (_editingNote != null && _editingNote!.content.isNotEmpty) {
         if (_editingNote!.isRichText) {
@@ -60,16 +66,91 @@ class NoteEditorViewModel extends ChangeNotifier {
 
     _updateWordCount();
 
-    // 监听变化
     titleController.addListener(_markAsDirty);
+
     quillController.document.changes.listen((event) {
       _updateWordCount();
       if (event.source == quill.ChangeSource.local) {
         _markAsDirty();
+        // 🟢 只有在专业模式下，才去检测和拦截 Markdown
+        if (isProMode) {
+          _checkMarkdownShortcuts();
+        }
       }
     });
   }
 
+  // =================================================================
+  // 🌟 满血版 Markdown 自动格式化引擎
+  // =================================================================
+  void _checkMarkdownShortcuts() {
+    if (_isAutoFormatting) return;
+
+    final selection = quillController.selection;
+    if (!selection.isCollapsed) return;
+
+    final index = selection.baseOffset;
+    if (index <= 0) return;
+
+    final lastChar = quillController.document.getPlainText(index - 1, 1);
+    if (lastChar != ' ') return;
+
+    final text = quillController.document.toPlainText();
+    int lineStart = 0;
+    for (int i = index - 2; i >= 0; i--) {
+      if (text[i] == '\n') {
+        lineStart = i + 1;
+        break;
+      }
+    }
+
+    final textBeforeCursor = text.substring(lineStart, index);
+
+    quill.Attribute? attributeToApply;
+    int lengthToDelete = 0;
+
+    // 🟢 满血版 Markdown 规则支持
+    if (textBeforeCursor == '# ') {
+      attributeToApply = quill.Attribute.h1;
+      lengthToDelete = 2;
+    } else if (textBeforeCursor == '## ') {
+      attributeToApply = quill.Attribute.h2;
+      lengthToDelete = 3;
+    } else if (textBeforeCursor == '### ') {
+      attributeToApply = quill.Attribute.h3;
+      lengthToDelete = 4;
+    } else if (textBeforeCursor == '- ' || textBeforeCursor == '* ' || textBeforeCursor == '+ ') {
+      attributeToApply = quill.Attribute.ul;
+      lengthToDelete = 2;
+    } else if (RegExp(r'^\d+\.\s$').hasMatch(textBeforeCursor)) {
+      attributeToApply = quill.Attribute.ol;
+      lengthToDelete = textBeforeCursor.length;
+    } else if (textBeforeCursor == '[] ' || textBeforeCursor == '[ ] ') {
+      attributeToApply = quill.Attribute.unchecked; // 未完成待办
+      lengthToDelete = textBeforeCursor.length;
+    } else if (textBeforeCursor == '[x] ' || textBeforeCursor == '[X] ') {
+      attributeToApply = quill.Attribute.checked; // 已完成待办
+      lengthToDelete = textBeforeCursor.length;
+    } else if (textBeforeCursor == '< ') {
+      attributeToApply = quill.Attribute.blockQuote;
+      lengthToDelete = 2;
+    }
+
+    if (attributeToApply != null) {
+      _isAutoFormatting = true;
+      Future.microtask(() {
+        quillController.document.delete(lineStart, lengthToDelete);
+        quillController.formatText(lineStart, 0, attributeToApply!);
+        quillController.updateSelection(
+          TextSelection.collapsed(offset: index - lengthToDelete),
+          quill.ChangeSource.local,
+        );
+        _isAutoFormatting = false;
+      });
+    }
+  }
+
+  // ... (下方的 _updateWordCount, _markAsDirty, saveNote 等方法保持完全不变)
   void _updateWordCount() {
     wordCount = quillController.document.toPlainText().trim().length;
     notifyListeners();
@@ -80,20 +161,16 @@ class NoteEditorViewModel extends ChangeNotifier {
       isDirty = true;
       notifyListeners();
     }
-    _scheduleAutoSave(); // 🟢 每次内容发生变化，重置并启动自动保存倒计时
+    _scheduleAutoSave();
   }
 
-  // 🟢 自动保存逻辑 (延迟 3 秒)
   void _scheduleAutoSave() {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(seconds: 3), () {
-      if (isDirty) {
-        saveNote();
-      }
+      if (isDirty) saveNote();
     });
   }
 
-  // 图片插入逻辑
   Future<void> pickAndInsertImage() async {
     final picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
@@ -114,7 +191,6 @@ class NoteEditorViewModel extends ChangeNotifier {
     }
   }
 
-  // 保存逻辑
   Future<void> saveNote() async {
     if (!isDirty && _editingNote != null) return;
 
@@ -145,7 +221,6 @@ class NoteEditorViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 标签管理
   void addTag(String tag) {
     final trimmed = tag.trim();
     if (trimmed.isNotEmpty && !tags.contains(trimmed)) {
@@ -169,7 +244,7 @@ class NoteEditorViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    _autoSaveTimer?.cancel(); // 🟢 销毁时取消定时器，防止内存泄漏
+    _autoSaveTimer?.cancel();
     quillController.dispose();
     titleController.dispose();
     super.dispose();

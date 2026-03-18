@@ -1,20 +1,21 @@
+// 文件路径: lib/features/notes/presentation/views/notes_page.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:notesync_app/widgets/common/dialogs/add_category_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
-import 'package:animations/animations.dart';
+import 'package:animations/animations.dart'; // 新增：用于 OpenContainer
+
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/routes/app_routes.dart';
+import '../../../../models/note.dart';
 import '../../../../utils/app_feedback.dart';
 import '../../../../utils/toast_utils.dart';
+import '../../../../widgets/common/dialogs/add_category_dialog.dart';
 import 'note_editor_page.dart';
 import '../widgets/note_card.dart';
 import '../widgets/dialogs/note_options_sheet.dart';
-
 import '../widgets/note_search_bar.dart';
 
 class NotesPage extends StatefulWidget {
@@ -27,7 +28,6 @@ class NotesPage extends StatefulWidget {
 class _NotesPageState extends State<NotesPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
-  bool _isFabExtended = true;
   Timer? _debounce;
 
   @override
@@ -45,21 +45,10 @@ class _NotesPageState extends State<NotesPage> {
     return 2;
   }
 
-  bool _handleScrollNotification(UserScrollNotification notification) {
-    if (notification.direction == ScrollDirection.reverse) {
-      if (_isFabExtended) setState(() => _isFabExtended = false);
-    } else if (notification.direction == ScrollDirection.forward) {
-      if (!_isFabExtended) setState(() => _isFabExtended = true);
-    }
-    return true;
-  }
-
   void _onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        context.read<NotesProvider>().setSearchQuery(query);
-      }
+      if (mounted) context.read<NotesProvider>().setSearchQuery(query);
     });
   }
 
@@ -77,8 +66,12 @@ class _NotesPageState extends State<NotesPage> {
           child: Row(
             children: [
               Icon(
-                currentSort == option ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                color: currentSort == option ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                currentSort == option
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                color: currentSort == option
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -95,9 +88,7 @@ class _NotesPageState extends State<NotesPage> {
 
   void _handleAddCategory(BuildContext context) async {
     final provider = context.read<NotesProvider>();
-
     final String? newCategory = await showAddCategoryDialog(context);
-
     if (newCategory != null && newCategory.isNotEmpty) {
       await provider.addCategory(newCategory);
       provider.selectCategory(newCategory);
@@ -109,67 +100,99 @@ class _NotesPageState extends State<NotesPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
-    final isDesktop = screenWidth >= 600;
+    final isDesktop = screenWidth >= 900;
 
-    // 🟢 布局修复：使用 SafeArea 包裹 Scaffold 的 body 内容
-    // 并且确保 Column 占据最大高度，Expanded 才能生效
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch, // 确保横向占满
-          children: [
-            // 1. 顶部栏 (固定高度，不滚动)
-            if (isDesktop)
-              _buildDesktopHeader(context, theme)
-            else
-              _buildMobileHeader(context, theme),
-
-
-            Expanded(
-              child: NotificationListener<UserScrollNotification>(
-                onNotification: _handleScrollNotification,
-                child: _buildScrollableContent(context, theme, isDesktop),
-              ),
-            ),
-          ],
-        ),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness:
+        theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness:
+        theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
       ),
-      floatingActionButton: isDesktop
-          ? null
-          : OpenContainer(
-        transitionType: ContainerTransitionType.fadeThrough,
-        openBuilder: (BuildContext context, VoidCallback _) => const NoteEditorPage(),
-        closedElevation: 6.0,
-        closedShape: _isFabExtended
-            ? const StadiumBorder()
-            : const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
-        closedColor: theme.colorScheme.primaryContainer,
-        transitionDuration: const Duration(milliseconds: 500),
-        closedBuilder: (BuildContext context, VoidCallback openContainer) {
-          return FloatingActionButton.extended(
-            elevation: 0,
-            onPressed: openContainer,
-            backgroundColor: Colors.transparent,
-            foregroundColor: theme.colorScheme.onPrimaryContainer,
-            isExtended: _isFabExtended,
-            label: const Text('写笔记', style: TextStyle(fontWeight: FontWeight.bold)),
-            icon: const Icon(Icons.edit_rounded),
-          );
-        },
+      child: Scaffold(
+        extendBody: true,
+        backgroundColor: theme.colorScheme.surface,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isDesktop) _buildDesktopHeader(context, theme),
+              Expanded(
+                child: _buildMainContent(context, theme, isDesktop),
+              ),
+            ],
+          ),
+        ),
+        // 🌟 FAB 使用 OpenContainer 实现平滑过渡
+        floatingActionButton: isDesktop
+            ? null
+            : Padding(
+          padding: const EdgeInsets.only(right: 16, bottom: 100),
+          child: OpenContainer(
+            transitionType: ContainerTransitionType.fadeThrough,
+            openBuilder: (BuildContext context, VoidCallback _) =>
+            const NoteEditorPage(),
+            closedElevation: 4.0,
+            closedShape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(16))),
+            closedColor: theme.colorScheme.primaryContainer,
+            transitionDuration: const Duration(milliseconds: 500),
+            closedBuilder: (BuildContext context, VoidCallback openContainer) {
+              return SizedBox(
+                width: 56,
+                height: 56,
+                child: FloatingActionButton(
+                  elevation: 0,
+                  onPressed: openContainer,
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: theme.colorScheme.onPrimaryContainer,
+                  child: const Icon(Icons.edit_rounded, size: 28),
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildScrollableContent(BuildContext context, ThemeData theme, bool isDesktop) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final crossAxisCount = _calculateCrossAxisCount(screenWidth);
-
-    final scrollView = CustomScrollView(
-      // 🟢 修复 3：强制开启始终可滚动，确保内容很少或为空时，也能触发下拉刷新
-      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-      slivers: [
+  // =========================================================================
+  // 🌟 NestedScrollView 智能层叠框架（保留原分类切换动画）
+  // =========================================================================
+  Widget _buildMainContent(BuildContext context, ThemeData theme, bool isDesktop) {
+    Widget content = NestedScrollView(
+      headerSliverBuilder: (context, innerBoxIsScrolled) => [
+        if (!isDesktop)
+          SliverAppBar(
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('我的笔记',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(width: 8),
+                const SyncStatusIndicator(),
+              ],
+            ),
+            backgroundColor: theme.colorScheme.surface,
+            surfaceTintColor: Colors.transparent,
+            pinned: true,
+            elevation: 0,
+            actions: [
+              IconButton(
+                  onPressed: () => _showSortMenu(context),
+                  icon: const Icon(Icons.sort_rounded)),
+              IconButton(
+                  onPressed: () => Navigator.pushNamed(context, AppRoutes.trash),
+                  icon: const Icon(Icons.auto_delete_outlined)),
+              IconButton(
+                  onPressed: () => Navigator.pushNamed(context, AppRoutes.settings),
+                  icon: const Icon(Icons.settings_outlined)),
+              const SizedBox(width: 8),
+            ],
+          ),
         if (!isDesktop)
           SliverToBoxAdapter(
             child: Padding(
@@ -186,16 +209,9 @@ class _NotesPageState extends State<NotesPage> {
               ),
             ),
           ),
-
         SliverToBoxAdapter(
           child: Consumer<NotesProvider>(
             builder: (context, provider, _) {
-              final categories = provider.categories;
-              final selectedCategory = provider.selectedCategory;
-
-              // 🟢 修复 1：删除了这里的 if (categories.isEmpty) return const SizedBox.shrink();
-              // 确保无论有没有分类，“全部”和“+”按钮永远存在！
-
               return Container(
                 height: 50,
                 margin: const EdgeInsets.only(bottom: 8),
@@ -204,13 +220,17 @@ class _NotesPageState extends State<NotesPage> {
                   scrollDirection: Axis.horizontal,
                   padding: EdgeInsets.zero,
                   children: [
-                    _buildCategoryChip(theme, '全部', selectedCategory == null, () => provider.selectCategory(null)),
-                    ...categories.map((category) => _buildCategoryChip(
-                      theme,
-                      category,
-                      selectedCategory == category,
-                          () => provider.selectCategory(selectedCategory == category ? null : category),
-                    )),
+                    _buildCategoryChip(
+                        theme,
+                        '全部',
+                        provider.selectedCategory == null,
+                            () => provider.selectCategory(null)),
+                    ...provider.categories.map((c) => _buildCategoryChip(
+                        theme,
+                        c,
+                        provider.selectedCategory == c,
+                            () => provider.selectCategory(
+                            provider.selectedCategory == c ? null : c))),
                     Padding(
                       padding: const EdgeInsets.only(left: 8),
                       child: ActionChip(
@@ -219,10 +239,13 @@ class _NotesPageState extends State<NotesPage> {
                         label: const Icon(Icons.add_rounded, size: 18),
                         padding: EdgeInsets.zero,
                         labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
                         side: BorderSide.none,
-                        backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                        labelStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                        backgroundColor: theme.colorScheme.surfaceContainerHighest
+                            .withOpacity(0.5),
+                        labelStyle:
+                        TextStyle(color: theme.colorScheme.onSurfaceVariant),
                       ),
                     ),
                   ],
@@ -231,49 +254,107 @@ class _NotesPageState extends State<NotesPage> {
             },
           ),
         ),
+      ],
 
-        Consumer<NotesProvider>(
-          builder: (context, provider, _) {
-            final notes = provider.filteredNotes;
-            final searchQuery = provider.searchQuery;
+      // 🌟 灵魂交叉切换动画 (CrossFade) —— 保留原分类切换动画
+      body: Consumer<NotesProvider>(
+        builder: (context, provider, _) {
+          final notes = provider.filteredNotes;
+          final currentKey = '${provider.selectedCategory}_${provider.searchQuery}';
 
-            if (notes.isEmpty) {
-              return SliverFillRemaining(
-                hasScrollBody: false,
-                child: _buildEmptyState(theme, provider.searchQuery.isNotEmpty, provider.selectedCategory),
-              );
-            }
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            switchInCurve: Curves.easeOutQuart,
+            switchOutCurve: Curves.easeInQuart,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            child: _buildGridBody(
+                context, theme, notes, currentKey, provider.searchQuery, isDesktop),
+          );
+        },
+      ),
+    );
 
-            return SliverPadding(
-              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 12, vertical: 12),
-              sliver: AnimationLimiter(
-                child: SliverMasonryGrid.count(
-                  crossAxisCount: crossAxisCount,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childCount: notes.length,
-                  itemBuilder: (context, index) {
-                    final note = notes[index];
-                    return AnimationConfiguration.staggeredGrid(
-                      position: index,
-                      duration: const Duration(milliseconds: 375),
-                      columnCount: crossAxisCount,
-                      child: ScaleAnimation(
-                        scale: 0.9,
-                        child: FadeInAnimation(
+    if (!isDesktop) {
+      return RefreshIndicator(
+        onRefresh: () async {
+          HapticFeedback.mediumImpact();
+          await context.read<NotesProvider>().syncWithCloud();
+        },
+        child: content,
+      );
+    }
+    return content;
+  }
+
+  // 构建带交错动画的瀑布流，并将卡片点击改为 OpenContainer
+  Widget _buildGridBody(BuildContext context, ThemeData theme, List<Note> notes,
+      String currentKey, String searchQuery, bool isDesktop) {
+    if (notes.isEmpty) {
+      return KeyedSubtree(
+        key: ValueKey('empty_$currentKey'),
+        child: CustomScrollView(
+          slivers: [
+            SliverFillRemaining(
+                child: _buildEmptyState(
+                    theme, searchQuery.isNotEmpty, currentKey.split('_')[0]))
+          ],
+        ),
+      );
+    }
+
+    // 绝对防重叠密钥
+    final gridLayoutKey =
+    ValueKey(Object.hashAll(notes.map((n) => Object.hash(n.id, n.updatedAt))));
+    final crossAxisCount = _calculateCrossAxisCount(MediaQuery.of(context).size.width);
+
+    return AnimationLimiter(
+      key: ValueKey('limiter_$currentKey'), // 确保切换分类时动画重置
+      child: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.only(
+                left: isDesktop ? 32 : 12,
+                right: isDesktop ? 32 : 12,
+                top: 12,
+                bottom: isDesktop ? 24 : 120),
+            sliver: SliverMasonryGrid(
+              key: gridLayoutKey,
+              gridDelegate: SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount),
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                  final note = notes[index];
+                  return AnimationConfiguration.staggeredGrid(
+                    position: index,
+                    duration: const Duration(milliseconds: 400),
+                    columnCount: crossAxisCount,
+                    child: SlideAnimation(
+                      verticalOffset: 40.0,
+                      curve: Curves.easeOutQuart,
+                      child: FadeInAnimation(
+                        curve: Curves.easeOutQuart,
+                        child: KeyedSubtree(
+                          key: ValueKey(note.id),
+                          // 🌟 使用 OpenContainer 包裹 NoteCard，实现平滑过渡
                           child: OpenContainer(
                             clipBehavior: Clip.antiAlias,
                             transitionType: ContainerTransitionType.fadeThrough,
                             closedShape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(24),
                               side: BorderSide(
-                                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                                color: theme.colorScheme.outlineVariant.withOpacity(0.3),
                                 width: 1,
                               ),
                             ),
                             closedElevation: 0,
                             closedColor: theme.colorScheme.surfaceContainerLow,
-                            openShape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                            openShape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.zero),
                             openColor: theme.colorScheme.surface,
                             openElevation: 0,
                             transitionDuration: const Duration(milliseconds: 600),
@@ -282,7 +363,7 @@ class _NotesPageState extends State<NotesPage> {
                               return NoteCard(
                                 note: note,
                                 searchQuery: searchQuery,
-                                onTap: openContainer,
+                                onTap: openContainer, // 触发 OpenContainer 打开
                                 onLongPress: () => showNoteOptionsSheet(context, note),
                                 onSecondaryTap: () => showNoteOptionsSheet(context, note),
                               );
@@ -290,31 +371,19 @@ class _NotesPageState extends State<NotesPage> {
                           ),
                         ),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
+                childCount: notes.length,
               ),
-            );
-          },
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 100)),
-      ],
+            ),
+          ),
+        ],
+      ),
     );
-
-    // 🟢 为移动端包裹下拉刷新组件 (Pull-to-Refresh)
-    if (!isDesktop) {
-      return RefreshIndicator(
-        onRefresh: () async {
-          HapticFeedback.mediumImpact();
-          await context.read<NotesProvider>().syncWithCloud();
-        },
-        child: scrollView,
-      );
-    }
-
-    return scrollView;
   }
 
+  // --- 以下 UI 代码保持不变，仅为了完整性列出 ---
   Widget _buildDesktopHeader(BuildContext context, ThemeData theme) {
     return Container(
       padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
@@ -325,109 +394,75 @@ class _NotesPageState extends State<NotesPage> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text("我的笔记", style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+              Text("我的笔记",
+                  style: theme.textTheme.headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(width: 12),
               Selector<NotesProvider, int>(
                 selector: (_, provider) => provider.filteredNotes.length,
-                builder: (_, count, __) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
+                builder: (_, count, __) => Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
                       color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Text(
+                    "$count",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                    child: Text(
-                      "$count",
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  );
-                },
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(width: 24),
           Expanded(
-            child: Center(
-              child: NoteSearchBar(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                maxWidth: 500,
-                backgroundColor: theme.colorScheme.surfaceContainerLow,
-                onChanged: _onSearchChanged,
-                onClear: () {
-                  AppFeedback.light();
-                  context.read<NotesProvider>().setSearchQuery('');
-                  _searchFocusNode.unfocus();
-                },
-              ),
-            ),
-          ),
+              child: Center(
+                  child: NoteSearchBar(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      maxWidth: 500,
+                      backgroundColor: theme.colorScheme.surfaceContainerLow,
+                      onChanged: _onSearchChanged,
+                      onClear: () {
+                        AppFeedback.light();
+                        context.read<NotesProvider>().setSearchQuery('');
+                        _searchFocusNode.unfocus();
+                      }))),
           const SizedBox(width: 24),
-          const SizedBox(width: 8),
           const SyncStatusIndicator(),
-          // 🟢 桌面端新增：手动同步按钮
           IconButton.filledTonal(
-            onPressed: () async {
-              await context.read<NotesProvider>().syncWithCloud();
-              if (context.mounted) {
-                ToastUtils.showSuccess(context, '已与云端同步最新数据');
-              }
-            },
-            icon: const Icon(Icons.sync_rounded),
-            tooltip: "同步",
-            style: IconButton.styleFrom(
-              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              foregroundColor: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+              onPressed: () async {
+                await context.read<NotesProvider>().syncWithCloud();
+                if (context.mounted) {
+                  ToastUtils.showSuccess(context, '已与云端同步最新数据');
+                }
+              },
+              icon: const Icon(Icons.sync_rounded),
+              tooltip: "同步",
+              style: IconButton.styleFrom(
+                  backgroundColor:
+                  theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                  foregroundColor: theme.colorScheme.onSurfaceVariant)),
           const SizedBox(width: 8),
-
           IconButton.filledTonal(
-            onPressed: () => _showSortMenu(context),
-            icon: const Icon(Icons.sort_rounded),
-            tooltip: "排序",
-            style: IconButton.styleFrom(
-              backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              foregroundColor: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+              onPressed: () => _showSortMenu(context),
+              icon: const Icon(Icons.sort_rounded),
+              tooltip: "排序",
+              style: IconButton.styleFrom(
+                  backgroundColor:
+                  theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                  foregroundColor: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
   }
 
-  Widget _buildMobileHeader(BuildContext context, ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: theme.colorScheme.surface,
-      child: Row(
-        children: [
-          Text("我的笔记", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
-          const SizedBox(width: 8),
-          const SyncStatusIndicator(),
-          const Spacer(),
-          IconButton(
-            onPressed: () => _showSortMenu(context),
-            icon: const Icon(Icons.sort_rounded),
-          ),
-          IconButton(
-            onPressed: () => Navigator.pushNamed(context, AppRoutes.trash),
-            icon: const Icon(Icons.auto_delete_outlined),
-          ),
-          IconButton(
-            onPressed: () => Navigator.pushNamed(context, AppRoutes.settings),
-            icon: const Icon(Icons.settings_rounded),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoryChip(ThemeData theme, String label, bool isSelected, VoidCallback onTap) {
+  Widget _buildCategoryChip(
+      ThemeData theme, String label, bool isSelected, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: ChoiceChip(
@@ -437,35 +472,43 @@ class _NotesPageState extends State<NotesPage> {
         showCheckmark: false,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         side: BorderSide.none,
-        backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        backgroundColor:
+        theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
         selectedColor: theme.colorScheme.primaryContainer,
         labelStyle: TextStyle(
-          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+          color: isSelected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurface,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState(ThemeData theme, bool isSearching, String? selectedCategory) {
+  Widget _buildEmptyState(
+      ThemeData theme, bool isSearching, String? selectedCategory) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.dashboard_customize_outlined, size: 64, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
+          Icon(Icons.dashboard_customize_outlined,
+              size: 64, color: theme.colorScheme.outline.withOpacity(0.5)),
           const SizedBox(height: 16),
           Text(
             isSearching
                 ? '未找到相关笔记'
-                : (selectedCategory == null ? '暂无笔记' : '该分类下暂无笔记'),
-            style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
-
+                : (selectedCategory == null || selectedCategory == 'null'
+                ? '暂无笔记'
+                : '该分类下暂无笔记'),
+            style: theme.textTheme.bodyLarge
+                ?.copyWith(color: theme.colorScheme.outline),
           ),
         ],
       ),
     );
   }
 }
+
 class SyncStatusIndicator extends StatelessWidget {
   const SyncStatusIndicator({super.key});
 
@@ -475,38 +518,38 @@ class SyncStatusIndicator extends StatelessWidget {
       builder: (context, provider, child) {
         final state = provider.syncState;
         final theme = Theme.of(context);
-
         Widget icon;
         String tooltip;
 
         switch (state) {
           case SyncState.unauthenticated:
-          // 🟢 未登录状态：灰色的云朵带个锁或者斜杠
-            icon = Icon(Icons.cloud_off_rounded, color: theme.colorScheme.outlineVariant, size: 20);
+            icon = Icon(Icons.cloud_off_rounded,
+                color: theme.colorScheme.outlineVariant, size: 20);
             tooltip = "未登录，仅保存在本地";
             break;
           case SyncState.syncing:
-          // 正在同步：旋转的云朵
             icon = SizedBox(
-              width: 16, height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: theme.colorScheme.primary),
             );
             tooltip = "正在与云端同步...";
             break;
           case SyncState.success:
-          // 同步成功：绿色对勾小云朵
-            icon = const Icon(Icons.cloud_done_rounded, color: Colors.green, size: 20);
+            icon = const Icon(Icons.cloud_done_rounded,
+                color: Colors.green, size: 20);
             tooltip = "已保存到云端";
             break;
           case SyncState.error:
-          // 同步失败：红色警告云朵
-            icon = Icon(Icons.cloud_off_rounded, color: theme.colorScheme.error, size: 20);
+            icon = Icon(Icons.cloud_off_rounded,
+                color: theme.colorScheme.error, size: 20);
             tooltip = "同步失败，请检查网络";
             break;
           case SyncState.idle:
           default:
-          // 空闲状态：普通的云朵
-            icon = Icon(Icons.cloud_queue_rounded, color: theme.colorScheme.onSurfaceVariant, size: 20);
+            icon = Icon(Icons.cloud_queue_rounded,
+                color: theme.colorScheme.onSurfaceVariant, size: 20);
             tooltip = "已与云端同步";
             break;
         }
@@ -516,7 +559,9 @@ class SyncStatusIndicator extends StatelessWidget {
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             transitionBuilder: (Widget child, Animation<double> animation) {
-              return ScaleTransition(scale: animation, child: FadeTransition(opacity: animation, child: child));
+              return ScaleTransition(
+                  scale: animation,
+                  child: FadeTransition(opacity: animation, child: child));
             },
             child: KeyedSubtree(
               key: ValueKey<SyncState>(state),

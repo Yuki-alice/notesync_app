@@ -1,3 +1,4 @@
+// 文件路径: lib/main.dart
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:flutter/services.dart';
+
 import 'core/database/simple_database_service.dart';
 import 'core/providers/auth_provider.dart';
 import 'core/providers/theme_provider.dart';
@@ -16,33 +19,30 @@ import 'core/repositories/todo_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
-import 'package:flutter/services.dart';
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent, // 状态栏背景全透明
-      statusBarIconBrightness: Brightness.dark, // 状态栏图标和字体设为深色
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
     ),
   );
-  //初始化 Supabase
+
   await Supabase.initialize(
     url: 'https://mauzvvakcqqhrcphcgmf.supabase.co',
     anonKey: 'sb_publishable_8HmK4iGLBFj3hk2GJ9a1Xw_yDHC6rPj',
   );
 
-  // 1. 初始化数据库
   final dbService = SimpleDatabaseService();
-
   try {
     await dbService.init();
   } catch (e) {
     runApp(ErrorApp(error: e.toString()));
     return;
   }
-
 
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     await windowManager.ensureInitialized();
@@ -83,80 +83,61 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final seedColor = themeProvider.themeColor;
-    final textTheme =GoogleFonts.notoSansScTextTheme(Theme.of(context).textTheme);
+    final textTheme = GoogleFonts.notoSansScTextTheme(Theme.of(context).textTheme);
 
-    return MaterialApp(
-      title: '笔记同步',
-      debugShowCheckedModeBanner: false,
-      themeMode: themeProvider.themeMode,
+    final isDarkMode = themeProvider.themeMode == ThemeMode.dark ||
+        (themeProvider.themeMode == ThemeMode.system &&
+            MediaQuery.of(context).platformBrightness == Brightness.dark);
 
-      initialRoute: AppRoutes.home,
-      onGenerateRoute: AppRouter.onGenerateRoute,
-
-
-      theme: ThemeData(
-        textTheme: textTheme,
-        useMaterial3: true,
-        brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seedColor,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        statusBarIconBrightness: isDarkMode ? Brightness.light : Brightness.dark,
+        systemNavigationBarIconBrightness: isDarkMode ? Brightness.light : Brightness.dark,
+      ),
+      child: MaterialApp(
+        title: '笔记同步',
+        debugShowCheckedModeBanner: false,
+        themeMode: themeProvider.themeMode,
+        initialRoute: AppRoutes.home,
+        onGenerateRoute: AppRouter.onGenerateRoute,
+        theme: ThemeData(
+          textTheme: textTheme,
+          useMaterial3: true,
           brightness: Brightness.light,
-          surfaceTint: seedColor.withValues(alpha: 0.05),
-        ),
-        scaffoldBackgroundColor: const Color(0xFFFDFDFD),
-        appBarTheme: const AppBarTheme(
-          centerTitle: false,
-          scrolledUnderElevation: 0,
-          backgroundColor: Colors.transparent,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.grey.withValues(alpha: 0.05),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
+          colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.light, surfaceTint: seedColor.withOpacity(0.05)),
+          scaffoldBackgroundColor: const Color(0xFFFDFDFD),
+          appBarTheme: const AppBarTheme(centerTitle: false, scrolledUnderElevation: 0, backgroundColor: Colors.transparent),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true, fillColor: Colors.grey.withOpacity(0.05),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          floatingActionButtonTheme: FloatingActionButtonThemeData(elevation: 4, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
         ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
-
-      darkTheme: ThemeData(
-        textTheme: textTheme,
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seedColor,
+        darkTheme: ThemeData(
+          textTheme: textTheme,
+          useMaterial3: true,
           brightness: Brightness.dark,
-          surfaceTint: seedColor.withValues(alpha: 0.1),
-        ),
-        scaffoldBackgroundColor: const Color(0xFF1A1C1E),
-        appBarTheme: const AppBarTheme(
-          centerTitle: false,
-          scrolledUnderElevation: 0,
-          backgroundColor: Colors.transparent,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white.withValues(alpha: 0.05),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
+          colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.dark, surfaceTint: seedColor.withOpacity(0.1)),
+          scaffoldBackgroundColor: const Color(0xFF1A1C1E),
+          appBarTheme: const AppBarTheme(centerTitle: false, scrolledUnderElevation: 0, backgroundColor: Colors.transparent),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true, fillColor: Colors.white.withOpacity(0.05),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          FlutterQuillLocalizations.delegate,
+        ],
+        supportedLocales: FlutterQuillLocalizations.supportedLocales,
       ),
-
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        FlutterQuillLocalizations.delegate,
-      ],
-      supportedLocales: FlutterQuillLocalizations.supportedLocales,
     );
   }
 }

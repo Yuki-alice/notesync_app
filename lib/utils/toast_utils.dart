@@ -43,7 +43,7 @@ class ToastUtils {
   // ==========================================
 
   /// ✨ 成功提示 (主题色)
-  static void showInfo(BuildContext context, String message) {
+  static void showSuccess(BuildContext context, String message) {
     _showToast(context, message, Icons.check_circle_rounded, Colors.green);
   }
 
@@ -53,7 +53,7 @@ class ToastUtils {
   }
 
   /// 🎈 信息/普通提示 (原版的绿色)
-  static void showSuccess(BuildContext context, String message) {
+  static void showInfo(BuildContext context, String message) {
     _showToast(context, message, Icons.auto_awesome_rounded, Theme.of(context).colorScheme.primary);
   }
 }

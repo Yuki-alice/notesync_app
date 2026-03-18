@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:notesync_app/features/auth/presentation/views/login_page.dart';
 
 import '../../app/main_screen.dart';
-import '../../features/search/presentation/views/global_search_page.dart';
 import '../../features/settings/presentation/views/settings_page.dart';
 import '../../features/settings/presentation/views/category_management_page.dart';
 import '../../features/trash/presentation/views/trash_page.dart';
