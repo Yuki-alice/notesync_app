@@ -84,7 +84,6 @@ class _InteractableImageState extends State<InteractableImage> {
   bool _isLoading = true;
   late String _heroTag;
 
-  // 用于暂存按下的坐标
   Offset? _lastTapDownPosition;
 
   @override
@@ -105,14 +104,11 @@ class _InteractableImageState extends State<InteractableImage> {
     super.dispose();
   }
 
-  // 记录坐标，不做任何逻辑处理
   void _handleTapDown(TapDownDetails details) {
     _lastTapDownPosition = details.localPosition;
   }
 
-  // 🌟 终极修复：使用优先级最高的 onTap 彻底吞噬手势
   void _handleTap() {
-    // 刚接触的一瞬间就物理镇压键盘
     FocusManager.instance.primaryFocus?.unfocus();
     SystemChannels.textInput.invokeMethod('TextInput.hide');
 
@@ -140,7 +136,6 @@ class _InteractableImageState extends State<InteractableImage> {
       setState(() => _isSelected = false);
       OverlayMenuManager.hide();
 
-      // 再次物理镇压键盘，防止复苏
       FocusManager.instance.primaryFocus?.unfocus();
       SystemChannels.textInput.invokeMethod('TextInput.hide');
 
@@ -197,17 +192,13 @@ class _InteractableImageState extends State<InteractableImage> {
     return CompositedTransformTarget(
       link: _layerLink,
       child: GestureDetector(
-        // 🌟 核心突破 1：Opaque 模式，绝不允许手势穿透到下层
         behavior: HitTestBehavior.opaque,
         onTapDown: _handleTapDown,
-        // 🌟 核心突破 2：占用 onTap 轨道，彻底截胡 Quill 引擎的接收端口
         onTap: _handleTap,
-        // 连带吃掉双击和长按事件
         onDoubleTap: () {},
         onLongPress: () {},
 
         child: Container(
-          // 🌟 核心突破 3：强制占满屏幕宽度，并将底色设为透明以接收命中测试 (Hit Test)
           width: double.infinity,
           decoration: const BoxDecoration(color: Colors.transparent),
           padding: EdgeInsets.symmetric(vertical: widget.isFullWidth ? 16.0 : 8.0, horizontal: 4.0),
@@ -298,6 +289,9 @@ class _ToolbarButton extends StatelessWidget {
   }
 }
 
+// =====================================================================
+// 🌟 终极防线：绝对手势黑洞
+// =====================================================================
 class OverlayMenuManager {
   static OverlayEntry? _currentEntry;
   static void show({required BuildContext context, required LayerLink layerLink, required Offset offset, required VoidCallback onDismiss, required Widget child}) {
@@ -305,7 +299,24 @@ class OverlayMenuManager {
     _currentEntry = OverlayEntry(
       builder: (context) => Stack(
         children: [
-          Positioned.fill(child: GestureDetector(behavior: HitTestBehavior.opaque, onTapDown: (_) { hide(); onDismiss(); }, child: NotificationListener<ScrollNotification>(onNotification: (sn) { hide(); onDismiss(); return true; }, child: Container(color: Colors.transparent)))),
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              // 按下时关闭菜单
+              onTapDown: (_) { hide(); onDismiss(); },
+
+              // 🌟 核心修复：堵死所有手势穿透的可能！
+              // 不加上这些，点击事件就会穿过透明遮罩，砸在底部工具栏上唤醒光标
+              onTap: () {},
+              onTapUp: (_) {},
+              onTapCancel: () {},
+              onDoubleTap: () {},
+              onLongPress: () {},
+              onPanDown: (_) { hide(); onDismiss(); }, // 防止滑动屏幕时穿透
+
+              child: Container(color: Colors.transparent),
+            ),
+          ),
           CompositedTransformFollower(
               link: layerLink,
               showWhenUnlinked: false,

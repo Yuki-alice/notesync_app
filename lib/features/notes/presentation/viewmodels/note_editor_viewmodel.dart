@@ -11,7 +11,7 @@ import '../../../../models/note.dart';
 
 class NoteEditorViewModel extends ChangeNotifier {
   final NotesProvider notesProvider;
-  final bool isProMode; // 🟢 新增：专业模式（Markdown 自动拦截）开关
+  final bool isProMode;
 
   late quill.QuillController quillController;
   late TextEditingController titleController;
@@ -27,7 +27,10 @@ class NoteEditorViewModel extends ChangeNotifier {
 
   bool _isAutoFormatting = false;
 
-  // 🟢 构造函数要求传入 isProMode
+  // 🟢 新增：阅读模式状态
+  bool _isReadOnly = false;
+  bool get isReadOnly => _isReadOnly;
+
   NoteEditorViewModel({
     Note? note,
     required this.notesProvider,
@@ -72,7 +75,6 @@ class NoteEditorViewModel extends ChangeNotifier {
       _updateWordCount();
       if (event.source == quill.ChangeSource.local) {
         _markAsDirty();
-        // 🟢 只有在专业模式下，才去检测和拦截 Markdown
         if (isProMode) {
           _checkMarkdownShortcuts();
         }
@@ -80,9 +82,101 @@ class NoteEditorViewModel extends ChangeNotifier {
     });
   }
 
+  // 🟢 新增：切换阅读模式
+  void toggleReadOnly() {
+    _isReadOnly = !_isReadOnly;
+    quillController.readOnly=_isReadOnly;
+    notifyListeners();
+  }
+
+  // 🟢 优化：未命名时不强制输出标题
+// =================================================================
+  // 🌟 满血版 Delta to Markdown 渲染引擎
   // =================================================================
-  // 🌟 满血版 Markdown 自动格式化引擎
-  // =================================================================
+  String generateMarkdownContent() {
+    final title = titleController.text.trim();
+    final delta = quillController.document.toDelta();
+    final buffer = StringBuffer();
+
+    // 如果有标题，作为 Markdown 的一级标题输出
+    if (title.isNotEmpty) {
+      buffer.writeln('# $title\n');
+    }
+
+    String currentLine = '';
+
+    // 逐个节点解析 Quill 的富文本 Delta
+    for (final op in delta.toList()) {
+      if (op.data is String) {
+        final text = op.data as String;
+        final attrs = op.attributes ?? {};
+
+        // 遇到换行符，说明当前行结束，需要应用块级样式（如标题、列表）
+        if (text == '\n') {
+          _appendLineToMarkdown(buffer, currentLine, attrs);
+          currentLine = '';
+        } else if (text.contains('\n')) {
+          // 处理包含多个换行符的复杂文本块
+          final parts = text.split('\n');
+          for (int i = 0; i < parts.length - 1; i++) {
+            currentLine += _formatInlineMarkdown(parts[i], attrs);
+            _appendLineToMarkdown(buffer, currentLine, attrs);
+            currentLine = '';
+          }
+          currentLine += _formatInlineMarkdown(parts.last, attrs);
+        } else {
+          // 累加行内文本样式（加粗、斜体等）
+          currentLine += _formatInlineMarkdown(text, attrs);
+        }
+      } else if (op.data is Map) {
+        // 解析图片等嵌入对象
+        final dataMap = op.data as Map;
+        if (dataMap.containsKey('image')) {
+          final imagePath = dataMap['image'];
+          currentLine += '\n![图片]($imagePath)\n';
+        }
+      }
+    }
+
+    // 补齐最后一行
+    if (currentLine.isNotEmpty) {
+      _appendLineToMarkdown(buffer, currentLine, {});
+    }
+
+    return buffer.toString().trim();
+  }
+
+  // 处理行内样式（加粗、斜体、代码等）
+  String _formatInlineMarkdown(String text, Map<String, dynamic> attrs) {
+    if (text.isEmpty) return text;
+    String result = text;
+    if (attrs['bold'] == true) result = '**$result**';
+    if (attrs['italic'] == true) result = '*$result*';
+    if (attrs['strike'] == true) result = '~~$result~~';
+    if (attrs['code'] == true) result = '`$result`';
+    return result;
+  }
+
+  // 处理块级样式（标题、列表、引用等）
+  void _appendLineToMarkdown(StringBuffer buffer, String lineText, Map<String, dynamic> blockAttrs) {
+    if (blockAttrs['header'] != null) {
+      final level = blockAttrs['header'] as int;
+      buffer.writeln('${"#" * level} $lineText\n');
+    } else if (blockAttrs['blockquote'] == true) {
+      buffer.writeln('> $lineText\n');
+    } else if (blockAttrs['list'] == 'bullet') {
+      buffer.writeln('- $lineText');
+    } else if (blockAttrs['list'] == 'ordered') {
+      buffer.writeln('1. $lineText');
+    } else if (blockAttrs['list'] == 'checked') {
+      buffer.writeln('- [x] $lineText');
+    } else if (blockAttrs['list'] == 'unchecked') {
+      buffer.writeln('- [ ] $lineText');
+    } else {
+      buffer.writeln(lineText);
+    }
+  }
+
   void _checkMarkdownShortcuts() {
     if (_isAutoFormatting) return;
 
@@ -109,7 +203,6 @@ class NoteEditorViewModel extends ChangeNotifier {
     quill.Attribute? attributeToApply;
     int lengthToDelete = 0;
 
-    // 🟢 满血版 Markdown 规则支持
     if (textBeforeCursor == '# ') {
       attributeToApply = quill.Attribute.h1;
       lengthToDelete = 2;
@@ -126,10 +219,10 @@ class NoteEditorViewModel extends ChangeNotifier {
       attributeToApply = quill.Attribute.ol;
       lengthToDelete = textBeforeCursor.length;
     } else if (textBeforeCursor == '[] ' || textBeforeCursor == '[ ] ') {
-      attributeToApply = quill.Attribute.unchecked; // 未完成待办
+      attributeToApply = quill.Attribute.unchecked;
       lengthToDelete = textBeforeCursor.length;
     } else if (textBeforeCursor == '[x] ' || textBeforeCursor == '[X] ') {
-      attributeToApply = quill.Attribute.checked; // 已完成待办
+      attributeToApply = quill.Attribute.checked;
       lengthToDelete = textBeforeCursor.length;
     } else if (textBeforeCursor == '< ') {
       attributeToApply = quill.Attribute.blockQuote;
@@ -150,7 +243,6 @@ class NoteEditorViewModel extends ChangeNotifier {
     }
   }
 
-  // ... (下方的 _updateWordCount, _markAsDirty, saveNote 等方法保持完全不变)
   void _updateWordCount() {
     wordCount = quillController.document.toPlainText().trim().length;
     notifyListeners();
