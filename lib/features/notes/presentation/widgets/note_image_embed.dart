@@ -4,7 +4,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:provider/provider.dart';
+
 import '../../../../core/services/image_storage_service.dart';
+import '../viewmodels/note_editor_viewmodel.dart';
+
+// =================================================================
+// 🌟 终极防闪烁：跨文件的全局焦点物理锁定义处！
+// =================================================================
+bool globalImageLock = false;
 
 class ImageEmbedBuilder extends quill.EmbedBuilder {
   final ImageStorageService imageService;
@@ -83,8 +91,9 @@ class _InteractableImageState extends State<InteractableImage> {
   File? _resolvedFile;
   bool _isLoading = true;
   late String _heroTag;
-
   Offset? _lastTapDownPosition;
+
+  Timer? _lockTimer;
 
   @override
   void initState() {
@@ -101,6 +110,7 @@ class _InteractableImageState extends State<InteractableImage> {
   @override
   void dispose() {
     if (_isSelected) OverlayMenuManager.hide();
+    _lockTimer?.cancel();
     super.dispose();
   }
 
@@ -109,6 +119,8 @@ class _InteractableImageState extends State<InteractableImage> {
   }
 
   void _handleTap() {
+    _lockTimer?.cancel();
+    globalImageLock = true; // 🌟 持续上锁！
     FocusManager.instance.primaryFocus?.unfocus();
     SystemChannels.textInput.invokeMethod('TextInput.hide');
 
@@ -135,6 +147,7 @@ class _InteractableImageState extends State<InteractableImage> {
     if (mounted) {
       setState(() => _isSelected = false);
       OverlayMenuManager.hide();
+      globalImageLock = false; // 🌟 图片取消选中时释放锁定！
 
       FocusManager.instance.primaryFocus?.unfocus();
       SystemChannels.textInput.invokeMethod('TextInput.hide');
@@ -191,34 +204,49 @@ class _InteractableImageState extends State<InteractableImage> {
 
     return CompositedTransformTarget(
       link: _layerLink,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: _handleTapDown,
-        onTap: _handleTap,
-        onDoubleTap: () {},
-        onLongPress: () {},
+      child: Listener(
+        onPointerDown: (_) {
+          // 瞬间关门放狗，没收 Quill 的键盘呼叫权！
+          globalImageLock = true;
+          FocusManager.instance.primaryFocus?.unfocus();
+          SystemChannels.textInput.invokeMethod('TextInput.hide');
 
-        child: Container(
-          width: double.infinity,
-          decoration: const BoxDecoration(color: Colors.transparent),
-          padding: EdgeInsets.symmetric(vertical: widget.isFullWidth ? 16.0 : 8.0, horizontal: 4.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200), padding: EdgeInsets.all(borderWidth),
-                decoration: BoxDecoration(
-                  color: _isSelected ? theme.colorScheme.primary : Colors.transparent, borderRadius: BorderRadius.circular(outerRadius),
-                  boxShadow: _isSelected ? [BoxShadow(color: theme.colorScheme.primary.withOpacity(0.2), blurRadius: 12, spreadRadius: 2)] : [],
+          _lockTimer?.cancel();
+          _lockTimer = Timer(const Duration(milliseconds: 300), () {
+            if (mounted && !_isSelected) {
+              globalImageLock = false;
+            }
+          });
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: _handleTapDown,
+          onTap: _handleTap,
+          onDoubleTap: () {},
+          onLongPress: () {},
+
+          child: Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(color: Colors.transparent),
+            padding: EdgeInsets.symmetric(vertical: widget.isFullWidth ? 16.0 : 8.0, horizontal: 4.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200), padding: EdgeInsets.all(borderWidth),
+                  decoration: BoxDecoration(
+                    color: _isSelected ? theme.colorScheme.primary : Colors.transparent, borderRadius: BorderRadius.circular(outerRadius),
+                    boxShadow: _isSelected ? [BoxShadow(color: theme.colorScheme.primary.withOpacity(0.2), blurRadius: 12, spreadRadius: 2)] : [],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(imageRadius), clipBehavior: Clip.antiAlias,
+                    child: Hero(tag: _heroTag, child: widget.isFullWidth ? _buildFullWidthImage() : _buildConstrainedImage()),
+                  ),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(imageRadius), clipBehavior: Clip.antiAlias,
-                  child: Hero(tag: _heroTag, child: widget.isFullWidth ? _buildFullWidthImage() : _buildConstrainedImage()),
-                ),
-              ),
-              if (widget.caption != null && widget.caption!.isNotEmpty)
-                Padding(padding: const EdgeInsets.only(top: 8.0, bottom: 4.0), child: Text(widget.caption!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontStyle: FontStyle.italic), textAlign: TextAlign.center)),
-            ],
+                if (widget.caption != null && widget.caption!.isNotEmpty)
+                  Padding(padding: const EdgeInsets.only(top: 8.0, bottom: 4.0), child: Text(widget.caption!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontStyle: FontStyle.italic), textAlign: TextAlign.center)),
+              ],
+            ),
           ),
         ),
       ),
@@ -289,9 +317,6 @@ class _ToolbarButton extends StatelessWidget {
   }
 }
 
-// =====================================================================
-// 🌟 终极防线：绝对手势黑洞
-// =====================================================================
 class OverlayMenuManager {
   static OverlayEntry? _currentEntry;
   static void show({required BuildContext context, required LayerLink layerLink, required Offset offset, required VoidCallback onDismiss, required Widget child}) {
@@ -302,18 +327,13 @@ class OverlayMenuManager {
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              // 按下时关闭菜单
               onTapDown: (_) { hide(); onDismiss(); },
-
-              // 🌟 核心修复：堵死所有手势穿透的可能！
-              // 不加上这些，点击事件就会穿过透明遮罩，砸在底部工具栏上唤醒光标
               onTap: () {},
               onTapUp: (_) {},
               onTapCancel: () {},
               onDoubleTap: () {},
               onLongPress: () {},
-              onPanDown: (_) { hide(); onDismiss(); }, // 防止滑动屏幕时穿透
-
+              onPanDown: (_) { hide(); onDismiss(); },
               child: Container(color: Colors.transparent),
             ),
           ),
