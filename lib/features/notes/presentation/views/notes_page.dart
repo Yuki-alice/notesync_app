@@ -162,6 +162,9 @@ class _NotesPageState extends State<NotesPage> {
   // =========================================================================
   // 🌟 NestedScrollView 智能层叠框架（保留原分类切换动画）
   // =========================================================================
+  // =========================================================================
+  // 🌟 架构师重构：丝滑一体的刚性折叠头部 (Unified SliverAppBar)
+  // =========================================================================
   Widget _buildMainContent(BuildContext context, ThemeData theme, bool isDesktop) {
     Widget content = NestedScrollView(
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
@@ -170,93 +173,93 @@ class _NotesPageState extends State<NotesPage> {
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('我的笔记',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
+                const Text('我的笔记', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                 const SizedBox(width: 8),
                 const SyncStatusIndicator(),
               ],
             ),
-            backgroundColor: theme.colorScheme.surface,
+            backgroundColor: theme.colorScheme.surface.withOpacity(0.95), // 轻微玻璃质感
             surfaceTintColor: Colors.transparent,
-            pinned: true,
-            elevation: 0,
+
+            // 🟢 终极丝滑魔法：浮动且吸附，整体进出
+            pinned: false,
+            floating: true,
+            snap: true,
+            elevation: innerBoxIsScrolled ? 2 : 0, // 只有在滑动时才显示轻微阴影
+            shadowColor: theme.colorScheme.shadow.withOpacity(0.1),
+
             actions: [
-              IconButton(
-                  onPressed: () => _showSortMenu(context),
-                  icon: const Icon(Icons.sort_rounded)),
-              IconButton(
-                  onPressed: () => Navigator.pushNamed(context, AppRoutes.trash),
-                  icon: const Icon(Icons.auto_delete_outlined)),
-              IconButton(
-                  onPressed: () => Navigator.pushNamed(context, AppRoutes.settings),
-                  icon: const Icon(Icons.settings_outlined)),
+              IconButton(onPressed: () => _showSortMenu(context), icon: const Icon(Icons.sort_rounded)),
+              IconButton(onPressed: () => Navigator.pushNamed(context, AppRoutes.trash), icon: const Icon(Icons.auto_delete_outlined)),
+              IconButton(onPressed: () => Navigator.pushNamed(context, AppRoutes.settings), icon: const Icon(Icons.settings_outlined)),
               const SizedBox(width: 8),
             ],
-          ),
-        if (!isDesktop)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: NoteSearchBar(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                onChanged: _onSearchChanged,
-                onClear: () {
-                  AppFeedback.light();
-                  context.read<NotesProvider>().setSearchQuery('');
-                  _searchFocusNode.unfocus();
-                },
+
+            // 🟢 将搜索框和分类作为 AppBar 的 Bottom 一体化封装！
+            // 这样它们在滚动时就是一个不可分割的整体，动画极其丝滑！
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(104), // 搜索框 + 标签的高度总和
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 搜索框区域
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: NoteSearchBar(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      onChanged: _onSearchChanged,
+                      onClear: () {
+                        AppFeedback.light();
+                        context.read<NotesProvider>().setSearchQuery('');
+                        _searchFocusNode.unfocus();
+                      },
+                    ),
+                  ),
+                  // 分类标签区域
+                  Consumer<NotesProvider>(
+                    builder: (context, provider, _) {
+                      return Container(
+                        height: 36, // 极致纤薄的标签栏
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 16),
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: EdgeInsets.zero,
+                          physics: const BouncingScrollPhysics(),
+                          children: [
+                            _buildCategoryChip(theme, '全部', provider.selectedCategory == null, () => provider.selectCategory(null)),
+                            ...provider.categories.map((c) => _buildCategoryChip(
+                                theme, c, provider.selectedCategory == c,
+                                    () => provider.selectCategory(provider.selectedCategory == c ? null : c))),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: ActionChip(
+                                onPressed: () => _handleAddCategory(context),
+                                tooltip: "添加分类",
+                                label: const Icon(Icons.add_rounded, size: 16),
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                side: BorderSide.none,
+                                backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                                labelStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ),
-        SliverToBoxAdapter(
-          child: Consumer<NotesProvider>(
-            builder: (context, provider, _) {
-              return Container(
-                height: 50,
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 16),
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.zero,
-                  children: [
-                    _buildCategoryChip(
-                        theme,
-                        '全部',
-                        provider.selectedCategory == null,
-                            () => provider.selectCategory(null)),
-                    ...provider.categories.map((c) => _buildCategoryChip(
-                        theme,
-                        c,
-                        provider.selectedCategory == c,
-                            () => provider.selectCategory(
-                            provider.selectedCategory == c ? null : c))),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: ActionChip(
-                        onPressed: () => _handleAddCategory(context),
-                        tooltip: "添加分类",
-                        label: const Icon(Icons.add_rounded, size: 18),
-                        padding: EdgeInsets.zero,
-                        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20)),
-                        side: BorderSide.none,
-                        backgroundColor: theme.colorScheme.surfaceContainerHighest
-                            .withOpacity(0.5),
-                        labelStyle:
-                        TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
+
+        // 这里去掉了原本的 SliverToBoxAdapter，因为全合并到 AppBar 里了！
       ],
 
-      // 🌟 灵魂交叉切换动画 (CrossFade) —— 保留原分类切换动画
+      // 🌟 灵魂交叉切换动画 (CrossFade)
       body: Consumer<NotesProvider>(
         builder: (context, provider, _) {
           final notes = provider.filteredNotes;
@@ -269,8 +272,7 @@ class _NotesPageState extends State<NotesPage> {
             transitionBuilder: (child, animation) {
               return FadeTransition(opacity: animation, child: child);
             },
-            child: _buildGridBody(
-                context, theme, notes, currentKey, provider.searchQuery, isDesktop),
+            child: _buildGridBody(context, theme, notes, currentKey, provider.searchQuery, isDesktop),
           );
         },
       ),
@@ -383,79 +385,98 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  // --- 以下 UI 代码保持不变，仅为了完整性列出 ---
+// =========================================================================
+  // 🟢 架构师重构：大尺寸标题 + 舒展的搜索框 + 分类标签栏
+  // =========================================================================
   Widget _buildDesktopHeader(BuildContext context, ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+      padding: const EdgeInsets.fromLTRB(32, 28, 32, 16), // 🟢 增加四周留白，营造高级感
       color: theme.colorScheme.surface,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
+          // 第一行：大标题 + 搜索框 + 操作图标
           Row(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text("我的笔记",
-                  style: theme.textTheme.headlineSmall
-                      ?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(width: 12),
-              Selector<NotesProvider, int>(
-                selector: (_, provider) => provider.filteredNotes.length,
-                builder: (_, count, __) => Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12)),
-                  child: Text(
-                    "$count",
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
+              // 🟢 霸气的大标题，绝对醒目
+              Text(
+                  "我的笔记",
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w900, // 最粗的字重
+                    color: theme.colorScheme.onSurface,
+                    letterSpacing: 1.2,
+                  )
+              ),
+              const Spacer(), // 推开间距
+
+              // 🟢 舒展的搜索框，不再受限于标题栏的窄缝
+              SizedBox(
+                width: 280,
+                child: NoteSearchBar(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  onChanged: _onSearchChanged,
+                  onClear: () {
+                    AppFeedback.light();
+                    context.read<NotesProvider>().setSearchQuery('');
+                    _searchFocusNode.unfocus();
+                  },
                 ),
+              ),
+
+              const SizedBox(width: 16),
+              const SyncStatusIndicator(),
+              IconButton(
+                onPressed: () async {
+                  await context.read<NotesProvider>().syncWithCloud();
+                  if (context.mounted) ToastUtils.showSuccess(context, '已与云端同步最新数据');
+                },
+                icon: const Icon(Icons.sync_rounded, size: 22),
+                tooltip: "同步",
+                style: IconButton.styleFrom(backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => _showSortMenu(context),
+                icon: const Icon(Icons.sort_rounded, size: 22),
+                tooltip: "排序",
+                style: IconButton.styleFrom(backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)),
               ),
             ],
           ),
-          const SizedBox(width: 24),
-          Expanded(
-              child: Center(
-                  child: NoteSearchBar(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      maxWidth: 500,
-                      backgroundColor: theme.colorScheme.surfaceContainerLow,
-                      onChanged: _onSearchChanged,
-                      onClear: () {
-                        AppFeedback.light();
-                        context.read<NotesProvider>().setSearchQuery('');
-                        _searchFocusNode.unfocus();
-                      }))),
-          const SizedBox(width: 24),
-          const SyncStatusIndicator(),
-          IconButton.filledTonal(
-              onPressed: () async {
-                await context.read<NotesProvider>().syncWithCloud();
-                if (context.mounted) {
-                  ToastUtils.showSuccess(context, '已与云端同步最新数据');
-                }
+
+          const SizedBox(height: 20), // 标题行和分类行的呼吸间距
+
+          // 第二行：分类标签栏
+          SizedBox(
+            height: 36,
+            child: Consumer<NotesProvider>(
+              builder: (context, provider, _) {
+                return ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _buildCategoryChip(theme, '全部', provider.selectedCategory == null, () => provider.selectCategory(null)),
+                    ...provider.categories.map((c) => _buildCategoryChip(theme, c, provider.selectedCategory == c, () => provider.selectCategory(provider.selectedCategory == c ? null : c))),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: ActionChip(
+                        onPressed: () => _handleAddCategory(context),
+                        tooltip: "添加分类",
+                        label: const Icon(Icons.add_rounded, size: 16),
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        side: BorderSide.none,
+                        backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                      ),
+                    ),
+                  ],
+                );
               },
-              icon: const Icon(Icons.sync_rounded),
-              tooltip: "同步",
-              style: IconButton.styleFrom(
-                  backgroundColor:
-                  theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                  foregroundColor: theme.colorScheme.onSurfaceVariant)),
-          const SizedBox(width: 8),
-          IconButton.filledTonal(
-              onPressed: () => _showSortMenu(context),
-              icon: const Icon(Icons.sort_rounded),
-              tooltip: "排序",
-              style: IconButton.styleFrom(
-                  backgroundColor:
-                  theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                  foregroundColor: theme.colorScheme.onSurfaceVariant)),
+            ),
+          ),
         ],
       ),
     );

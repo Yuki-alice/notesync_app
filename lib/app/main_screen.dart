@@ -24,7 +24,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-  PageController? _pageController; // 🟢 找回 PageController
+  PageController? _pageController;
   bool? _wasDesktop;
   StreamSubscription<AuthState>? _authStateSubscription;
 
@@ -36,7 +36,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: _currentIndex); // 🟢 初始化
+    _pageController = PageController(initialPage: _currentIndex);
     _authStateSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final AuthChangeEvent event = data.event;
       if (event == AuthChangeEvent.signedIn) {

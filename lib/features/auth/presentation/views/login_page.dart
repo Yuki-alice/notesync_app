@@ -1,11 +1,10 @@
-// 文件路径: lib/features/auth/presentation/views/login_page.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../../utils/toast_utils.dart';
-import '../viewmodels/login_viewmodel.dart'; // 🟢 引入 ViewModel
+import '../viewmodels/login_viewmodel.dart';
 
-// 🟢 入口处注入 ViewModel
+
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
 

@@ -34,7 +34,7 @@ class TrashPage extends StatelessWidget {
           appBar: AppBar(
             title: const Text('回收站', style: TextStyle(fontWeight: FontWeight.w600)),
             centerTitle: true,
-            backgroundColor: theme.colorScheme.surface.withOpacity(0.95),
+            backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.95),
             surfaceTintColor: Colors.transparent,
             elevation: 0,
             bottom: TabBar(
@@ -46,7 +46,7 @@ class TrashPage extends StatelessWidget {
               unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
               indicatorColor: theme.colorScheme.primary,
               indicatorSize: TabBarIndicatorSize.label,
-              dividerColor: theme.colorScheme.outlineVariant.withOpacity(0.2),
+              dividerColor: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
               splashBorderRadius: BorderRadius.circular(16),
               onTap: (_) => HapticFeedback.selectionClick(),
             ),
@@ -61,7 +61,7 @@ class TrashPage extends StatelessWidget {
                   icon: Icon(Icons.delete_sweep_rounded, color: theme.colorScheme.error),
                   label: Text('清空', style: TextStyle(color: theme.colorScheme.error)),
                   style: FilledButton.styleFrom(
-                    backgroundColor: theme.colorScheme.errorContainer.withOpacity(0.5),
+                    backgroundColor: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
                 ),
@@ -88,7 +88,7 @@ class TrashPage extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         icon: Container(
           width: 72, height: 72,
-          decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withOpacity(0.3), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withValues(alpha: 0.3), shape: BoxShape.circle),
           child: Icon(Icons.delete_forever_rounded, size: 32, color: theme.colorScheme.error),
         ),
         title: Text('清空回收站?', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface), textAlign: TextAlign.center),
@@ -130,9 +130,9 @@ class _AutoCleanBanner extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.3)),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -360,12 +360,12 @@ class _TrashItemCardState extends State<_TrashItemCard> {
           decoration: BoxDecoration(
             color: _isHovering
                 ? theme.colorScheme.surfaceContainerHigh
-                : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: _isHovering
                   ? theme.colorScheme.outlineVariant
-                  : theme.colorScheme.outlineVariant.withOpacity(0.2),
+                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
             ),
           ),
           child: Padding(
@@ -394,7 +394,7 @@ class _TrashItemCardState extends State<_TrashItemCard> {
                         title.isEmpty ? (isNote ? '无标题笔记' : '无标题待办') : title,
                         style: theme.textTheme.titleMedium?.copyWith(
                           decoration: TextDecoration.lineThrough,
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                           fontWeight: FontWeight.w500,
                         ),
                         maxLines: 1,
@@ -477,7 +477,7 @@ class _TrashItemCardState extends State<_TrashItemCard> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         icon: Container(
           width: 72, height: 72,
-          decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withOpacity(0.3), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withValues(alpha: 0.3), shape: BoxShape.circle),
           child: Icon(Icons.delete_forever_rounded, size: 32, color: theme.colorScheme.error),
         ),
         title: Text('永久删除?', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface), textAlign: TextAlign.center),

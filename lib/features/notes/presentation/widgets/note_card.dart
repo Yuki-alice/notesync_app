@@ -26,18 +26,22 @@ class NoteCard extends StatelessWidget {
     final theme = Theme.of(context);
     final coverImage = note.firstImagePath;
     final hasTitle = note.title.isNotEmpty;
-    final hasContent = note.plainText.isNotEmpty;
 
-    // 🌟 核心魔法 1：注入 Hero 原生空间引擎
+    // 文本清洗：压缩多余换行
+    final cleanContent = note.plainText.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final hasContent = cleanContent.isNotEmpty;
+
+    // 🟢 架构师逻辑优化：动态空间折叠开关
+    // 只有当置顶、分类、标签至少存在一个时，才分配空间
+    final hasMetadata = note.isPinned || note.category != null || note.tags.isNotEmpty;
+
     return Hero(
       tag: 'note_card_${note.id}',
-      // 🌟 飞行阻挡器：在卡片起飞扩张的 300ms 内，用一块纯色画板遮住内部文本，
-      // 完美解决由于尺寸剧烈变化导致的文本排版溢出 (RenderFlex) 报错！
       flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
         return AnimatedBuilder(
           animation: animation,
           builder: (context, child) {
-            final radius = BorderRadius.lerp(BorderRadius.circular(24), BorderRadius.zero, animation.value);
+            final radius = BorderRadius.lerp(BorderRadius.circular(20), BorderRadius.zero, animation.value);
             return Material(
               color: theme.colorScheme.surface,
               shape: RoundedRectangleBorder(borderRadius: radius ?? BorderRadius.zero),
@@ -46,78 +50,131 @@ class NoteCard extends StatelessWidget {
           },
         );
       },
-      child: Material(
-        color: theme.colorScheme.surfaceContainerLowest,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.3), width: 1),
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.shadow.withOpacity(0.04),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withOpacity(0.15),
+            width: 0.5,
+          ),
         ),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          onSecondaryTap: onSecondaryTap,
-          splashColor: theme.colorScheme.primary.withOpacity(0.1),
-          child: SingleChildScrollView(
-            physics: const NeverScrollableScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (coverImage != null)
-                  Container(
-                    height: 140,
-                    width: double.infinity,
-                    decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
-                    child: NoteCoverImage(imagePath: coverImage),
-                  ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            onSecondaryTap: onSecondaryTap,
+            splashColor: theme.colorScheme.primary.withOpacity(0.05),
+            highlightColor: theme.colorScheme.primary.withOpacity(0.02),
+            child: SingleChildScrollView(
+              physics: const NeverScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (coverImage != null)
+                    Container(
+                      // 🟢 架构师视觉优化：将图片高度从 110 提升到 150，大幅增强图片视觉张力！
+                      height: 150,
+                      width: double.infinity,
+                      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
+                      child: NoteCoverImage(imagePath: coverImage),
+                    ),
 
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (hasTitle) ...[
-                        SearchHighlightText(note.title, query: searchQuery, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, height: 1.2, color: theme.colorScheme.onSurface), maxLines: 2, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 8),
-                      ],
-
-                      if (hasContent) ...[
-                        SearchHighlightText(note.plainText, query: searchQuery, maxLines: coverImage != null ? 3 : 6, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant, height: 1.5)),
-                        const SizedBox(height: 12),
-                      ],
-
-                      Wrap(
-                        spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          if (note.isPinned) Icon(Icons.push_pin_rounded, size: 14, color: theme.colorScheme.primary),
-                          if (note.category != null)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: theme.colorScheme.primaryContainer.withOpacity(0.6), borderRadius: BorderRadius.circular(6)),
-                              child: Text(note.category!, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onPrimaryContainer, fontWeight: FontWeight.bold, fontSize: 10)),
-                            ),
-                          ...note.tags.take(2).map((tag) {
-                            final isMatch = searchQuery.isNotEmpty && tag.toLowerCase().contains(searchQuery.toLowerCase());
-                            return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: isMatch ? const Color(0xFFFFF176) : Colors.transparent, borderRadius: BorderRadius.circular(4)),
-                              child: Text('#$tag', style: theme.textTheme.labelSmall?.copyWith(color: isMatch ? Colors.black : theme.colorScheme.secondary, fontStyle: FontStyle.italic)),
-                            );
-                          }),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (hasTitle) ...[
+                          SearchHighlightText(
+                              note.title,
+                              query: searchQuery,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.3,
+                                  letterSpacing: 0.3,
+                                  color: theme.colorScheme.onSurface
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis
+                          ),
+                          // 🟢 动态留白：如果下面还有正文，留窄一点；如果没有正文但有标签，留宽一点
+                          if (hasContent) const SizedBox(height: 6)
+                          else if (hasMetadata) const SizedBox(height: 12)
+                          else const SizedBox(height: 8),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(Icons.access_time_rounded, size: 12, color: theme.colorScheme.outline),
-                          const SizedBox(width: 4),
-                          Text(note.formattedUpdatedAt, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline)),
+
+                        if (hasContent) ...[
+                          SearchHighlightText(
+                              cleanContent,
+                              query: searchQuery,
+                              // 🟢 动态行数：如果有大图，正文就少显示点（2行）；纯文字就多显示点（4行）
+                              maxLines: coverImage != null ? 2 : 4,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8),
+                                height: 1.6,
+                                fontSize: 13,
+                              )
+                          ),
+                          // 🟢 动态留白：只有下方有标签时，才撑开 12 的距离，否则压缩到 8
+                          if (hasMetadata) const SizedBox(height: 12) else const SizedBox(height: 8),
                         ],
-                      ),
-                    ],
+
+                        // 🟢 架构师空间折叠：彻底消灭僵尸留白！
+                        // 如果既没置顶，也没分类，也没标签，整个 Wrap 和底部的间距直接消失
+                        if (hasMetadata) ...[
+                          Wrap(
+                            spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (note.isPinned) Icon(Icons.push_pin_rounded, size: 14, color: theme.colorScheme.primary),
+                              if (note.category != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                      color: theme.colorScheme.primaryContainer.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(6)
+                                  ),
+                                  child: Text(note.category!, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onPrimaryContainer, fontWeight: FontWeight.w700, fontSize: 10)),
+                                ),
+                              ...note.tags.take(2).map((tag) {
+                                final isMatch = searchQuery.isNotEmpty && tag.toLowerCase().contains(searchQuery.toLowerCase());
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                      color: isMatch ? const Color(0xFFFFF176) : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                                      borderRadius: BorderRadius.circular(4)
+                                  ),
+                                  child: Text('#$tag', style: theme.textTheme.labelSmall?.copyWith(color: isMatch ? Colors.black : theme.colorScheme.secondary, fontSize: 10)),
+                                );
+                              }),
+                            ],
+                          ),
+                          const SizedBox(height: 10), // 只有上面有标签时，才为下方的时间行撑开留白
+                        ],
+
+                        Row(
+                          children: [
+                            Icon(Icons.access_time_rounded, size: 11, color: theme.colorScheme.outline.withOpacity(0.6)),
+                            const SizedBox(width: 4),
+                            Text(note.formattedUpdatedAt, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline.withOpacity(0.6), fontSize: 10, letterSpacing: 0.2)),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -126,7 +183,7 @@ class NoteCard extends StatelessWidget {
   }
 }
 
-// 🌟 解决闪烁的终极方案：单例内存级读取
+// 🌟 单例内存级读取保持不变
 class NoteCoverImage extends StatefulWidget {
   final String imagePath;
   const NoteCoverImage({super.key, required this.imagePath});
@@ -143,10 +200,12 @@ class _NoteCoverImageState extends State<NoteCoverImage> {
   void initState() {
     super.initState();
     final file = File(widget.imagePath);
-    if (file.isAbsolute) {
+
+    if (file.isAbsolute && file.existsSync()) {
       _resolvedFile = file;
+      _fileCache[widget.imagePath] = file;
     } else if (_fileCache.containsKey(widget.imagePath)) {
-      _resolvedFile = _fileCache[widget.imagePath]; // 直接拿缓存，不闪白！
+      _resolvedFile = _fileCache[widget.imagePath];
     } else {
       _resolveImageAsync(widget.imagePath);
     }
@@ -163,7 +222,11 @@ class _NoteCoverImageState extends State<NoteCoverImage> {
   @override
   Widget build(BuildContext context) {
     if (_resolvedFile != null) {
-      return Image.file(_resolvedFile!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Center(child: Icon(Icons.broken_image_rounded, color: Theme.of(context).colorScheme.outline)));
+      return Image.file(
+          _resolvedFile!,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Center(child: Icon(Icons.broken_image_rounded, color: Theme.of(context).colorScheme.outline.withOpacity(0.5)))
+      );
     }
     return Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
   }

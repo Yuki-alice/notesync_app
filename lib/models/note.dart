@@ -1,37 +1,23 @@
-import 'package:hive/hive.dart';
 import 'dart:convert';
-
+import '../utils/date_formatter.dart';
+import 'package:isar/isar.dart';
 part 'note.g.dart';
 
-@HiveType(typeId: 0)
-class Note extends HiveObject {
-  @HiveField(0)
-  final String id;
+@collection
+class Note {
+  Id isarId = Isar.autoIncrement;
 
-  @HiveField(1)
-  final String title;
+  @Index(unique: true, replace: true)
+  String id;
 
-  @HiveField(2)
-  final String content;
-
-  @HiveField(3)
-  final DateTime createdAt;
-
-  @HiveField(4)
-  final DateTime updatedAt;
-
-  @HiveField(5)
-  final List<String> tags;
-
-  @HiveField(6)
-  final String? category;
-
-  // 是否置顶
-  @HiveField(7)
-  final bool isPinned;
-
-  @HiveField(8)
-  final bool isDeleted;
+  String title;
+  String content;
+  DateTime createdAt;
+  DateTime updatedAt;
+  List<String> tags;
+  String? category;
+  bool isPinned;
+  bool isDeleted;
 
   Note({
     required this.id,
@@ -41,7 +27,7 @@ class Note extends HiveObject {
     required this.updatedAt,
     this.tags = const [],
     this.category,
-    this.isPinned = false, // 默认为 false
+    this.isPinned = false,
     this.isDeleted = false,
   });
 
@@ -58,69 +44,28 @@ class Note extends HiveObject {
       for (final op in delta) {
         if (op is Map<String, dynamic> && op.containsKey('insert')) {
           final insert = op['insert'];
-          // 只有当插入内容是 String 时才追加
-          // 遇到 Map (即图片对象) 直接跳过，不写入任何占位符
-          if (insert is String) {
-            buffer.write(insert);
-          }
+          if (insert is String) buffer.write(insert);
         }
       }
-      // 将连续的换行符或空白替换为单个空格，防止摘要出现大段留白
-      return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+      return buffer.toString();
     } catch (e) {
-      return content;
+      return '';
     }
   }
-
+  /// 获取第一张图片的路径（用于卡片封面展示）
   String? get firstImagePath {
-    if (!isRichText) return null;
-    try {
-      final List<dynamic> delta = jsonDecode(content);
-      for (final op in delta) {
-        if (op is Map<String, dynamic> && op.containsKey('insert')) {
-          final insert = op['insert'];
-          if (insert is Map && insert.containsKey('image')) {
-            return insert['image'] as String;
-          }
-        }
-      }
-    } catch (e) {
-      return null;
-    }
-    return null;
+    final paths = extractAllImagePaths(content);
+    return paths.isNotEmpty ? paths.first : null;
   }
 
+  /// 格式化更新时间 (使用相对时间：如"刚刚", "3小时前"，让笔记列表更具呼吸感)
   String get formattedUpdatedAt {
-    final now = DateTime.now();
-    // 获取“日历日”的午夜时间，确保计算的是“跨了几天”而不是“差了多少小时”
-    final today = DateTime(now.year, now.month, now.day);
-    final noteDate = DateTime(updatedAt.year, updatedAt.month, updatedAt.day);
-
-    // 计算相差的天数
-    final diffDays = today.difference(noteDate).inDays;
-
-    // 格式化具体时间 (HH:mm)
-    final timeStr = "${updatedAt.hour.toString().padLeft(2, '0')}:${updatedAt.minute.toString().padLeft(2, '0')}";
-
-    if (diffDays == 0) {
-      return "今日 $timeStr";
-    } else if (diffDays == 1) {
-      return "昨日 $timeStr";
-    } else if (diffDays == 2) {
-      return "前日 $timeStr";
-    } else if (diffDays > 2 && diffDays < 7) {
-      // 7天内显示星期几
-      const weekDays = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-      final weekStr = weekDays[updatedAt.weekday];
-      return "$weekStr $timeStr";
-    } else {
-      // 超过一周，只显示年月日
-      return "${updatedAt.year}/${updatedAt.month.toString().padLeft(2, '0')}/${updatedAt.day.toString().padLeft(2, '0')}";
-    }
+    return DateFormatter.formatRelativeTime(updatedAt);
   }
 
+  /// 格式化创建时间 (使用绝对时间)
   String get formattedCreatedAt {
-    return "${createdAt.year}-${createdAt.month.toString().padLeft(2,'0')}-${createdAt.day.toString().padLeft(2,'0')} ${createdAt.hour.toString().padLeft(2,'0')}:${createdAt.minute.toString().padLeft(2,'0')}";
+    return DateFormatter.formatFullDateTime(createdAt);
   }
 
   Note copyWith({
@@ -148,7 +93,6 @@ class Note extends HiveObject {
     );
   }
 
-  /// 🟢 [第二阶段新增] 提取 Delta JSON 中所有的图片路径，用于垃圾回收
   static List<String> extractAllImagePaths(String content) {
     final List<String> paths = [];
     final trimmed = content.trim();
@@ -159,13 +103,13 @@ class Note extends HiveObject {
       for (final op in delta) {
         if (op is Map<String, dynamic> && op.containsKey('insert')) {
           final insert = op['insert'];
-          if (insert is Map && insert.containsKey('image')) {
+          if (insert is Map<String, dynamic> && insert.containsKey('image')) {
             paths.add(insert['image'] as String);
           }
         }
       }
     } catch (e) {
-      // 解析失败则忽略
+      // 忽略解析错误
     }
     return paths;
   }

@@ -1,4 +1,10 @@
+import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
+
+// 🟢 引入刚刚拆分出来的积木
+import 'widgets/desktop_sidebar.dart';
 
 class MainLayoutDesktop extends StatelessWidget {
   final int selectedIndex;
@@ -22,95 +28,101 @@ class MainLayoutDesktop extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    // 生成极浅的不透明底色
+    final surfaceColor = Color.alphaBlend(
+      theme.colorScheme.primary.withOpacity(0.04),
+      theme.colorScheme.surface,
+    );
+
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      body: Row(
+      backgroundColor: surfaceColor,
+      body: Column(
         children: [
-          NavigationRail(
-            selectedIndex: selectedIndex,
-            onDestinationSelected: onDestinationSelected,
-            backgroundColor: theme.colorScheme.surface,
-            indicatorColor: theme.colorScheme.secondaryContainer,
-            minWidth: 72,
-            labelType: NavigationRailLabelType.all,
-            // 🟢 稍微向上调整对齐比例，填补移除 Logo 后的空白
-            groupAlignment: -0.85,
-
-            // 1️⃣ 头部：优化后的新建按钮
-            leading: Column(
+          // ==========================================
+          // 1️⃣ 顶部无边框沉浸式拖拽栏
+          // ==========================================
+          SizedBox(
+            height: 38,
+            child: Row(
               children: [
-                const SizedBox(height: 24), // 顶部留出舒适的呼吸空间
-                if (onFabPressed != null)
-                  FloatingActionButton(
-                    elevation: 0,
-                    hoverElevation: 3, // 🟢 鼠标悬浮时微微抬起，增强桌面端交互感
-                    onPressed: onFabPressed,
-                    tooltip: '新建',
-                    // 🟢 改用 primaryContainer，色彩更柔和，符合现代桌面端设计语言
-                    backgroundColor: theme.colorScheme.primaryContainer,
-                    foregroundColor: theme.colorScheme.onPrimaryContainer,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16), // 🟢 更加现代的平滑圆角
+                Expanded(
+                  child: DragToMoveArea(
+                    child: Container(
+                      color: Colors.transparent,
+                      padding: const EdgeInsets.only(left: 16),
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        children: [
+                          Icon(Icons.auto_awesome_rounded, size: 16, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Text(
+                            'NoteSync',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    // 🟢 使用更圆润饱满的加号图标
-                    child: const Icon(Icons.add_rounded, size: 28),
                   ),
-                const SizedBox(height: 16),
-              ],
-            ),
-
-            // 2️⃣ 中部：主导航
-            destinations: const [
-              NavigationRailDestination(
-                icon: Icon(Icons.description_outlined),
-                selectedIcon: Icon(Icons.description_rounded),
-                label: Text('笔记'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.task_alt_outlined),
-                selectedIcon: Icon(Icons.task_alt_rounded),
-                label: Text('待办'),
-              ),
-            ],
-
-            // 3️⃣ 尾部：底部功能入口 (回收站、设置)
-            trailing: Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // 回收站
-                    IconButton(
-                      icon: const Icon(Icons.auto_delete_outlined),
-                      tooltip: '回收站',
-                      onPressed: onTrashTap,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(height: 8),
-                    // 设置
-                    IconButton(
-                      icon: const Icon(Icons.settings_outlined),
-                      tooltip: '设置',
-                      onPressed: onSettingsTap,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(height: 8),
-                    // 用户头像 (装饰性)
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: theme.colorScheme.secondary,
-                      child: const Text('Me', style: TextStyle(color: Colors.white, fontSize: 10)),
-                    ),
-                  ],
                 ),
-              ),
+                if (!Platform.isMacOS)
+                  SizedBox(
+                    width: 138,
+                    child: WindowCaption(
+                      brightness: theme.brightness,
+                      backgroundColor: Colors.transparent,
+                    ),
+                  ),
+              ],
             ),
           ),
 
-          const VerticalDivider(thickness: 1, width: 1),
+          // ==========================================
+          // 2️⃣ 下方主工作区拼装
+          // ==========================================
+          Expanded(
+            child: Row(
+              children: [
+                // 🟢 左侧：高级磨砂玻璃侧边栏积木
+                ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                    child: Container(
+                      width: 64,
+                      color: surfaceColor.withOpacity(0.8),
+                      child: DesktopSidebar(
+                        selectedIndex: selectedIndex,
+                        onDestinationSelected: onDestinationSelected,
+                        onFabPressed: onFabPressed,
+                        onSettingsTap: onSettingsTap,
+                        onTrashTap: onTrashTap,
+                      ),
+                    ),
+                  ),
+                ),
 
-          Expanded(child: body),
+                // 🟢 右侧：业务主体悬浮卡片积木
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(8, 0, 16, 16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.3), width: 1),
+                      boxShadow: [
+                        BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 4)),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: body,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -1,4 +1,3 @@
-// 文件路径: lib/features/notes/presentation/widgets/editor_bottom_toolbar.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 
@@ -36,7 +35,7 @@ class EditorBottomToolbar extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, -4),
           )
@@ -56,7 +55,7 @@ class EditorBottomToolbar extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: theme.colorScheme.outlineVariant.withOpacity(0.15),
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15),
                       width: 0.5,
                     ),
                   ),
@@ -140,7 +139,7 @@ class EditorBottomToolbar extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-        color: isActive ? color.withOpacity(0.12) : Colors.transparent,
+        color: isActive ? color.withValues(alpha: 0.12) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
       ),
       child: InkWell(
@@ -167,7 +166,7 @@ class EditorBottomToolbar extends StatelessWidget {
                 Icon(
                   Icons.unfold_more_outlined,
                   size: 14,
-                  color: color.withOpacity(0.5),
+                  color: color.withValues(alpha: 0.5),
                 ),
               ]
             ],
@@ -288,7 +287,7 @@ class EditorBottomToolbar extends StatelessWidget {
     return Container(
       height: 16,
       width: 1,
-      color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.3),
+      color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3),
       margin: const EdgeInsets.symmetric(horizontal: 6),
     );
   }
@@ -307,7 +306,7 @@ class EditorBottomToolbar extends StatelessWidget {
         iconButtonSelectedData: quill.IconButtonData(
           style: IconButton.styleFrom(
             backgroundColor: isSecondaryPanel
-                ? theme.colorScheme.primary.withOpacity(0.12)
+                ? theme.colorScheme.primary.withValues(alpha: 0.12)
                 : Colors.transparent,
             foregroundColor: theme.colorScheme.primary,
             iconSize: 22,
@@ -368,7 +367,7 @@ class _ToolbarIconButton extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-        color: isActive ? aColor.withOpacity(0.12) : Colors.transparent,
+        color: isActive ? aColor.withValues(alpha: 0.12) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
       ),
       child: IconButton(

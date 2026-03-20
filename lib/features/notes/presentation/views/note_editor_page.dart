@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/services/image_storage_service.dart';
 import '../../../../models/note.dart';
+import '../../../../utils/date_formatter.dart';
 import '../../../../utils/toast_utils.dart';
 import '../viewmodels/note_editor_viewmodel.dart';
 import '../widgets/dialogs/add_tag_dialog.dart';
@@ -112,7 +113,7 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
   }
 
   String _formatHeaderDate(DateTime date) {
-    return DateFormat('yyyy年M月d日 HH:mm', 'zh_CN').format(date);
+    return DateFormatter.formatFullDateTime(date);
   }
 
   Future<void> _handleExport(String type, NoteEditorViewModel viewModel) async {

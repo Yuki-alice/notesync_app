@@ -1,13 +1,18 @@
-// 文件路径: lib/features/notes/presentation/viewmodels/note_editor_viewmodel.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/services/image_storage_service.dart';
 import '../../../../models/note.dart';
+
+
+String _encodeDeltaInBackground(List<dynamic> deltaJson) {
+  return jsonEncode(deltaJson);
+}
 
 class NoteEditorViewModel extends ChangeNotifier {
   final NotesProvider notesProvider;
@@ -26,8 +31,6 @@ class NoteEditorViewModel extends ChangeNotifier {
   Timer? _autoSaveTimer;
 
   bool _isAutoFormatting = false;
-
-  // 🟢 新增：阅读模式状态
   bool _isReadOnly = false;
   bool get isReadOnly => _isReadOnly;
 
@@ -68,7 +71,6 @@ class NoteEditorViewModel extends ChangeNotifier {
     }
 
     _updateWordCount();
-
     titleController.addListener(_markAsDirty);
 
     quillController.document.changes.listen((event) {
@@ -82,41 +84,32 @@ class NoteEditorViewModel extends ChangeNotifier {
     });
   }
 
-  // 🟢 新增：切换阅读模式
   void toggleReadOnly() {
     _isReadOnly = !_isReadOnly;
-    quillController.readOnly=_isReadOnly;
+    quillController.readOnly = _isReadOnly;
     notifyListeners();
   }
 
-  // 🟢 优化：未命名时不强制输出标题
-// =================================================================
-  // 🌟 满血版 Delta to Markdown 渲染引擎
-  // =================================================================
   String generateMarkdownContent() {
     final title = titleController.text.trim();
     final delta = quillController.document.toDelta();
     final buffer = StringBuffer();
 
-    // 如果有标题，作为 Markdown 的一级标题输出
     if (title.isNotEmpty) {
       buffer.writeln('# $title\n');
     }
 
     String currentLine = '';
 
-    // 逐个节点解析 Quill 的富文本 Delta
     for (final op in delta.toList()) {
       if (op.data is String) {
         final text = op.data as String;
         final attrs = op.attributes ?? {};
 
-        // 遇到换行符，说明当前行结束，需要应用块级样式（如标题、列表）
         if (text == '\n') {
           _appendLineToMarkdown(buffer, currentLine, attrs);
           currentLine = '';
         } else if (text.contains('\n')) {
-          // 处理包含多个换行符的复杂文本块
           final parts = text.split('\n');
           for (int i = 0; i < parts.length - 1; i++) {
             currentLine += _formatInlineMarkdown(parts[i], attrs);
@@ -125,11 +118,9 @@ class NoteEditorViewModel extends ChangeNotifier {
           }
           currentLine += _formatInlineMarkdown(parts.last, attrs);
         } else {
-          // 累加行内文本样式（加粗、斜体等）
           currentLine += _formatInlineMarkdown(text, attrs);
         }
       } else if (op.data is Map) {
-        // 解析图片等嵌入对象
         final dataMap = op.data as Map;
         if (dataMap.containsKey('image')) {
           final imagePath = dataMap['image'];
@@ -138,7 +129,6 @@ class NoteEditorViewModel extends ChangeNotifier {
       }
     }
 
-    // 补齐最后一行
     if (currentLine.isNotEmpty) {
       _appendLineToMarkdown(buffer, currentLine, {});
     }
@@ -146,7 +136,6 @@ class NoteEditorViewModel extends ChangeNotifier {
     return buffer.toString().trim();
   }
 
-  // 处理行内样式（加粗、斜体、代码等）
   String _formatInlineMarkdown(String text, Map<String, dynamic> attrs) {
     if (text.isEmpty) return text;
     String result = text;
@@ -157,7 +146,6 @@ class NoteEditorViewModel extends ChangeNotifier {
     return result;
   }
 
-  // 处理块级样式（标题、列表、引用等）
   void _appendLineToMarkdown(StringBuffer buffer, String lineText, Map<String, dynamic> blockAttrs) {
     if (blockAttrs['header'] != null) {
       final level = blockAttrs['header'] as int;
@@ -289,7 +277,8 @@ class NoteEditorViewModel extends ChangeNotifier {
     final title = titleController.text.trim();
     if (_editingNote == null && title.isEmpty && quillController.document.isEmpty()) return;
 
-    final contentJson = jsonEncode(quillController.document.toDelta().toJson());
+    final deltaJsonList = quillController.document.toDelta().toJson();
+    final contentJson = await compute(_encodeDeltaInBackground, deltaJsonList);
 
     if (_editingNote == null) {
       final newNote = await notesProvider.addNote(

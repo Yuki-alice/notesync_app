@@ -1,4 +1,3 @@
-// 文件路径: lib/main.dart
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -48,11 +47,11 @@ void main() async {
     await windowManager.ensureInitialized();
     WindowOptions windowOptions = const WindowOptions(
       size: Size(1024, 768),
-      minimumSize: Size(400, 600),
+      minimumSize: Size(360, 600),
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.normal,
+      titleBarStyle: TitleBarStyle.hidden,
     );
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
@@ -60,8 +59,8 @@ void main() async {
     });
   }
 
-  final noteRepo = NoteRepository(dbService.noteBox);
-  final todoRepo = TodoRepository(dbService.todoBox);
+  final noteRepo = NoteRepository(dbService.isar);
+  final todoRepo = TodoRepository(dbService.isar);
 
   runApp(
     MultiProvider(
@@ -107,11 +106,11 @@ class MyApp extends StatelessWidget {
           textTheme: textTheme,
           useMaterial3: true,
           brightness: Brightness.light,
-          colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.light, surfaceTint: seedColor.withOpacity(0.05)),
+          colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.light, surfaceTint: seedColor.withValues(alpha: 0.05)),
           scaffoldBackgroundColor: const Color(0xFFFDFDFD),
           appBarTheme: const AppBarTheme(centerTitle: false, scrolledUnderElevation: 0, backgroundColor: Colors.transparent),
           inputDecorationTheme: InputDecorationTheme(
-            filled: true, fillColor: Colors.grey.withOpacity(0.05),
+            filled: true, fillColor: Colors.grey.withValues(alpha: 0.05),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
@@ -121,11 +120,11 @@ class MyApp extends StatelessWidget {
           textTheme: textTheme,
           useMaterial3: true,
           brightness: Brightness.dark,
-          colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.dark, surfaceTint: seedColor.withOpacity(0.1)),
+          colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.dark, surfaceTint: seedColor.withValues(alpha: 0.1)),
           scaffoldBackgroundColor: const Color(0xFF1A1C1E),
           appBarTheme: const AppBarTheme(centerTitle: false, scrolledUnderElevation: 0, backgroundColor: Colors.transparent),
           inputDecorationTheme: InputDecorationTheme(
-            filled: true, fillColor: Colors.white.withOpacity(0.05),
+            filled: true, fillColor: Colors.white.withValues(alpha: 0.05),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),

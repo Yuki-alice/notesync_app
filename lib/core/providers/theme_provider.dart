@@ -1,29 +1,50 @@
+// 文件路径: lib/core/providers/theme_provider.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum ThemeVibe { solid, gradient }
+
+class AppThemeStyle {
+  final String id;
+  final String name;
+  final Color seedColor;
+  final ThemeVibe vibe;
+
+  const AppThemeStyle({
+    required this.id,
+    required this.name,
+    required this.seedColor,
+    this.vibe = ThemeVibe.solid,
+  });
+}
+
 class ThemeProvider with ChangeNotifier {
-  bool _isDarkMode = false;
-  int _colorSeedValue = Colors.indigo.value; // 默认颜色值的整数表示
+  ThemeMode _themeMode = ThemeMode.system;
+  String _currentThemeId = 'classic_blue';
   late SharedPreferences _prefs;
 
-  bool get isDarkMode => _isDarkMode;
-  Color get themeColor => Color(_colorSeedValue); // 获取当前颜色对象
+  ThemeMode get themeMode => _themeMode;
+  bool get isDarkMode => _themeMode == ThemeMode.dark;
 
-  // 🟢 预设的颜色列表 (MD3 推荐色)
-  static const List<Color> presetColors = [
-    Colors.indigo,
-    Colors.blue,
-    Colors.teal,
-    Colors.green,
-    Colors.orange,
-    Colors.deepOrange,
-    Colors.red,
-    Colors.pink,
-    Colors.purple,
-    Colors.blueGrey,
+  AppThemeStyle get currentStyle => presetThemes.firstWhere(
+          (t) => t.id == _currentThemeId,
+      orElse: () => presetThemes.first
+  );
+
+  Color get themeColor => currentStyle.seedColor;
+  String get currentThemeId => _currentThemeId;
+
+  // 🌟 超级调色盘 3.0：突破 MD3 算法压制的高辨识度色彩
+  static const List<AppThemeStyle> presetThemes = [
+    AppThemeStyle(id: 'classic_blue', name: '极简原生', seedColor: Color(0xFF5C6BC0), vibe: ThemeVibe.solid),
+    AppThemeStyle(id: 'sakura_anime', name: '樱花微醺', seedColor: Color(0xFFF06292), vibe: ThemeVibe.solid),
+    AppThemeStyle(id: 'mint_breeze', name: '薄荷微风', seedColor: Color(0xFF009688), vibe: ThemeVibe.gradient), // 加深薄荷绿
+    AppThemeStyle(id: 'sunset_glow', name: '落日橘辉', seedColor: Color(0xFFFF5722), vibe: ThemeVibe.gradient),
+    AppThemeStyle(id: 'ocean_deep', name: '静谧海蓝', seedColor: Color(0xFF0277BD), vibe: ThemeVibe.gradient),
+    AppThemeStyle(id: 'nebula_purple', name: '星云幻紫', seedColor: Color(0xFF9C27B0), vibe: ThemeVibe.gradient),
+    AppThemeStyle(id: 'ink_cyan', name: '苍岩青墨', seedColor: Color(0xFF004D40), vibe: ThemeVibe.solid),
+    AppThemeStyle(id: 'latte_coffee', name: '拿铁咖啡', seedColor: Color(0xFF795548), vibe: ThemeVibe.solid),
   ];
-
-  ThemeMode get themeMode => _isDarkMode ? ThemeMode.dark : ThemeMode.light;
 
   ThemeProvider() {
     _loadThemePrefs();
@@ -31,23 +52,23 @@ class ThemeProvider with ChangeNotifier {
 
   Future<void> _loadThemePrefs() async {
     _prefs = await SharedPreferences.getInstance();
-    _isDarkMode = _prefs.getBool('is_dark_mode') ?? false;
-    // 读取保存的颜色值，如果没有则默认 Indigo
-    _colorSeedValue = _prefs.getInt('theme_color_value') ?? Colors.indigo.value;
+    final modeIndex = _prefs.getInt('theme_mode_index') ?? ThemeMode.system.index;
+    _themeMode = ThemeMode.values[modeIndex];
+    _currentThemeId = _prefs.getString('theme_style_id') ?? 'classic_blue';
     notifyListeners();
   }
 
-  Future<void> toggleTheme() async {
-    _isDarkMode = !_isDarkMode;
-    await _prefs.setBool('is_dark_mode', _isDarkMode);
+  Future<void> setThemeMode(ThemeMode mode) async {
+    if (_themeMode == mode) return;
+    _themeMode = mode;
+    await _prefs.setInt('theme_mode_index', mode.index);
     notifyListeners();
   }
 
-  // 🟢 新增：设置主题色
-  Future<void> setThemeColor(Color color) async {
-    if (_colorSeedValue == color.value) return;
-    _colorSeedValue = color.value;
-    await _prefs.setInt('theme_color_value', _colorSeedValue);
+  Future<void> setThemeStyle(String themeId) async {
+    if (_currentThemeId == themeId) return;
+    _currentThemeId = themeId;
+    await _prefs.setString('theme_style_id', _currentThemeId);
     notifyListeners();
   }
 }

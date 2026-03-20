@@ -1,23 +1,30 @@
 import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
+import 'package:isar/isar.dart';
 import '../../models/todo.dart';
 
 class TodoRepository {
-  final Box<Todo> _box;
+  final Isar _isar;
 
-  TodoRepository(this._box);
+  TodoRepository(this._isar);
 
   Future<void> init() async {}
 
+  Todo? getTodoById(String id) {
+    return _isar.todos.where().idEqualTo(id).findFirstSync();
+  }
+
+  Map<String, DateTime> getAllTodosMetadata() {
+    final todos = _isar.todos.where().findAllSync();
+    return {for (var todo in todos) todo.id: todo.updatedAt};
+  }
+
   List<Todo> getAllTodos() {
     try {
-      final todos = _box.values.toList();
+      final todos = _isar.todos.where().findAllSync();
       todos.sort((a, b) {
         if (a.isCompleted == b.isCompleted) {
-          // 同状态下，后创建的在前面 (或者按 needsAction 排)
           return b.createdAt.compareTo(a.createdAt);
         }
-        // 未完成(false) 排在 完成(true) 前面
         return a.isCompleted ? 1 : -1;
       });
       return todos;
@@ -28,58 +35,31 @@ class TodoRepository {
   }
 
   Future<void> addTodo(Todo todo) async {
-    try {
-      await _box.put(todo.id, todo);
-    } catch (e) {
-      debugPrint('Repo Error (addTodo): $e');
-      rethrow;
-    }
+    await _isar.writeTxn(() async {
+      await _isar.todos.put(todo);
+    });
   }
 
   Future<void> updateTodo(Todo todo) async {
-    try {
-      await _box.put(todo.id, todo);
-    } catch (e) {
-      debugPrint('Repo Error (updateTodo): $e');
-      rethrow;
-    }
+    await _isar.writeTxn(() async {
+      await _isar.todos.put(todo);
+    });
   }
 
   Future<void> deleteTodo(String id) async {
-    try {
-      await _box.delete(id);
-    } catch (e) {
-      debugPrint('Repo Error (deleteTodo): $e');
-      rethrow;
-    }
+    await _isar.writeTxn(() async {
+      await _isar.todos.where().idEqualTo(id).deleteAll();
+    });
   }
 
   Future<void> toggleTodoStatus(String id) async {
-    try {
-      final todo = _box.get(id);
-      if (todo != null) {
-        final updatedTodo = todo.copyWith(
-          isCompleted: !todo.isCompleted,
-          updatedAt: DateTime.now(),
-        );
-        await _box.put(id, updatedTodo);
-      }
-    } catch (e) {
-      debugPrint('Repo Error (toggleTodoStatus): $e');
-      rethrow;
-    }
-  }
-
-  List<Todo> searchTodos(String query) {
-    if (query.isEmpty) return getAllTodos();
-    try {
-      final lowercaseQuery = query.toLowerCase();
-      return _box.values
-          .where((todo) => todo.title.toLowerCase().contains(lowercaseQuery))
-          .toList();
-    } catch (e) {
-      debugPrint('Repo Error (searchTodos): $e');
-      return [];
+    final todo = getTodoById(id);
+    if (todo != null) {
+      final updatedTodo = todo.copyWith(
+        isCompleted: !todo.isCompleted,
+        updatedAt: DateTime.now(),
+      );
+      await updateTodo(updatedTodo);
     }
   }
 }

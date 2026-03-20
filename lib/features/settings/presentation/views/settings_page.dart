@@ -1,8 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/providers/theme_provider.dart';
 import '../../../../core/providers/notes_provider.dart';
@@ -11,8 +9,9 @@ import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../utils/toast_utils.dart';
 import '../../../../widgets/common/dialogs/app_dialog.dart';
-import '../../../../widgets/common/dialogs/app_sheet.dart';
-import '../viewmodels/profile_viewmodel.dart';
+import '../widgets/profile_dashboard_card.dart';
+import '../widgets/theme_mode_toggle.dart';
+import '../widgets/pro_mode_switch.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -28,15 +27,23 @@ class SettingsPage extends StatelessWidget {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // 极简头部
           SliverAppBar.large(
-            title: Text('设置', style: GoogleFonts.notoSans(fontWeight: FontWeight.bold)),
+            title: Text(
+              '设置',
+              style: GoogleFonts.notoSans(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
             centerTitle: false,
             backgroundColor: theme.colorScheme.surface,
             surfaceTintColor: Colors.transparent,
             leading: IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: () => Navigator.pop(context)
+              icon: Icon(
+                Icons.arrow_back_rounded,
+                color: theme.colorScheme.onSurface,
+              ),
+              onPressed: () => Navigator.pop(context),
             ),
           ),
 
@@ -46,8 +53,8 @@ class SettingsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. 用户/登录模块
-                  _buildProfileSection(context, authProvider, theme),
+                  // 1. 个人资料区
+                  ProfileDashboardCard(auth: authProvider, theme: theme),
                   const SizedBox(height: 32),
 
                   // 2. 外观设置
@@ -55,48 +62,195 @@ class SettingsPage extends StatelessWidget {
                   _buildSettingGroup(
                     context,
                     children: [
-                      SwitchListTile(
-                        value: themeProvider.isDarkMode,
-                        onChanged: (val) => themeProvider.toggleTheme(),
-                        title: const Text('深色模式', style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: const Text('减轻眼部疲劳'),
-                        secondary: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: theme.colorScheme.primaryContainer, shape: BoxShape.circle),
-                            child: Icon(themeProvider.isDarkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded, color: theme.colorScheme.onPrimaryContainer)
-                        ),
-                      ),
-                      const Divider(height: 1, indent: 64),
                       Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('主题颜色', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                            Row(
+                              children: [
+                                _buildUniformIcon(
+                                  context,
+                                  Icons.brightness_6_rounded,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  '深色模式',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            ElegantThemeModeToggle(
+                              currentMode: themeProvider.themeMode,
+                              onChanged:
+                                  (mode) => themeProvider.setThemeMode(mode),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSettingGroup(
+                    context,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                _buildUniformIcon(
+                                  context,
+                                  Icons.palette_rounded,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  '个性化主题',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 16),
                             SizedBox(
-                              height: 48,
+                              height: 100,
                               child: ListView.separated(
                                 scrollDirection: Axis.horizontal,
-                                itemCount: ThemeProvider.presetColors.length,
-                                separatorBuilder: (_, __) => const SizedBox(width: 16),
+                                itemCount: ThemeProvider.presetThemes.length,
+                                separatorBuilder:
+                                    (_, __) => const SizedBox(width: 12),
                                 itemBuilder: (context, index) {
-                                  final color = ThemeProvider.presetColors[index];
-                                  final isSelected = themeProvider.themeColor.value == color.value;
+                                  final style =
+                                      ThemeProvider.presetThemes[index];
+                                  final isSelected =
+                                      themeProvider.currentThemeId == style.id;
+                                  BoxDecoration decoration =
+                                      (style.vibe == ThemeVibe.gradient)
+                                          ? BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                              colors: [
+                                                style.seedColor.withValues(alpha:
+                                                  0.6,
+                                                ),
+                                                style.seedColor.withValues(alpha:
+                                                  0.2,
+                                                ),
+                                              ],
+                                            ),
+                                            shape: BoxShape.circle,
+                                            boxShadow:
+                                                isSelected
+                                                    ? [
+                                                      BoxShadow(
+                                                        color: style.seedColor
+                                                            .withValues(alpha: 0.4),
+                                                        blurRadius: 10,
+                                                        offset: const Offset(
+                                                          0,
+                                                          4,
+                                                        ),
+                                                      ),
+                                                    ]
+                                                    : null,
+                                          )
+                                          : BoxDecoration(
+                                            color: style.seedColor,
+                                            shape: BoxShape.circle,
+                                            boxShadow:
+                                                isSelected
+                                                    ? [
+                                                      BoxShadow(
+                                                        color: style.seedColor
+                                                            .withValues(alpha: 0.4),
+                                                        blurRadius: 10,
+                                                        offset: const Offset(
+                                                          0,
+                                                          4,
+                                                        ),
+                                                      ),
+                                                    ]
+                                                    : null,
+                                          );
 
                                   return GestureDetector(
-                                    onTap: () => themeProvider.setThemeColor(color),
+                                    onTap:
+                                        () => themeProvider.setThemeStyle(
+                                          style.id,
+                                        ),
                                     child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 300),
-                                      width: 48,
-                                      height: 48,
-                                      decoration: BoxDecoration(
-                                        color: color,
-                                        shape: BoxShape.circle,
-                                        border: isSelected ? Border.all(color: theme.colorScheme.onSurface, width: 3) : null,
-                                        boxShadow: isSelected ? [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 12, spreadRadius: 2)] : null,
+                                      duration: const Duration(
+                                        milliseconds: 250,
                                       ),
-                                      child: isSelected ? const Icon(Icons.check_rounded, color: Colors.white, size: 24) : null,
+                                      width: 76,
+                                      decoration: BoxDecoration(
+                                        color:
+                                            isSelected
+                                                ? style.seedColor.withValues(alpha:
+                                                  0.05,
+                                                )
+                                                : theme.colorScheme.surface,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color:
+                                              isSelected
+                                                  ? style.seedColor
+                                                  : theme
+                                                      .colorScheme
+                                                      .outlineVariant
+                                                      .withValues(alpha: 0.3),
+                                          width: isSelected ? 2 : 1,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Container(
+                                            width: 36,
+                                            height: 36,
+                                            decoration: decoration,
+                                            child:
+                                                isSelected
+                                                    ? const Icon(
+                                                      Icons.check_rounded,
+                                                      color: Colors.white,
+                                                      size: 20,
+                                                    )
+                                                    : null,
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            style.name,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              height: 1.2,
+                                              fontWeight:
+                                                  isSelected
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
+                                              color:
+                                                  isSelected
+                                                      ? style.seedColor
+                                                      : theme
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   );
                                 },
@@ -110,19 +264,46 @@ class SettingsPage extends StatelessWidget {
 
                   const SizedBox(height: 32),
 
-                  // 3. 笔记管理 (🟢 加入了专业模式开关)
+                  // 3. 笔记管理
                   _buildSectionTitle(context, '笔记'),
                   _buildSettingGroup(
                     context,
                     children: [
-                      const _ProModeSwitchTile(), // 🟢 独立封装的专业模式开关组件
-                      const Divider(height: 1, indent: 64),
+                      const ProModeSwitchTile(), // 🟢 引入拆分组件
+                      Divider(
+                        height: 1,
+                        indent: 64,
+                        color: theme.colorScheme.outlineVariant.withValues(alpha:
+                          0.3,
+                        ),
+                      ),
                       ListTile(
-                        title: const Text('分类管理', style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: const Text('添加、重命名或删除分类'),
-                        leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: theme.colorScheme.tertiaryContainer, shape: BoxShape.circle), child: Icon(Icons.category_rounded, color: theme.colorScheme.onTertiaryContainer)),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => Navigator.pushNamed(context, AppRoutes.categories),
+                        title: Text(
+                          '分类管理',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '添加、重命名或删除分类',
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        leading: _buildUniformIcon(
+                          context,
+                          Icons.category_rounded,
+                        ),
+                        trailing: Icon(
+                          Icons.chevron_right_rounded,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        onTap:
+                            () => Navigator.pushNamed(
+                              context,
+                              AppRoutes.categories,
+                            ),
                       ),
                     ],
                   ),
@@ -135,43 +316,89 @@ class SettingsPage extends StatelessWidget {
                     context,
                     children: [
                       ListTile(
-                        title: const Text('清空回收站', style: TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: const Text('彻底删除回收站内的所有数据'),
-                        leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: theme.colorScheme.errorContainer, shape: BoxShape.circle), child: Icon(Icons.delete_sweep_rounded, color: theme.colorScheme.error)),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => _confirmClearAllTrash(context),
+                        title: Text(
+                          '回收站',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '查看或恢复已删除的内容',
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        leading: _buildUniformIcon(
+                          context,
+                          Icons.delete_outline_rounded,
+                        ),
+                        trailing: Icon(
+                          Icons.chevron_right_rounded,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        onTap:
+                            () => Navigator.pushNamed(context, AppRoutes.trash),
                       ),
                     ],
                   ),
 
                   const SizedBox(height: 40),
 
-                  // 5. 退出登录按钮
+                  // 5. 退出登录
                   if (authProvider.isAuthenticated) ...[
                     _buildSettingGroup(
                       context,
                       children: [
                         ListTile(
-                          title: Text('退出当前账号', style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.error)),
-                          leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withValues(alpha: 0.5), shape: BoxShape.circle),
-                              child: Icon(Icons.logout_rounded, color: theme.colorScheme.error)
+                          title: Text(
+                            '退出当前账号',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.error,
+                            ),
                           ),
-                          onTap: () => _showLogoutConfirmDialog(context, authProvider),
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.errorContainer
+                                  .withValues(alpha: 0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.logout_rounded,
+                              color: theme.colorScheme.error,
+                            ),
+                          ),
+                          onTap:
+                              () => _showLogoutConfirmDialog(
+                                context,
+                                authProvider,
+                              ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 32),
                   ],
 
-                  // 底部版本信息
+                  // 底部信仰声明
                   Center(
                     child: Column(
                       children: [
-                        Text('NoteSync', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurfaceVariant)),
+                        Text(
+                          'NoteSync',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                         const SizedBox(height: 4),
-                        Text('Version 1.0.0', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.outline)),
+                        Text(
+                          'Version 1.0.0',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.outline,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -184,108 +411,54 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileSection(BuildContext context, AuthProvider auth, ThemeData theme) {
-    if (auth.isAuthenticated) {
-      return Material(
-        color: theme.colorScheme.surfaceContainerLowest,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
-        ),
-        child: InkWell(
-          onTap: () => _showEditProfileSheet(context, auth),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-            child: Row(
-              children: [
-                Container(
-                  width: 64, height: 64,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: theme.colorScheme.primaryContainer),
-                  clipBehavior: Clip.hardEdge,
-                  child: Builder(
-                    builder: (context) {
-                      if (auth.localAvatarPath != null && File(auth.localAvatarPath!).existsSync()) {
-                        return Image.file(File(auth.localAvatarPath!), fit: BoxFit.cover);
-                      } else if (auth.avatarUrl != null) {
-                        return Image.network(auth.avatarUrl!, fit: BoxFit.cover);
-                      } else {
-                        return Center(
-                          child: Text(
-                              auth.displayName.isNotEmpty ? auth.displayName[0].toUpperCase() : 'N',
-                              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(auth.displayName, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 4),
-                      Text(auth.currentUser?.email ?? '', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ],
-                  ),
-                ),
-                Icon(Icons.edit_rounded, color: theme.colorScheme.outline),
-              ],
-            ),
-          ),
-        ),
-      );
-    } else {
-      return _buildSettingGroup(
-        context,
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.colorScheme.primaryContainer, shape: BoxShape.circle), child: Icon(Icons.person_outline_rounded, color: theme.colorScheme.primary)),
-            title: const Text('未登录', style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: const Text('登录账号，开启多设备同步'),
-            trailing: FilledButton(onPressed: () => Navigator.pushNamed(context, AppRoutes.login), style: FilledButton.styleFrom(shape: const StadiumBorder()), child: const Text('去登录')),
-            onTap: () => Navigator.pushNamed(context, AppRoutes.login),
-          ),
-        ],
-      );
-    }
+  Widget _buildUniformIcon(BuildContext context, IconData icon) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, color: theme.colorScheme.primary, size: 20),
+    );
   }
 
   Widget _buildSectionTitle(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 16, bottom: 12),
-      child: Text(title, style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
+        ),
+      ),
     );
   }
 
-  Widget _buildSettingGroup(BuildContext context, {required List<Widget> children}) {
+  Widget _buildSettingGroup(
+    BuildContext context, {
+    required List<Widget> children,
+  }) {
     final theme = Theme.of(context);
     return Material(
       color: theme.colorScheme.surfaceContainerLowest,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+        side: BorderSide(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
       ),
       child: Column(children: children),
     );
   }
 
-  void _showEditProfileSheet(BuildContext context, AuthProvider auth) {
-    AppSheet.show(
-      context: context,
-      desktopMaxWidth: 480,
-      builder: (ctx) => ChangeNotifierProvider(
-        create: (_) => ProfileViewModel(auth),
-        child: const EditProfileSheet(),
-      ),
-    );
-  }
-
-  void _showLogoutConfirmDialog(BuildContext context, AuthProvider authProvider) async {
+  void _showLogoutConfirmDialog(
+    BuildContext context,
+    AuthProvider authProvider,
+  ) async {
     final confirm = await AppDialog.showConfirm(
       context: context,
       title: '退出登录',
@@ -294,7 +467,6 @@ class SettingsPage extends StatelessWidget {
       confirmText: '确认退出',
       isDestructive: true,
     );
-
     if (confirm == true) {
       await authProvider.signOut();
       if (context.mounted) {
@@ -303,253 +475,5 @@ class SettingsPage extends StatelessWidget {
         ToastUtils.showInfo(context, '已安全退出账号');
       }
     }
-  }
-
-  void _confirmClearAllTrash(BuildContext context) async {
-    final confirm = await AppDialog.showConfirm(
-      context: context,
-      title: '清空回收站',
-      content: '笔记和待办事项的回收站都将被彻底清空，\n此操作不可恢复。',
-      icon: Icons.delete_sweep_rounded,
-      confirmText: '全部清空',
-      isDestructive: true,
-    );
-
-    if (confirm == true && context.mounted) {
-      Provider.of<NotesProvider>(context, listen: false).emptyTrash();
-      Provider.of<TodosProvider>(context, listen: false).emptyTrash();
-      ToastUtils.showError(context, '回收站已清空');
-    }
-  }
-}
-
-// 🟢 独立封装的专业模式开关组件
-class _ProModeSwitchTile extends StatefulWidget {
-  const _ProModeSwitchTile();
-
-  @override
-  State<_ProModeSwitchTile> createState() => _ProModeSwitchTileState();
-}
-
-class _ProModeSwitchTileState extends State<_ProModeSwitchTile> {
-  bool _isProMode = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPreference();
-  }
-
-  Future<void> _loadPreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _isProMode = prefs.getBool('isProMode') ?? false;
-    });
-  }
-
-  Future<void> _toggleMode(bool value) async {
-    setState(() => _isProMode = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isProMode', value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SwitchListTile(
-      value: _isProMode,
-      onChanged: _toggleMode,
-      title: const Text('专业编辑模式', style: TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: const Text('支持 Markdown 语法 (如 "# " 生成标题)'),
-      secondary: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: theme.colorScheme.secondaryContainer, shape: BoxShape.circle),
-        child: Icon(Icons.code_rounded, color: theme.colorScheme.onSecondaryContainer),
-      ),
-    );
-  }
-}
-
-// ==========================================
-// 个人资料编辑面板 (包含生日与裁剪) 保持不变
-// ==========================================
-class EditProfileSheet extends StatefulWidget {
-  const EditProfileSheet({super.key});
-
-  @override
-  State<EditProfileSheet> createState() => _EditProfileSheetState();
-}
-
-class _EditProfileSheetState extends State<EditProfileSheet> {
-  late TextEditingController _nameController;
-  DateTime? _selectedBirthday;
-
-  @override
-  void initState() {
-    super.initState();
-    final auth = context.read<AuthProvider>();
-    _nameController = TextEditingController(text: auth.displayName);
-    if (auth.birthday != null && auth.birthday!.isNotEmpty) {
-      _selectedBirthday = DateTime.tryParse(auth.birthday!);
-    }
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _selectBirthday(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedBirthday ?? DateTime(2000, 1, 1),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-              primary: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null && picked != _selectedBirthday) {
-      setState(() => _selectedBirthday = picked);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
-    final vm = context.watch<ProfileViewModel>();
-    final auth = context.read<AuthProvider>();
-
-    final birthdayStr = _selectedBirthday != null
-        ? "${_selectedBirthday!.year}-${_selectedBirthday!.month.toString().padLeft(2, '0')}-${_selectedBirthday!.day.toString().padLeft(2, '0')}"
-        : null;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(24, 0, 24, bottomPadding + 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Text('编辑个人资料', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(height: 24),
-
-          Center(
-            child: GestureDetector(
-              onTap: vm.isLoading ? null : () => vm.pickAndCropImage(context),
-              child: Stack(
-                children: [
-                  Container(
-                    width: 88, height: 88,
-                    decoration: BoxDecoration(color: theme.colorScheme.primaryContainer, shape: BoxShape.circle),
-                    clipBehavior: Clip.hardEdge,
-                    child: _buildAvatarImage(vm, auth, theme),
-                  ),
-                  Positioned(
-                    bottom: 0, right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle, border: Border.all(color: theme.colorScheme.surface, width: 3)),
-                      child: Icon(Icons.camera_alt_rounded, size: 16, color: theme.colorScheme.onPrimary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          TextFormField(
-            controller: _nameController,
-            enabled: !vm.isLoading,
-            decoration: InputDecoration(
-              labelText: '用户昵称',
-              prefixIcon: const Icon(Icons.person_outline_rounded),
-              filled: true,
-              fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: theme.colorScheme.primary, width: 2)),
-            ),
-            onChanged: (val) => setState(() {}),
-          ),
-          const SizedBox(height: 16),
-
-          InkWell(
-            onTap: vm.isLoading ? null : () => _selectBirthday(context),
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(16)),
-              child: Row(
-                children: [
-                  Icon(Icons.cake_outlined, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('生日', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                        const SizedBox(height: 2),
-                        Text(
-                          birthdayStr ?? '设置你的生日 (未来会有小惊喜哦)',
-                          style: TextStyle(fontSize: 16, color: birthdayStr != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.calendar_month_rounded, color: theme.colorScheme.primary),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          FilledButton(
-            onPressed: vm.isLoading ? null : () async {
-              final errorMsg = await vm.saveProfile(_nameController.text, birthdayStr);
-              if (!context.mounted) return;
-              if (errorMsg == null) {
-                Navigator.pop(context);
-                ToastUtils.showSuccess(context, '个人资料已完美同步 ✨');
-              } else {
-                ToastUtils.showError(context, errorMsg);
-              }
-            },
-            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-            child: vm.isLoading
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('保存修改', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAvatarImage(ProfileViewModel vm, AuthProvider auth, ThemeData theme) {
-    if (vm.localSelectedImage != null) {
-      return Image.file(vm.localSelectedImage!, fit: BoxFit.cover);
-    }
-    if (auth.localAvatarPath != null && File(auth.localAvatarPath!).existsSync()) {
-      return Image.file(File(auth.localAvatarPath!), fit: BoxFit.cover);
-    }
-    if (auth.avatarUrl != null) {
-      return Image.network(auth.avatarUrl!, fit: BoxFit.cover);
-    }
-    return Center(
-      child: Text(
-        _nameController.text.isNotEmpty ? _nameController.text[0].toUpperCase() : 'N',
-        style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
-      ),
-    );
   }
 }
