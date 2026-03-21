@@ -9,6 +9,8 @@ import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/services/image_storage_service.dart';
 import '../../../../models/note.dart';
 
+import '../../utils/markdown_export_service.dart';
+import '../../utils/markdown_shortcut_service.dart';
 
 String _encodeDeltaInBackground(List<dynamic> deltaJson) {
   return jsonEncode(deltaJson);
@@ -77,8 +79,15 @@ class NoteEditorViewModel extends ChangeNotifier {
       _updateWordCount();
       if (event.source == quill.ChangeSource.local) {
         _markAsDirty();
-        if (isProMode) {
-          _checkMarkdownShortcuts();
+        if (isProMode && !_isAutoFormatting) {
+          // 🟢 极度精简：调用专属服务类进行格式化检测
+          _isAutoFormatting = true;
+          final didFormat = MarkdownShortcutService.format(quillController);
+          if (didFormat) {
+            Future.microtask(() => _isAutoFormatting = false);
+          } else {
+            _isAutoFormatting = false;
+          }
         }
       }
     });
@@ -90,145 +99,9 @@ class NoteEditorViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 🟢 极度精简：调用专属导出服务
   String generateMarkdownContent() {
-    final title = titleController.text.trim();
-    final delta = quillController.document.toDelta();
-    final buffer = StringBuffer();
-
-    if (title.isNotEmpty) {
-      buffer.writeln('# $title\n');
-    }
-
-    String currentLine = '';
-
-    for (final op in delta.toList()) {
-      if (op.data is String) {
-        final text = op.data as String;
-        final attrs = op.attributes ?? {};
-
-        if (text == '\n') {
-          _appendLineToMarkdown(buffer, currentLine, attrs);
-          currentLine = '';
-        } else if (text.contains('\n')) {
-          final parts = text.split('\n');
-          for (int i = 0; i < parts.length - 1; i++) {
-            currentLine += _formatInlineMarkdown(parts[i], attrs);
-            _appendLineToMarkdown(buffer, currentLine, attrs);
-            currentLine = '';
-          }
-          currentLine += _formatInlineMarkdown(parts.last, attrs);
-        } else {
-          currentLine += _formatInlineMarkdown(text, attrs);
-        }
-      } else if (op.data is Map) {
-        final dataMap = op.data as Map;
-        if (dataMap.containsKey('image')) {
-          final imagePath = dataMap['image'];
-          currentLine += '\n![图片]($imagePath)\n';
-        }
-      }
-    }
-
-    if (currentLine.isNotEmpty) {
-      _appendLineToMarkdown(buffer, currentLine, {});
-    }
-
-    return buffer.toString().trim();
-  }
-
-  String _formatInlineMarkdown(String text, Map<String, dynamic> attrs) {
-    if (text.isEmpty) return text;
-    String result = text;
-    if (attrs['bold'] == true) result = '**$result**';
-    if (attrs['italic'] == true) result = '*$result*';
-    if (attrs['strike'] == true) result = '~~$result~~';
-    if (attrs['code'] == true) result = '`$result`';
-    return result;
-  }
-
-  void _appendLineToMarkdown(StringBuffer buffer, String lineText, Map<String, dynamic> blockAttrs) {
-    if (blockAttrs['header'] != null) {
-      final level = blockAttrs['header'] as int;
-      buffer.writeln('${"#" * level} $lineText\n');
-    } else if (blockAttrs['blockquote'] == true) {
-      buffer.writeln('> $lineText\n');
-    } else if (blockAttrs['list'] == 'bullet') {
-      buffer.writeln('- $lineText');
-    } else if (blockAttrs['list'] == 'ordered') {
-      buffer.writeln('1. $lineText');
-    } else if (blockAttrs['list'] == 'checked') {
-      buffer.writeln('- [x] $lineText');
-    } else if (blockAttrs['list'] == 'unchecked') {
-      buffer.writeln('- [ ] $lineText');
-    } else {
-      buffer.writeln(lineText);
-    }
-  }
-
-  void _checkMarkdownShortcuts() {
-    if (_isAutoFormatting) return;
-
-    final selection = quillController.selection;
-    if (!selection.isCollapsed) return;
-
-    final index = selection.baseOffset;
-    if (index <= 0) return;
-
-    final lastChar = quillController.document.getPlainText(index - 1, 1);
-    if (lastChar != ' ') return;
-
-    final text = quillController.document.toPlainText();
-    int lineStart = 0;
-    for (int i = index - 2; i >= 0; i--) {
-      if (text[i] == '\n') {
-        lineStart = i + 1;
-        break;
-      }
-    }
-
-    final textBeforeCursor = text.substring(lineStart, index);
-
-    quill.Attribute? attributeToApply;
-    int lengthToDelete = 0;
-
-    if (textBeforeCursor == '# ') {
-      attributeToApply = quill.Attribute.h1;
-      lengthToDelete = 2;
-    } else if (textBeforeCursor == '## ') {
-      attributeToApply = quill.Attribute.h2;
-      lengthToDelete = 3;
-    } else if (textBeforeCursor == '### ') {
-      attributeToApply = quill.Attribute.h3;
-      lengthToDelete = 4;
-    } else if (textBeforeCursor == '- ' || textBeforeCursor == '* ' || textBeforeCursor == '+ ') {
-      attributeToApply = quill.Attribute.ul;
-      lengthToDelete = 2;
-    } else if (RegExp(r'^\d+\.\s$').hasMatch(textBeforeCursor)) {
-      attributeToApply = quill.Attribute.ol;
-      lengthToDelete = textBeforeCursor.length;
-    } else if (textBeforeCursor == '[] ' || textBeforeCursor == '[ ] ') {
-      attributeToApply = quill.Attribute.unchecked;
-      lengthToDelete = textBeforeCursor.length;
-    } else if (textBeforeCursor == '[x] ' || textBeforeCursor == '[X] ') {
-      attributeToApply = quill.Attribute.checked;
-      lengthToDelete = textBeforeCursor.length;
-    } else if (textBeforeCursor == '< ') {
-      attributeToApply = quill.Attribute.blockQuote;
-      lengthToDelete = 2;
-    }
-
-    if (attributeToApply != null) {
-      _isAutoFormatting = true;
-      Future.microtask(() {
-        quillController.document.delete(lineStart, lengthToDelete);
-        quillController.formatText(lineStart, 0, attributeToApply!);
-        quillController.updateSelection(
-          TextSelection.collapsed(offset: index - lengthToDelete),
-          quill.ChangeSource.local,
-        );
-        _isAutoFormatting = false;
-      });
-    }
+    return MarkdownExportService.generate(titleController.text.trim(), quillController);
   }
 
   void _updateWordCount() {

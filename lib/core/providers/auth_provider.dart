@@ -10,11 +10,9 @@ class AuthProvider with ChangeNotifier {
   bool _isInitialized = false;
   StreamSubscription<AuthState>? _authStateSubscription;
 
-  // 🟢 获取本地缓存的头像路径
   String? _localAvatarPath;
   String? get localAvatarPath => _localAvatarPath;
 
-  // --- 状态获取 ---
   User? get currentUser => _currentUser;
   bool get isAuthenticated => _currentUser != null;
   bool get isInitialized => _isInitialized;
@@ -29,15 +27,11 @@ class AuthProvider with ChangeNotifier {
     return _currentUser!.email?.split('@').first ?? 'Note User';
   }
 
-  String? get avatarUrl {
-    if (_currentUser == null) return null;
-    return _currentUser!.userMetadata?['avatar_url'] as String?;
-  }
+  String? get avatarUrl => _currentUser?.userMetadata?['avatar_url'] as String?;
+  String? get birthday => _currentUser?.userMetadata?['birthday'] as String?;
 
-  String? get birthday {
-    if (_currentUser == null) return null;
-    return _currentUser!.userMetadata?['birthday'] as String?;
-  }
+  // 🌟 新增：获取个性签名
+  String? get bio => _currentUser?.userMetadata?['bio'] as String?;
 
   AuthProvider() {
     _initializeAuth();
@@ -51,10 +45,7 @@ class AuthProvider with ChangeNotifier {
     _isInitialized = true;
     notifyListeners();
 
-    // 🟢 如果启动时已经登录，主动去服务器拉取最新资料
-    if (_currentUser != null) {
-      refreshProfile();
-    }
+    if (_currentUser != null) refreshProfile();
 
     _authStateSubscription = _supabase.auth.onAuthStateChange.listen((data) {
       final AuthChangeEvent event = data.event;
@@ -63,31 +54,27 @@ class AuthProvider with ChangeNotifier {
       if (event == AuthChangeEvent.signedIn || event == AuthChangeEvent.tokenRefreshed) {
         _currentUser = session?.user;
         notifyListeners();
-        // 🟢 登录成功后，立刻拉取云端最新资料
         refreshProfile();
       } else if (event == AuthChangeEvent.signedOut || event == AuthChangeEvent.userDeleted) {
         _currentUser = null;
-        _localAvatarPath = null; // 清理内存状态
+        _localAvatarPath = null;
         notifyListeners();
       }
     });
   }
 
-  // 🟢 核心修复：主动从云端拉取最新资料 (解决多设备不同步)
   Future<void> refreshProfile() async {
     if (!isAuthenticated) return;
     try {
-      final res = await _supabase.auth.getUser(); // 强制发网络请求获取最新 user
+      final res = await _supabase.auth.getUser();
       if (res.user != null) {
         final newCloudUrl = res.user!.userMetadata?['avatar_url'] as String?;
         final oldCloudUrl = _currentUser?.userMetadata?['avatar_url'] as String?;
 
-        // 🟢 如果发现云端头像变了（在别的设备修改过），立即废弃本地的旧头像缓存！
         if (newCloudUrl != oldCloudUrl) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove('local_avatar_path');
           _localAvatarPath = null;
-          debugPrint('🔄 检测到云端头像更新，已清理本地旧缓存');
         }
 
         _currentUser = res.user;
@@ -98,7 +85,8 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> updateProfile({String? nickname, String? avatarUrl, String? birthday, String? localPath}) async {
+  // 🌟 修改：支持更新个性签名 (bio)
+  Future<void> updateProfile({String? nickname, String? avatarUrl, String? birthday, String? localPath, String? bio}) async {
     if (!isAuthenticated) return;
     try {
       final currentData = Map<String, dynamic>.from(_currentUser!.userMetadata ?? {});
@@ -106,6 +94,7 @@ class AuthProvider with ChangeNotifier {
       if (nickname != null) currentData['full_name'] = nickname;
       if (avatarUrl != null) currentData['avatar_url'] = avatarUrl;
       if (birthday != null) currentData['birthday'] = birthday;
+      if (bio != null) currentData['bio'] = bio; // 注入签名
 
       final response = await _supabase.auth.updateUser(
         UserAttributes(data: currentData),
@@ -128,13 +117,10 @@ class AuthProvider with ChangeNotifier {
   Future<void> signOut() async {
     try {
       await _supabase.auth.signOut();
-
-      // 🟢 核心修复：彻底清理用户级本地缓存，防止上一个账号的头像和分类泄露给新账号！
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('local_avatar_path');
       await prefs.remove('custom_categories');
       _localAvatarPath = null;
-
     } catch (e) {
       debugPrint('登出失败: $e');
     }

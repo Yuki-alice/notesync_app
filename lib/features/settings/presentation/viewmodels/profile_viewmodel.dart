@@ -44,8 +44,8 @@ class ProfileViewModel extends ChangeNotifier {
     }
   }
 
-  // 🟢 2. 保存资料 (双备份 + 清理旧头像)
-  Future<String?> saveProfile(String newNickname, String? birthday) async {
+  // 🌟 修改：加入 bio 参数
+  Future<String?> saveProfile(String newNickname, String? birthday, String? bio) async {
     if (newNickname.trim().isEmpty) return '昵称不能为空哦';
 
     _isLoading = true;
@@ -60,7 +60,6 @@ class ProfileViewModel extends ChangeNotifier {
         final fileExt = _localSelectedImage!.path.split('.').last;
         final fileName = '$userId-${DateTime.now().millisecondsSinceEpoch}.$fileExt';
 
-        // 备份 A：本地私有目录持久化存储
         try {
           final directory = await getApplicationDocumentsDirectory();
           final localFile = await _localSelectedImage!.copy('${directory.path}/$fileName');
@@ -69,29 +68,20 @@ class ProfileViewModel extends ChangeNotifier {
           debugPrint('⚠️ 本地头像备份失败: $e');
         }
 
-        // 备份 B：云端存储
         await _supabase.storage.from('avatars').upload(fileName, _localSelectedImage!);
         finalAvatarUrl = _supabase.storage.from('avatars').getPublicUrl(fileName);
       }
 
-      // 更新 Auth 状态管家
+      // 🌟 传递 bio 给状态管家
       await _authProvider.updateProfile(
         nickname: newNickname.trim(),
         avatarUrl: finalAvatarUrl,
         birthday: birthday,
         localPath: finalLocalPath,
+        bio: bio?.trim(),
       );
 
-      // 打印同步日志
-      debugPrint('✅ --------------------------------------');
-      debugPrint('✅ 用户信息同步成功！');
-      debugPrint('✅ 昵称: $newNickname');
-      if (birthday != null) debugPrint('✅ 生日: $birthday');
-      debugPrint('✅ --------------------------------------');
-
-      // 异步清理云端旧头像
       _cleanupOldAvatars(userId);
-
       return null;
     } catch (e) {
       debugPrint('❌ 保存资料失败: $e');

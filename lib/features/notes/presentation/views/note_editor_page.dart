@@ -1,11 +1,9 @@
-// 文件路径: lib/features/notes/presentation/views/note_editor_page.dart
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -16,21 +14,16 @@ import '../../../../models/note.dart';
 import '../../../../utils/date_formatter.dart';
 import '../../../../utils/toast_utils.dart';
 import '../viewmodels/note_editor_viewmodel.dart';
-import '../widgets/dialogs/add_tag_dialog.dart';
-import '../widgets/dialogs/set_category_sheet.dart';
 import '../widgets/editor_bottom_toolbar.dart';
 import 'note_export_preview_page.dart';
 
-// 🌟 引入刚放好锁的图片组件
+// 🟢 引入全新的图片组件和右侧面板积木
 import '../widgets/note_image_embed.dart';
+import '../widgets/note_metadata_panel.dart';
 
-// =================================================================
-// 🌟 核心防闪烁黑科技：读取已转交的全局锁
-// =================================================================
 class EditorFocusNode extends FocusNode {
   @override
   void requestFocus([FocusNode? node]) {
-    // 读取引入文件中的 globalImageLock
     if (globalImageLock) return;
     super.requestFocus(node);
   }
@@ -77,7 +70,6 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
   final ScrollController _mainScrollController = ScrollController();
   final ScrollController _editorInnerScrollController = ScrollController();
 
-  final ImageStorageService _imageService = ImageStorageService();
   ToolbarPanel _activePanel = ToolbarPanel.none;
   final GlobalKey _boundaryKey = GlobalKey();
 
@@ -110,10 +102,6 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
       _activePanel = (_activePanel == panel) ? ToolbarPanel.none : panel;
       if (_activePanel != ToolbarPanel.none) _editorFocusNode.requestFocus();
     });
-  }
-
-  String _formatHeaderDate(DateTime date) {
-    return DateFormatter.formatFullDateTime(date);
   }
 
   Future<void> _handleExport(String type, NoteEditorViewModel viewModel) async {
@@ -221,20 +209,9 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
           ),
         ),
         VerticalDivider(width: 1, thickness: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.3)),
-        Container(
-          width: 320, color: theme.colorScheme.surfaceContainerLowest,
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              _buildPanelSectionTitle(theme, '信息', Icons.info_outline_rounded), const SizedBox(height: 16),
-              _buildInfoRow(theme, '创建', viewModel.currentNote != null ? _formatHeaderDate(viewModel.currentNote!.createdAt) : '现在'), const SizedBox(height: 12),
-              _buildInfoRow(theme, '修改', viewModel.currentNote != null ? _formatHeaderDate(viewModel.currentNote!.updatedAt) : '现在'), const SizedBox(height: 12),
-              _buildInfoRow(theme, '字数', '${viewModel.wordCount} 字'), const SizedBox(height: 32),
-              _buildPanelSectionTitle(theme, '归属', Icons.folder_outlined), const SizedBox(height: 16), _buildCategorySelector(theme, viewModel), const SizedBox(height: 32),
-              _buildPanelSectionTitle(theme, '标签', Icons.tag_rounded), const SizedBox(height: 16), _buildTagsWrap(theme, viewModel),
-            ],
-          ),
-        ),
+
+        // 🟢 调用解耦出的右侧边栏
+        const NoteMetadataPanel(isMobile: false),
       ],
     );
   }
@@ -268,8 +245,11 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildTitleField(theme, viewModel), const SizedBox(height: 12),
-                    Text('${viewModel.currentNote != null ? _formatHeaderDate(viewModel.currentNote!.updatedAt) : _formatHeaderDate(DateTime.now())}  |  ${viewModel.wordCount}字', style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6), fontSize: 13, fontWeight: FontWeight.w500)), const SizedBox(height: 20),
-                    Wrap(spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [_buildCategorySelector(theme, viewModel), _buildTagsWrap(theme, viewModel, isMobile: horizontalPadding == 24.0)]),
+                    Text('${viewModel.currentNote != null ? DateFormatter.formatFullDateTime(viewModel.currentNote!.updatedAt) : DateFormatter.formatFullDateTime(DateTime.now())}  |  ${viewModel.wordCount}字', style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6), fontSize: 13, fontWeight: FontWeight.w500)), const SizedBox(height: 20),
+
+                    // 🟢 调用解耦出的手机端标签模块
+                    if (horizontalPadding == 24.0)
+                      const NoteMetadataPanel(isMobile: true),
                   ],
                 ),
               ),
@@ -277,7 +257,6 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
                 padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                 child: _buildQuillEditor(theme, viewModel),
               ),
-              // 🌟 这就是让你能在打字时随意上下滑动的 60% 高度空气魔法留白！
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
@@ -313,22 +292,19 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
   }
 
   Widget _buildQuillEditor(ThemeData theme, NoteEditorViewModel viewModel) {
+    // 这里我们先保留默认的样式，下一步我们就会在这里注入极其惊艳的 Typography 配置！
     return quill.QuillEditor.basic(
       controller: viewModel.quillController, focusNode: _editorFocusNode,
       scrollController: _editorInnerScrollController,
       config: quill.QuillEditorConfig(
-        scrollable: false, expands: false,
-        padding: EdgeInsets.zero,
-        placeholder: '记点什么...', autoFocus: false,
+        scrollable: false, expands: false, padding: EdgeInsets.zero, placeholder: '记点什么...', autoFocus: false,
         showCursor: !viewModel.isReadOnly && !_isImageSelected,
-
         embedBuilders: [
+          // 已经解耦并安全的图片插入组件
           ImageEmbedBuilder(
-            imageService: _imageService,
+            imageService: ImageStorageService(),
             onSelectionChange: (isSelected) {
-              if (_isImageSelected != isSelected) {
-                setState(() => _isImageSelected = isSelected);
-              }
+              if (_isImageSelected != isSelected) setState(() => _isImageSelected = isSelected);
             },
           ),
         ],
@@ -340,9 +316,5 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
     );
   }
 
-  Widget _buildCategorySelector(ThemeData theme, NoteEditorViewModel viewModel) { return InkWell(onTap: viewModel.isReadOnly ? null : () async { final selected = await showSetCategorySheet(context, currentCategory: viewModel.category); if (selected != null) viewModel.setCategory(selected.isEmpty ? null : selected); }, borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: viewModel.category == null ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5) : theme.colorScheme.primaryContainer, borderRadius: BorderRadius.circular(20), border: viewModel.category == null ? Border.all(color: theme.colorScheme.outline.withOpacity(0.1)) : null), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(viewModel.category == null ? Icons.folder_open_outlined : Icons.folder_rounded, size: 16, color: viewModel.category == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.onPrimaryContainer), const SizedBox(width: 8), Text(viewModel.category ?? '未分类', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: viewModel.category == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.onPrimaryContainer))]))); }
-  Widget _buildTagsWrap(ThemeData theme, NoteEditorViewModel viewModel, {bool isMobile = false}) { return Wrap(spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [...viewModel.tags.map((tag) => Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: theme.colorScheme.secondaryContainer.withOpacity(0.3), borderRadius: BorderRadius.circular(20)), child: Row(mainAxisSize: MainAxisSize.min, children: [Text('#$tag', style: TextStyle(fontSize: 13, color: theme.colorScheme.secondary, fontWeight: FontWeight.w500)), const SizedBox(width: 6), if (!viewModel.isReadOnly) InkWell(onTap: () => viewModel.removeTag(tag), child: Icon(Icons.close_rounded, size: 14, color: theme.colorScheme.secondary.withOpacity(0.7)))]))), if (!viewModel.isReadOnly) InkWell(onTap: () async { final newTag = await showAddTagDialog(context); if (newTag != null) viewModel.addTag(newTag); }, borderRadius: BorderRadius.circular(20), child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)), borderRadius: BorderRadius.circular(20), color: isMobile ? Colors.transparent : theme.colorScheme.surface), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.add_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8)), const SizedBox(width: 4), Text('添加标签', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8), fontWeight: FontWeight.w500))]))),]); }
   Widget _buildBottomToolbar(NoteEditorViewModel viewModel) { return SafeArea(top: false, child: EditorBottomToolbar(controller: viewModel.quillController, activePanel: _activePanel, onPanelChanged: _togglePanel, onUndo: viewModel.undo, onRedo: viewModel.redo, onPickImage: () async { FocusScope.of(context).unfocus(); setState(() => _activePanel = ToolbarPanel.none); await viewModel.pickAndInsertImage(); _editorFocusNode.requestFocus(); }, onFinish: () async { FocusScope.of(context).unfocus(); await viewModel.saveNote(); if (context.mounted) Navigator.pop(context); })); }
-  Widget _buildPanelSectionTitle(ThemeData theme, String title, IconData icon) { return Row(children: [Icon(icon, size: 18, color: theme.colorScheme.primary), const SizedBox(width: 8), Text(title, style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.bold))]); }
-  Widget _buildInfoRow(ThemeData theme, String label, String value) { return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 50, child: Text(label, style: TextStyle(color: theme.colorScheme.outline, fontSize: 13))), Expanded(child: Text(value, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500)))]); }
 }

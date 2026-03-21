@@ -183,7 +183,6 @@ class NoteCard extends StatelessWidget {
   }
 }
 
-// 🌟 单例内存级读取保持不变
 class NoteCoverImage extends StatefulWidget {
   final String imagePath;
   const NoteCoverImage({super.key, required this.imagePath});
@@ -194,40 +193,65 @@ class NoteCoverImage extends StatefulWidget {
 
 class _NoteCoverImageState extends State<NoteCoverImage> {
   static final Map<String, File> _fileCache = {};
-  File? _resolvedFile;
+  late Future<File?> _imageFuture;
 
   @override
   void initState() {
     super.initState();
-    final file = File(widget.imagePath);
+    _imageFuture = _resolveImage(widget.imagePath);
+  }
 
-    if (file.isAbsolute && file.existsSync()) {
-      _resolvedFile = file;
-      _fileCache[widget.imagePath] = file;
-    } else if (_fileCache.containsKey(widget.imagePath)) {
-      _resolvedFile = _fileCache[widget.imagePath];
-    } else {
-      _resolveImageAsync(widget.imagePath);
+  // 🟢 关键修复：当卡片在列表复用时，确保状态能够刷新
+  @override
+  void didUpdateWidget(covariant NoteCoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imagePath != widget.imagePath) {
+      _imageFuture = _resolveImage(widget.imagePath);
     }
   }
 
-  void _resolveImageAsync(String path) async {
-    final resolvedFile = await ImageStorageService().getLocalFile(path);
-    if (resolvedFile != null && mounted) {
-      _fileCache[path] = resolvedFile;
-      setState(() => _resolvedFile = resolvedFile);
+  Future<File?> _resolveImage(String path) async {
+    // 1. 命中内存缓存，秒出
+    if (_fileCache.containsKey(path)) {
+      return _fileCache[path];
     }
+    // 2. 检查是否为本地有效绝对路径
+    final file = File(path);
+    if (file.isAbsolute && file.existsSync()) {
+      _fileCache[path] = file;
+      return file;
+    }
+    // 3. 走存储服务去云端拉取/解析
+    final resolvedFile = await ImageStorageService().getLocalFile(path);
+    if (resolvedFile != null) {
+      // 🟢 关键修复：无视 mounted 状态，只要拉取成功就强制塞入静态缓存
+      _fileCache[path] = resolvedFile;
+    }
+    return resolvedFile;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_resolvedFile != null) {
-      return Image.file(
-          _resolvedFile!,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Center(child: Icon(Icons.broken_image_rounded, color: Theme.of(context).colorScheme.outline.withOpacity(0.5)))
-      );
-    }
-    return Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    return FutureBuilder<File?>(
+      future: _imageFuture,
+      builder: (context, snapshot) {
+        // 加载中，显示占位底色
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+        }
+        // 加载成功并解析为文件
+        if (snapshot.hasData && snapshot.data != null) {
+          return Image.file(
+            snapshot.data!,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Center(
+                child: Icon(Icons.broken_image_rounded, color: Theme.of(context).colorScheme.outline.withOpacity(0.5))
+            ),
+          );
+        }
+        // 解析失败或无图片
+        return Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+      },
+    );
   }
 }
