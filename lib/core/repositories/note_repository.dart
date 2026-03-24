@@ -14,7 +14,6 @@ class NoteRepository {
   }
 
   Map<String, DateTime> getAllNotesMetadata() {
-    // 🟢 高性能查询：只拉取我们需要比对的字段，速度极快
     final notes = _isar.notes.where().findAllSync();
     return {for (var note in notes) note.id: note.updatedAt};
   }
@@ -36,7 +35,6 @@ class NoteRepository {
   }
 
   Future<void> addNote(Note note) async {
-    // Isar 写入必须在事务中进行
     await _isar.writeTxn(() async {
       await _isar.notes.put(note);
     });
@@ -58,12 +56,10 @@ class NoteRepository {
     if (query.isEmpty) return getAllNotes();
 
     final lowercaseQuery = query.toLowerCase();
-    // 🟢 未来升级点：这里可以换成 Isar 真正的全文搜索 .titleContains()
     final notes = _isar.notes.where().findAllSync();
     return notes.where((note) {
       return note.title.toLowerCase().contains(lowercaseQuery) ||
-          note.plainText.toLowerCase().contains(lowercaseQuery) ||
-          note.tags.any((tag) => tag.toLowerCase().contains(lowercaseQuery));
+          note.plainText.toLowerCase().contains(lowercaseQuery);
     }).toList();
   }
 }

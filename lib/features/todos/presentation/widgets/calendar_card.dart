@@ -94,7 +94,7 @@ class _CalendarCardState extends State<CalendarCard> {
               borderRadius: BorderRadius.circular(8),
               color: isSelectedTaskDay
                   ? theme.colorScheme.primary
-                  : (isToday ? theme.colorScheme.primaryContainer.withOpacity(0.3) : null),
+                  : (isToday ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3) : null),
               border: isToday && !isSelectedTaskDay
                   ? Border.all(color: theme.colorScheme.primary, width: 1)
                   : null,
@@ -154,7 +154,7 @@ class _CalendarCardState extends State<CalendarCard> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.4)),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min, // 高度包裹内容

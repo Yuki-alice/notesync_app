@@ -547,23 +547,20 @@ class _ToolbarButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color =
-        isDestructive
-            ? theme.colorScheme.error
-            : (active
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurface);
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Icon(icon, size: 22, color: color),
-        ),
+    isDestructive
+        ? theme.colorScheme.error
+        : (active
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurface);
+    return InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Icon(icon, size: 22, color: color),
       ),
     );
   }

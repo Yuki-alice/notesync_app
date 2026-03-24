@@ -1,4 +1,3 @@
-// 文件路径: lib/features/notes/presentation/views/notes_page.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +8,6 @@ import 'package:animations/animations.dart';
 
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/routes/app_routes.dart';
-import '../../../../models/note.dart';
 import '../../../../utils/app_feedback.dart';
 import '../../../../utils/toast_utils.dart';
 import '../../../../widgets/common/dialogs/add_category_dialog.dart';
@@ -88,10 +86,17 @@ class _NotesPageState extends State<NotesPage> {
 
   void _handleAddCategory(BuildContext context) async {
     final provider = context.read<NotesProvider>();
-    final String? newCategory = await showAddCategoryDialog(context);
-    if (newCategory != null && newCategory.isNotEmpty) {
-      await provider.addCategory(newCategory);
-      provider.selectCategory(newCategory);
+    final String? newCategoryName = await showAddCategoryDialog(context);
+    if (newCategoryName != null && newCategoryName.isNotEmpty) {
+      await provider.addCategory(newCategoryName);
+
+      // 🌟 V2: 添加后查找真实 ID 并选中
+      try {
+        final newCat = provider.categories.firstWhere((c) => c.name == newCategoryName);
+        provider.selectCategory(newCat.id);
+      } catch (e) {
+        // 忽略
+      }
       AppFeedback.light();
     }
   }
@@ -158,16 +163,12 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  // =========================================================================
-  // 🌟 架构师重构：废弃 NestedScrollView，完全扁平化 CustomScrollView 解决下拉刷新失效 BUG！
-  // =========================================================================
   Widget _buildMainContent(BuildContext context, ThemeData theme, bool isDesktop) {
     return Consumer<NotesProvider>(
       builder: (context, provider, _) {
         final notes = provider.filteredNotes;
-        final currentKey = '${provider.selectedCategory}_${provider.searchQuery}';
+        final currentKey = '${provider.selectedCategoryId}_${provider.searchQuery}'; // 🌟 改为 ID
 
-        // 动态构建 Slivers，把 AppBar 和 Grid 铺平放入同一层
         List<Widget> slivers = [];
 
         if (!isDesktop) {
@@ -181,12 +182,12 @@ class _NotesPageState extends State<NotesPage> {
                     const SyncStatusIndicator(),
                   ],
                 ),
-                backgroundColor: theme.colorScheme.surface.withOpacity(0.95),
+                backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.95),
                 surfaceTintColor: Colors.transparent,
                 pinned: false,
                 floating: true,
                 snap: true,
-                shadowColor: theme.colorScheme.shadow.withOpacity(0.1),
+                shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.1),
                 actions: [
                   IconButton(onPressed: () => _showSortMenu(context), icon: const Icon(Icons.sort_rounded)),
                   IconButton(onPressed: () => Navigator.pushNamed(context, AppRoutes.trash), icon: const Icon(Icons.auto_delete_outlined)),
@@ -220,10 +221,14 @@ class _NotesPageState extends State<NotesPage> {
                           padding: EdgeInsets.zero,
                           physics: const BouncingScrollPhysics(),
                           children: [
-                            _buildCategoryChip(theme, '全部', provider.selectedCategory == null, () => provider.selectCategory(null)),
+                            _buildCategoryChip(theme, '全部', provider.selectedCategoryId == null, () => provider.selectCategory(null)),
+                            // 🌟 V2: 遍历 Category 对象
                             ...provider.categories.map((c) => _buildCategoryChip(
-                                theme, c, provider.selectedCategory == c,
-                                    () => provider.selectCategory(provider.selectedCategory == c ? null : c))),
+                                theme,
+                                c.name, // 界面显示 name
+                                provider.selectedCategoryId == c.id,
+                                    () => provider.selectCategory(provider.selectedCategoryId == c.id ? null : c.id) // 逻辑交互使用 id
+                            )),
                             Padding(
                               padding: const EdgeInsets.only(left: 8),
                               child: ActionChip(
@@ -234,7 +239,7 @@ class _NotesPageState extends State<NotesPage> {
                                 visualDensity: VisualDensity.compact,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                 side: BorderSide.none,
-                                backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                                backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                                 labelStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
                               ),
                             ),
@@ -252,7 +257,7 @@ class _NotesPageState extends State<NotesPage> {
           slivers.add(
               SliverFillRemaining(
                   hasScrollBody: false,
-                  child: _buildEmptyState(theme, provider.searchQuery.isNotEmpty, provider.selectedCategory)
+                  child: _buildEmptyState(theme, provider.searchQuery.isNotEmpty, provider.selectedCategoryId)
               )
           );
         } else {
@@ -291,7 +296,7 @@ class _NotesPageState extends State<NotesPage> {
                                 closedShape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(24),
                                   side: BorderSide(
-                                    color: theme.colorScheme.outlineVariant.withOpacity(0.3),
+                                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
                                     width: 1,
                                   ),
                                 ),
@@ -324,7 +329,6 @@ class _NotesPageState extends State<NotesPage> {
           );
         }
 
-        // 🟢 核心修复：通过 AnimationLimiter 触发交错动画，并注入 AlwaysScrollableScrollPhysics 唤醒下拉刷新！
         Widget scrollView = AnimationLimiter(
           key: ValueKey('limiter_$currentKey'),
           child: CustomScrollView(
@@ -348,9 +352,6 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  // =========================================================================
-  // 🟢 架构师重构：大尺寸标题 + 舒展的搜索框 + 分类标签栏 (桌面端保持不变)
-  // =========================================================================
   Widget _buildDesktopHeader(BuildContext context, ThemeData theme) {
     return Container(
       padding: const EdgeInsets.fromLTRB(32, 28, 32, 16),
@@ -395,14 +396,14 @@ class _NotesPageState extends State<NotesPage> {
                 },
                 icon: const Icon(Icons.sync_rounded, size: 22),
                 tooltip: "同步",
-                style: IconButton.styleFrom(backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)),
+                style: IconButton.styleFrom(backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)),
               ),
               const SizedBox(width: 8),
               IconButton(
                 onPressed: () => _showSortMenu(context),
                 icon: const Icon(Icons.sort_rounded, size: 22),
                 tooltip: "排序",
-                style: IconButton.styleFrom(backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)),
+                style: IconButton.styleFrom(backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)),
               ),
             ],
           ),
@@ -416,8 +417,14 @@ class _NotesPageState extends State<NotesPage> {
                 return ListView(
                   scrollDirection: Axis.horizontal,
                   children: [
-                    _buildCategoryChip(theme, '全部', provider.selectedCategory == null, () => provider.selectCategory(null)),
-                    ...provider.categories.map((c) => _buildCategoryChip(theme, c, provider.selectedCategory == c, () => provider.selectCategory(provider.selectedCategory == c ? null : c))),
+                    _buildCategoryChip(theme, '全部', provider.selectedCategoryId == null, () => provider.selectCategory(null)),
+                    // 🌟 V2 修改
+                    ...provider.categories.map((c) => _buildCategoryChip(
+                        theme,
+                        c.name,
+                        provider.selectedCategoryId == c.id,
+                            () => provider.selectCategory(provider.selectedCategoryId == c.id ? null : c.id)
+                    )),
                     Padding(
                       padding: const EdgeInsets.only(left: 8),
                       child: ActionChip(
@@ -428,7 +435,7 @@ class _NotesPageState extends State<NotesPage> {
                         visualDensity: VisualDensity.compact,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         side: BorderSide.none,
-                        backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                        backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                       ),
                     ),
                   ],
@@ -451,7 +458,7 @@ class _NotesPageState extends State<NotesPage> {
         showCheckmark: false,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         side: BorderSide.none,
-        backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         selectedColor: theme.colorScheme.primaryContainer,
         labelStyle: TextStyle(
           color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
@@ -461,18 +468,18 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  Widget _buildEmptyState(ThemeData theme, bool isSearching, String? selectedCategory) {
+  Widget _buildEmptyState(ThemeData theme, bool isSearching, String? selectedCategoryId) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.dashboard_customize_outlined,
-              size: 64, color: theme.colorScheme.outline.withOpacity(0.5)),
+              size: 64, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
           const SizedBox(height: 16),
           Text(
             isSearching
                 ? '未找到相关笔记'
-                : (selectedCategory == null || selectedCategory == 'null'
+                : (selectedCategoryId == null
                 ? '暂无笔记'
                 : '该分类下暂无笔记'),
             style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),

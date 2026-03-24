@@ -13,11 +13,14 @@ import 'core/providers/auth_provider.dart';
 import 'core/providers/theme_provider.dart';
 import 'core/providers/notes_provider.dart';
 import 'core/providers/todos_provider.dart';
+import 'core/repositories/category_repository.dart';
 import 'core/repositories/note_repository.dart';
+import 'core/repositories/tag_repository.dart';
 import 'core/repositories/todo_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,13 +64,15 @@ void main() async {
 
   final noteRepo = NoteRepository(dbService.isar);
   final todoRepo = TodoRepository(dbService.isar);
+  final categoryRepo = CategoryRepository(dbService.isar);
+  final tagRepo = TagRepository(dbService.isar);
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => NotesProvider(noteRepo)),
+        ChangeNotifierProvider(create: (_) => NotesProvider(noteRepo,categoryRepo,tagRepo)),
         ChangeNotifierProvider(create: (_) => TodosProvider(todoRepo)),
       ],
       child: const MyApp(),

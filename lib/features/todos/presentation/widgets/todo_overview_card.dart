@@ -35,13 +35,13 @@ class TodoOverviewCard extends StatelessWidget {
         color: isDesktop ? theme.colorScheme.surface : null,
         borderRadius: BorderRadius.circular(24),
         border: isDesktop
-            ? Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.4))
+            ? Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4))
             : null,
         boxShadow: isDesktop
             ? []
             : [
           BoxShadow(
-            color: theme.shadowColor.withOpacity(0.05),
+            color: theme.shadowColor.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -119,7 +119,7 @@ class TodoOverviewCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -148,7 +148,7 @@ class TodoOverviewCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: totalCount == 0 ? 0 : progress,
                 minHeight: 6,
-                backgroundColor: theme.colorScheme.surface.withOpacity(0.5),
+                backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.5),
                 valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
               ),
             ),

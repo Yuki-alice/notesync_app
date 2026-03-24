@@ -114,7 +114,7 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
 
   Color _getDateColor(BuildContext context, _DateStatus status, bool isDone) {
     final scheme = Theme.of(context).colorScheme;
-    if (isDone) return scheme.outline.withOpacity(0.5);
+    if (isDone) return scheme.outline.withValues(alpha: 0.5);
     switch (status) {
       case _DateStatus.overdue: return scheme.error;
       case _DateStatus.today: return scheme.primary;
@@ -127,9 +127,9 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
     final scheme = Theme.of(context).colorScheme;
     if (isDone) return Colors.transparent;
     switch (status) {
-      case _DateStatus.overdue: return scheme.errorContainer.withOpacity(0.3);
-      case _DateStatus.today: return scheme.primaryContainer.withOpacity(0.3);
-      case _DateStatus.future: return scheme.surfaceContainerHighest.withOpacity(0.3);
+      case _DateStatus.overdue: return scheme.errorContainer.withValues(alpha: 0.3);
+      case _DateStatus.today: return scheme.primaryContainer.withValues(alpha: 0.3);
+      case _DateStatus.future: return scheme.surfaceContainerHighest.withValues(alpha: 0.3);
       case _DateStatus.none: return Colors.transparent;
     }
   }
@@ -147,7 +147,7 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
           border: Border.all(
             color: isDone
                 ? theme.colorScheme.primary
-                : (isError ? theme.colorScheme.error.withOpacity(0.7) : theme.colorScheme.outline.withOpacity(0.6)),
+                : (isError ? theme.colorScheme.error.withValues(alpha: 0.7) : theme.colorScheme.outline.withValues(alpha: 0.6)),
             width: isDone ? 0 : 2,
           ),
         ),
@@ -175,18 +175,18 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         color: isSelected
-            ? theme.colorScheme.primaryContainer.withOpacity(0.3)
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
             : (isDone ? Colors.transparent : theme.colorScheme.surfaceContainerLowest),
         borderRadius: BorderRadius.circular(20),
         boxShadow: isSelected || isDone || (isDesktop && !_isHovering) ? [] : [
-          BoxShadow(color: theme.shadowColor.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))
+          BoxShadow(color: theme.shadowColor.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))
         ],
         border: Border.all(
           color: isSelected
-              ? theme.colorScheme.primary.withOpacity(0.5)
+              ? theme.colorScheme.primary.withValues(alpha: 0.5)
               : (isDesktop && _isHovering
-              ? theme.colorScheme.primary.withOpacity(0.2)
-              : (isDone ? theme.colorScheme.outlineVariant.withOpacity(0.15) : theme.colorScheme.outlineVariant.withOpacity(0.3))),
+              ? theme.colorScheme.primary.withValues(alpha: 0.2)
+              : (isDone ? theme.colorScheme.outlineVariant.withValues(alpha: 0.15) : theme.colorScheme.outlineVariant.withValues(alpha: 0.3))),
           width: isSelected ? 1.5 : 1,
         ),
       ),
@@ -224,7 +224,7 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
                                   duration: const Duration(milliseconds: 300),
                                   style: theme.textTheme.titleMedium!.copyWith(
                                     decoration: isDone ? TextDecoration.lineThrough : null,
-                                    decorationColor: theme.colorScheme.onSurface.withOpacity(0.6),
+                                    decorationColor: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                     decorationThickness: 2.0,
                                     color: isDone ? theme.colorScheme.outline : theme.colorScheme.onSurface,
                                     fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
@@ -233,7 +233,7 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
                                     widget.todo.title, query: widget.searchQuery,
                                     style: theme.textTheme.titleMedium!.copyWith(
                                       decoration: isDone ? TextDecoration.lineThrough : null,
-                                      decorationColor: theme.colorScheme.onSurface.withOpacity(0.6),
+                                      decorationColor: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                       decorationThickness: 2.0,
                                       color: isDone ? theme.colorScheme.outline : theme.colorScheme.onSurface,
                                       fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
@@ -299,7 +299,7 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
                                           fontWeight: FontWeight.bold,
                                           fontSize: 10,
                                           decoration: isDone ? TextDecoration.lineThrough : null,
-                                          decorationColor: theme.colorScheme.onSurface.withOpacity(0.4),
+                                          decorationColor: theme.colorScheme.onSurface.withValues(alpha: 0.4),
                                         ),
                                         overflow: TextOverflow.ellipsis,
                                         maxLines: 1,
@@ -326,7 +326,7 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete_outline_rounded, size: 20), onPressed: () => _handleAction(true), tooltip: '删除',
-                              style: IconButton.styleFrom(shape: const CircleBorder(), foregroundColor: theme.colorScheme.error, hoverColor: theme.colorScheme.errorContainer.withOpacity(0.3)),
+                              style: IconButton.styleFrom(shape: const CircleBorder(), foregroundColor: theme.colorScheme.error, hoverColor: theme.colorScheme.errorContainer.withValues(alpha: 0.3)),
                             ),
                           ],
                         ),
@@ -408,7 +408,7 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
               onPressed: (_) => _handleAction(true), backgroundColor: Colors.transparent, foregroundColor: theme.colorScheme.error, autoClose: true,
               child: Container(
                 width: 48, height: 48,
-                decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withOpacity(0.8), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withValues(alpha: 0.8), shape: BoxShape.circle),
                 child: Center(child: Icon(Icons.delete_rounded, size: 22, color: theme.colorScheme.error)),
               ),
             ),

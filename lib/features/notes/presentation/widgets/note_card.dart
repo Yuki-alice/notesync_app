@@ -1,8 +1,11 @@
-// 文件路径: lib/features/notes/presentation/widgets/note_card.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/services/image_storage_service.dart';
 import '../../../../models/note.dart';
+import '../../../../models/category.dart';
+import '../../../../models/tag.dart';
 import '../../../../widgets/common/search_highlight_text.dart';
 
 class NoteCard extends StatelessWidget {
@@ -24,16 +27,20 @@ class NoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final notesProvider = context.watch<NotesProvider>();
+    final realCategoryName = notesProvider.getCategoryById(note.categoryId)?.name;
+
+    final realTags = note.tagIds
+        .map((id) => notesProvider.getTagById(id))
+        .whereType<Tag>()
+        .toList();
+
     final coverImage = note.firstImagePath;
     final hasTitle = note.title.isNotEmpty;
 
-    // 文本清洗：压缩多余换行
     final cleanContent = note.plainText.replaceAll(RegExp(r'\s+'), ' ').trim();
     final hasContent = cleanContent.isNotEmpty;
-
-    // 🟢 架构师逻辑优化：动态空间折叠开关
-    // 只有当置顶、分类、标签至少存在一个时，才分配空间
-    final hasMetadata = note.isPinned || note.category != null || note.tags.isNotEmpty;
+    final hasMetadata = note.isPinned || note.categoryId != null || realTags.isNotEmpty;
 
     return Hero(
       tag: 'note_card_${note.id}',
@@ -56,13 +63,13 @@ class NoteCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: theme.colorScheme.shadow.withOpacity(0.04),
+              color: theme.colorScheme.shadow.withValues(alpha: 0.04),
               blurRadius: 16,
               offset: const Offset(0, 4),
             ),
           ],
           border: Border.all(
-            color: theme.colorScheme.outlineVariant.withOpacity(0.15),
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15),
             width: 0.5,
           ),
         ),
@@ -73,8 +80,8 @@ class NoteCard extends StatelessWidget {
             onTap: onTap,
             onLongPress: onLongPress,
             onSecondaryTap: onSecondaryTap,
-            splashColor: theme.colorScheme.primary.withOpacity(0.05),
-            highlightColor: theme.colorScheme.primary.withOpacity(0.02),
+            splashColor: theme.colorScheme.primary.withValues(alpha: 0.05),
+            highlightColor: theme.colorScheme.primary.withValues(alpha: 0.02),
             child: SingleChildScrollView(
               physics: const NeverScrollableScrollPhysics(),
               child: Column(
@@ -83,7 +90,6 @@ class NoteCard extends StatelessWidget {
                 children: [
                   if (coverImage != null)
                     Container(
-                      // 🟢 架构师视觉优化：将图片高度从 110 提升到 150，大幅增强图片视觉张力！
                       height: 150,
                       width: double.infinity,
                       decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
@@ -108,7 +114,6 @@ class NoteCard extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis
                           ),
-                          // 🟢 动态留白：如果下面还有正文，留窄一点；如果没有正文但有标签，留宽一点
                           if (hasContent) const SizedBox(height: 6)
                           else if (hasMetadata) const SizedBox(height: 12)
                           else const SizedBox(height: 8),
@@ -118,56 +123,52 @@ class NoteCard extends StatelessWidget {
                           SearchHighlightText(
                               cleanContent,
                               query: searchQuery,
-                              // 🟢 动态行数：如果有大图，正文就少显示点（2行）；纯文字就多显示点（4行）
                               maxLines: coverImage != null ? 2 : 4,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8),
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                                 height: 1.6,
                                 fontSize: 13,
                               )
                           ),
-                          // 🟢 动态留白：只有下方有标签时，才撑开 12 的距离，否则压缩到 8
                           if (hasMetadata) const SizedBox(height: 12) else const SizedBox(height: 8),
                         ],
 
-                        // 🟢 架构师空间折叠：彻底消灭僵尸留白！
-                        // 如果既没置顶，也没分类，也没标签，整个 Wrap 和底部的间距直接消失
                         if (hasMetadata) ...[
                           Wrap(
                             spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               if (note.isPinned) Icon(Icons.push_pin_rounded, size: 14, color: theme.colorScheme.primary),
-                              if (note.category != null)
+                              if (realCategoryName != null)
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                      color: theme.colorScheme.primaryContainer.withOpacity(0.5),
+                                      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
                                       borderRadius: BorderRadius.circular(6)
                                   ),
-                                  child: Text(note.category!, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onPrimaryContainer, fontWeight: FontWeight.w700, fontSize: 10)),
+                                  child: Text(realCategoryName, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onPrimaryContainer, fontWeight: FontWeight.w700, fontSize: 10)),
                                 ),
-                              ...note.tags.take(2).map((tag) {
-                                final isMatch = searchQuery.isNotEmpty && tag.toLowerCase().contains(searchQuery.toLowerCase());
+                              ...realTags.take(3).map((tag) {
+                                final isMatch = searchQuery.isNotEmpty && tag.name.toLowerCase().contains(searchQuery.toLowerCase());
                                 return Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                      color: isMatch ? const Color(0xFFFFF176) : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                                      color: isMatch ? const Color(0xFFFFF176) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                                       borderRadius: BorderRadius.circular(4)
                                   ),
-                                  child: Text('#$tag', style: theme.textTheme.labelSmall?.copyWith(color: isMatch ? Colors.black : theme.colorScheme.secondary, fontSize: 10)),
+                                  child: Text('#${tag.name}', style: theme.textTheme.labelSmall?.copyWith(color: isMatch ? Colors.black : theme.colorScheme.secondary, fontSize: 10)),
                                 );
                               }),
                             ],
                           ),
-                          const SizedBox(height: 10), // 只有上面有标签时，才为下方的时间行撑开留白
+                          const SizedBox(height: 10),
                         ],
 
                         Row(
                           children: [
-                            Icon(Icons.access_time_rounded, size: 11, color: theme.colorScheme.outline.withOpacity(0.6)),
+                            Icon(Icons.access_time_rounded, size: 11, color: theme.colorScheme.outline.withValues(alpha: 0.6)),
                             const SizedBox(width: 4),
-                            Text(note.formattedUpdatedAt, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline.withOpacity(0.6), fontSize: 10, letterSpacing: 0.2)),
+                            Text(note.formattedUpdatedAt, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline.withValues(alpha: 0.6), fontSize: 10, letterSpacing: 0.2)),
                           ],
                         ),
                       ],
@@ -183,6 +184,9 @@ class NoteCard extends StatelessWidget {
   }
 }
 
+// =========================================================================
+// 🌟 终极缓存引擎：同步直出（防闪烁） + 强制刷新监听（防不显示）
+// =========================================================================
 class NoteCoverImage extends StatefulWidget {
   final String imagePath;
   const NoteCoverImage({super.key, required this.imagePath});
@@ -193,65 +197,66 @@ class NoteCoverImage extends StatefulWidget {
 
 class _NoteCoverImageState extends State<NoteCoverImage> {
   static final Map<String, File> _fileCache = {};
-  late Future<File?> _imageFuture;
+  File? _resolvedFile;
 
   @override
   void initState() {
     super.initState();
-    _imageFuture = _resolveImage(widget.imagePath);
+    _checkAndResolve();
   }
 
-  // 🟢 关键修复：当卡片在列表复用时，确保状态能够刷新
+  // 🟢 关键修复：补回监听更新钩子！解决云端同步后卡片装死不加载图片的问题
   @override
   void didUpdateWidget(covariant NoteCoverImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imagePath != widget.imagePath) {
-      _imageFuture = _resolveImage(widget.imagePath);
+    // 如果图片路径换了，或者当前没有图（可能刚同步完），立刻再去磁盘捞一遍！
+    if (oldWidget.imagePath != widget.imagePath || _resolvedFile == null) {
+      _checkAndResolve();
     }
   }
 
-  Future<File?> _resolveImage(String path) async {
-    // 1. 命中内存缓存，秒出
-    if (_fileCache.containsKey(path)) {
-      return _fileCache[path];
+  void _checkAndResolve() {
+    // 1. 同步拦截：检查内存缓存
+    if (_fileCache.containsKey(widget.imagePath)) {
+      final file = _fileCache[widget.imagePath]!;
+      if (file.existsSync()) {
+        setState(() => _resolvedFile = file);
+        return;
+      } else {
+        _fileCache.remove(widget.imagePath);
+      }
     }
-    // 2. 检查是否为本地有效绝对路径
-    final file = File(path);
+
+    // 2. 同步拦截：检查本地绝对路径
+    final file = File(widget.imagePath);
     if (file.isAbsolute && file.existsSync()) {
-      _fileCache[path] = file;
-      return file;
+      _fileCache[widget.imagePath] = file;
+      setState(() => _resolvedFile = file);
+      return;
     }
-    // 3. 走存储服务去云端拉取/解析
+
+    // 3. 异步回退：上面都没找到，去调用服务拉取
+    _resolveImageAsync(widget.imagePath);
+  }
+
+  void _resolveImageAsync(String path) async {
     final resolvedFile = await ImageStorageService().getLocalFile(path);
-    if (resolvedFile != null) {
-      // 🟢 关键修复：无视 mounted 状态，只要拉取成功就强制塞入静态缓存
+    if (resolvedFile != null && resolvedFile.existsSync() && mounted) {
       _fileCache[path] = resolvedFile;
+      setState(() => _resolvedFile = resolvedFile);
     }
-    return resolvedFile;
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<File?>(
-      future: _imageFuture,
-      builder: (context, snapshot) {
-        // 加载中，显示占位底色
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
-        }
-        // 加载成功并解析为文件
-        if (snapshot.hasData && snapshot.data != null) {
-          return Image.file(
-            snapshot.data!,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Center(
-                child: Icon(Icons.broken_image_rounded, color: Theme.of(context).colorScheme.outline.withOpacity(0.5))
-            ),
-          );
-        }
-        // 解析失败或无图片
-        return Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
-      },
-    );
+    // 🟢 彻底抛弃 FutureBuilder！直接构建，1 帧都不等！
+    if (_resolvedFile != null) {
+      return Image.file(
+          _resolvedFile!,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Center(child: Icon(Icons.broken_image_rounded, color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5)))
+      );
+    }
+    return Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
   }
 }

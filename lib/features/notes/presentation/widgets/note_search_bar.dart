@@ -58,7 +58,7 @@ class _NoteSearchBarState extends State<NoteSearchBar> {
     }
 
     final theme = Theme.of(context);
-    final bgColor = widget.backgroundColor ?? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5);
+    final bgColor = widget.backgroundColor ?? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
 
     Widget searchBar = Stack(
       alignment: Alignment.centerRight,
@@ -83,7 +83,7 @@ class _NoteSearchBarState extends State<NoteSearchBar> {
             contentPadding: const EdgeInsets.only(left: 16, right: 48, top: 12, bottom: 12),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide(color: theme.colorScheme.primary.withOpacity(0.5), width: 1.5)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.5), width: 1.5)),
           ),
         ),
 
@@ -107,7 +107,7 @@ class _NoteSearchBarState extends State<NoteSearchBar> {
               icon: const Icon(Icons.clear_rounded, size: 18),
               color: theme.colorScheme.onSurfaceVariant,
               style: IconButton.styleFrom(
-                hoverColor: theme.colorScheme.onSurface.withOpacity(0.08),
+                hoverColor: theme.colorScheme.onSurface.withValues(alpha: 0.08),
                 padding: const EdgeInsets.all(8),
                 minimumSize: const Size(32, 32),
               ),

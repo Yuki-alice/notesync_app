@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/repositories/note_repository.dart';
+
 import '../../models/note.dart';
+import '../../models/category.dart';
+import '../../models/tag.dart';
 import '../../core/services/image_storage_service.dart';
 import '../../core/services/supabase_sync_service.dart';
+import '../repositories/category_repository.dart';
+import '../repositories/tag_repository.dart';
 
 enum SyncState { idle, syncing, success, error, unauthenticated }
 
@@ -17,22 +20,26 @@ enum NoteSortOption {
   titleAZ('标题 A-Z');
 
   final String label;
-
   const NoteSortOption(this.label);
 }
 
 class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   final NoteRepository _repository;
+  final CategoryRepository _categoryRepository;
+  final TagRepository _tagRepository;
   final Uuid _uuid = const Uuid();
 
   List<Note> _notes = [];
   List<Note> _filteredNotes = [];
 
+
+  List<Category> _categories = [];
+  List<Tag> _tags = [];
+
   final Map<String, String> _plainTextCache = {};
   final ImageStorageService _imageService = ImageStorageService();
-  List<String> _manualCategories = [];
 
-  String? _selectedCategory;
+  String? _selectedCategoryId; // 🌟 改为按 ID 筛选
   String _searchQuery = '';
   NoteSortOption _sortOption = NoteSortOption.updatedNewest;
 
@@ -49,14 +56,14 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     notifyListeners();
   }
 
-  NotesProvider(this._repository) {
+  // 🌟 构造函数注入新仓库
+  NotesProvider(this._repository, this._categoryRepository, this._tagRepository) {
     WidgetsBinding.instance.addObserver(this);
-    _syncService = SupabaseSyncService(_repository);
+    // 🌟 修复：用 null 占住第二个 TodoRepository 的位置
+    _syncService = SupabaseSyncService(_repository, null, _categoryRepository, _tagRepository);
 
     loadNotes();
-    _loadManualCategories();
     _cleanUpOldTrash();
-
     syncWithCloud();
   }
 
@@ -75,13 +82,59 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     super.dispose();
   }
 
+  // =========================================================================
+  // 🌟 V2: 内存透视镜 (暴露给 UI 翻译 ID 用的)
+  // =========================================================================
+  List<Category> get categories => _categories;
+  List<Tag> get tags => _tags;
+
+  Category? getCategoryById(String? id) {
+    if (id == null) return null;
+    try {
+      return _categories.firstWhere((c) => c.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Tag? getTagById(String? id) {
+    if (id == null) return null;
+    try {
+      return _tags.firstWhere((t) => t.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // =========================================================================
+  // 核心加载与同步
+  // =========================================================================
+  void loadNotes() {
+    // 🌟 V2: 瞬间从本地 SQLite 加载所有数据到内存池
+    _categories = _categoryRepository.getAllCategories();
+    _tags = _tagRepository.getAllTags();
+    _notes = _repository.getAllNotes();
+    _applyFilters();
+  }
+
+  Future<Tag> createTag(String name) async {
+    final tag = Tag(
+      id: const Uuid().v4(),
+      name: name,
+      createdAt: DateTime.now(),
+    );
+    await _tagRepository.addTag(tag);
+    loadNotes();
+    _triggerBackgroundSync();
+    return tag;
+  }
+
   Future<void> syncWithCloud() async {
     if (Supabase.instance.client.auth.currentUser == null) {
       _setSyncState(SyncState.unauthenticated);
       return;
     }
     if (_syncState == SyncState.syncing) return;
-
     _setSyncState(SyncState.syncing);
 
     try {
@@ -91,10 +144,6 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
           loadNotes();
         },
       );
-
-      // 🟢 修复：每次同步笔记后，强制同步一次分类
-      await _loadManualCategories();
-
       _plainTextCache.clear();
       loadNotes();
 
@@ -109,10 +158,9 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       });
     }
   }
-  /// 🟢 后台防抖同步（静默触发，不阻塞 UI）
+
   void _triggerBackgroundSync() {
     _syncTimer?.cancel();
-    // 等待 5 秒钟，如果这期间用户没有新的操作，就在后台默默同步
     _syncTimer = Timer(const Duration(seconds: 5), () {
       syncWithCloud();
     });
@@ -122,126 +170,44 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   List<Note> get notes => _notes.where((n) => !n.isDeleted).toList();
   List<Note> get trashNotes => _notes.where((n) => n.isDeleted).toList();
   List<Note> get filteredNotes => _filteredNotes;
-
-  String? get selectedCategory => _selectedCategory;
+  String? get selectedCategoryId => _selectedCategoryId;
   String get searchQuery => _searchQuery;
   NoteSortOption get sortOption => _sortOption;
 
-  List<String> get categories {
-    final Set<String> uniqueCategories = {};
-    uniqueCategories.addAll(_manualCategories);
-    for (var note in notes) {
-      if (note.category != null && note.category!.isNotEmpty) {
-        uniqueCategories.add(note.category!);
-      }
-    }
-    return uniqueCategories.toList()..sort();
-  }
-
-  // --- 手动分类持久化 ---
-  Future<void> _loadManualCategories() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    // 1. 先读取本地缓存（保证页面秒开）
-    _manualCategories = prefs.getStringList('custom_categories') ?? [];
-    notifyListeners();
-
-    // 2. 主动向云端请求最新数据进行合并（解决多设备不同步）
-    try {
-      final res = await Supabase.instance.client.auth.getUser(); // 强制网络请求
-      final user = res.user;
-      if (user != null && user.userMetadata != null) {
-        final cloudCategories = user.userMetadata!['custom_categories'];
-        if (cloudCategories != null && cloudCategories is List) {
-          final List<String> cloudList = List<String>.from(cloudCategories);
-
-          // 合并本地与云端分类并去重
-          final Set<String> merged = {..._manualCategories, ...cloudList};
-          _manualCategories = merged.toList();
-
-          // 重新存入本地
-          await prefs.setStringList('custom_categories', _manualCategories);
-          notifyListeners();
-        }
-      }
-    } catch (e) {
-      debugPrint('拉取云端分类失败: $e');
-    }
-  }
-
-  Future<void> _saveManualCategories() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('custom_categories', _manualCategories);
-
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user != null) {
-      final currentData = Map<String, dynamic>.from(user.userMetadata ?? {});
-      currentData['custom_categories'] = _manualCategories;
-      try {
-        await Supabase.instance.client.auth.updateUser(
-          UserAttributes(data: currentData),
-        );
-      } catch (e) {
-        debugPrint('分类同步到云端失败: $e');
-      }
-    }
-  }
-  Future<void> addCategory(String category) async {
-    if (category.trim().isEmpty) return;
-    final cleanName = category.trim();
-    if (categories.contains(cleanName)) return;
-
-    _manualCategories.add(cleanName);
-    await _saveManualCategories();
-    notifyListeners();
-  }
-
   String _getNotePlainText(Note note) {
-    if (_plainTextCache.containsKey(note.id)) {
-      return _plainTextCache[note.id]!;
-    }
+    if (_plainTextCache.containsKey(note.id)) return _plainTextCache[note.id]!;
     final text = note.plainText;
     _plainTextCache[note.id] = text;
     return text;
   }
 
-  void loadNotes() {
-    _notes = _repository.getAllNotes();
-    _applyFilters();
-  }
-
   void _applyFilters() {
     final sourceNotes = notes;
 
-    var result =
-        _selectedCategory == null
-            ? List<Note>.from(sourceNotes)
-            : sourceNotes
-                .where((note) => note.category == _selectedCategory)
-                .toList();
+    var result = _selectedCategoryId == null
+        ? List<Note>.from(sourceNotes)
+        : sourceNotes.where((note) => note.categoryId == _selectedCategoryId).toList();
 
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
-      result =
-          result.where((n) {
-            final cachedPlainText = _getNotePlainText(n).toLowerCase();
-            return n.title.toLowerCase().contains(query) ||
-                cachedPlainText.contains(query) ||
-                n.tags.any((tag) => tag.toLowerCase().contains(query));
-          }).toList();
+      result = result.where((n) {
+        final cachedPlainText = _getNotePlainText(n).toLowerCase();
+
+        // 🌟 V2: 搜索时，将 tagId 翻译成 tagName 再对比！
+        final tagNames = n.tagIds.map((id) => getTagById(id)?.name.toLowerCase() ?? '').toList();
+
+        return n.title.toLowerCase().contains(query) ||
+            cachedPlainText.contains(query) ||
+            tagNames.any((name) => name.contains(query));
+      }).toList();
     }
 
     result.sort((a, b) {
-      if (a.isPinned != b.isPinned) {
-        return a.isPinned ? -1 : 1;
-      }
+      if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
       switch (_sortOption) {
-        case NoteSortOption.updatedNewest:
-          return b.updatedAt.compareTo(a.updatedAt);
-        case NoteSortOption.createdNewest:
-          return b.createdAt.compareTo(a.createdAt);
-        case NoteSortOption.titleAZ:
-          return a.title.compareTo(b.title);
+        case NoteSortOption.updatedNewest: return b.updatedAt.compareTo(a.updatedAt);
+        case NoteSortOption.createdNewest: return b.createdAt.compareTo(a.createdAt);
+        case NoteSortOption.titleAZ: return a.title.compareTo(b.title);
       }
     });
 
@@ -249,8 +215,8 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     notifyListeners();
   }
 
-  void selectCategory(String? category) {
-    _selectedCategory = category;
+  void selectCategory(String? categoryId) {
+    _selectedCategoryId = categoryId;
     _applyFilters();
   }
 
@@ -268,26 +234,22 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     _applyFilters();
   }
 
-  Future<void> togglePin(String id) async {
-    final index = _notes.indexWhere((n) => n.id == id);
-    if (index != -1) {
-      final note = _notes[index];
-      await updateNote(note.copyWith(isPinned: !note.isPinned));
-    }
-  }
-
+  // =========================================================================
+  // 🌟 V2: 核心笔记数据写入 (版本号递增)
+  // =========================================================================
   Future<Note> addNote({
     required String title,
     required String content,
-    List<String> tags = const [],
-    String? category,
+    List<String> tagIds = const [],
+    String? categoryId,
   }) async {
     final note = Note(
       id: _uuid.v4(),
       title: title,
       content: content,
-      tags: tags,
-      category: category,
+      tagIds: tagIds,
+      categoryId: categoryId,
+      version: 1, // 🌟 V2 新增
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
       isPinned: false,
@@ -301,37 +263,35 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<void> updateNote(Note note) async {
-    final updatedNote = note.copyWith(updatedAt: DateTime.now());
+    // 🌟 V2 核心：每次修改，版本号必须 +1，时间刷新
+    final updatedNote = note.copyWith(
+        version: note.version + 1,
+        updatedAt: DateTime.now()
+    );
     await _repository.updateNote(updatedNote);
     _plainTextCache[updatedNote.id] = updatedNote.plainText;
     loadNotes();
     _triggerBackgroundSync();
   }
 
+  Future<void> togglePin(String id) async {
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index != -1) {
+      await updateNote(_notes[index].copyWith(isPinned: !_notes[index].isPinned));
+    }
+  }
+
   Future<void> deleteNote(String id) async {
     final index = _notes.indexWhere((n) => n.id == id);
     if (index != -1) {
-      final note = _notes[index];
-      // 🟢 [关键修改] 移入回收站时，更新 updatedAt 为当前时间。
-      // 这样这个时间就等同于 "deletedAt" (被删除的时间)，作为 30 天倒计时的起点。
-      await _repository.updateNote(
-        note.copyWith(isDeleted: true, updatedAt: DateTime.now()),
-      );
-      loadNotes();
-      _triggerBackgroundSync();
+      await updateNote(_notes[index].copyWith(isDeleted: true));
     }
   }
 
   Future<void> restoreNote(String id) async {
     final index = _notes.indexWhere((n) => n.id == id);
     if (index != -1) {
-      final note = _notes[index];
-      // 🟢 恢复笔记时，也将修改时间重置为当前时间
-      await _repository.updateNote(
-        note.copyWith(isDeleted: false, updatedAt: DateTime.now()),
-      );
-      loadNotes();
-      _triggerBackgroundSync();
+      await updateNote(_notes[index].copyWith(isDeleted: false));
     }
   }
 
@@ -356,27 +316,17 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     _triggerBackgroundSync();
   }
 
-  // --- 🟢 [新增核心逻辑] 自动清理 30 天前的垃圾 ---
   Future<void> _cleanUpOldTrash() async {
     final now = DateTime.now();
     bool hasDeletedAny = false;
-
-    // 使用当前 trashNotes 的拷贝来遍历，避免遍历时修改列表导致报错
     final currentTrash = List<Note>.from(trashNotes);
-
     for (var note in currentTrash) {
-      // 因为在 deleteNote 时我们更新了 updatedAt，这里直接算差值就是呆在回收站的天数
-      final difference = now.difference(note.updatedAt).inDays;
-
-      // 超过 30 天，无情抹除
-      if (difference >= 30) {
+      if (now.difference(note.updatedAt).inDays >= 30) {
         await _repository.deleteNote(note.id);
         _plainTextCache.remove(note.id);
         hasDeletedAny = true;
       }
     }
-
-    // 如果真的删除了过期笔记，通知 UI 刷新并清理图片垃圾
     if (hasDeletedAny) {
       loadNotes();
       _runImageGC();
@@ -384,65 +334,45 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<void> _runImageGC() async {
-    final allNotes = _repository.getAllNotes();
-    await _imageService.cleanUpUnusedImages(allNotes);
+    await _imageService.cleanUpUnusedImages(_repository.getAllNotes());
   }
 
-  // --- 分类管理逻辑 ---
-
-  Future<void> renameCategory(String oldName, String newName) async {
-    if (oldName == newName) return;
-
-    final targetNotes = _notes.where((n) => n.category == oldName).toList();
-    for (var note in targetNotes) {
-      final updated = note.copyWith(
-        category: newName,
-        updatedAt: DateTime.now(),
-      );
-      await _repository.updateNote(updated);
-    }
-
-    if (_manualCategories.contains(oldName)) {
-      final index = _manualCategories.indexOf(oldName);
-      _manualCategories[index] = newName;
-      await _saveManualCategories();
-    } else {
-      if (!_manualCategories.contains(newName)) {
-        _manualCategories.add(newName);
-        await _saveManualCategories();
-      }
-    }
-
+  // =========================================================================
+  // 🌟 V2: 分类管理 (由于已交由 CategoryRepository，这里大大简化)
+  // =========================================================================
+  Future<void> addCategory(String name) async {
+    final newCat = Category(
+      id: _uuid.v4(),
+      name: name,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+    await _categoryRepository.addCategory(newCat);
     loadNotes();
+    _triggerBackgroundSync();
   }
 
-  Future<void> deleteCategory(String categoryName) async {
-    final targetNotes =
-        _notes.where((n) => n.category == categoryName).toList();
-    for (var note in targetNotes) {
-      final updated = note.copyWith(
-        clearCategory: true,
-        updatedAt: DateTime.now(),
-      );
-      await _repository.updateNote(updated);
+  Future<void> renameCategory(String id, String newName) async {
+    final cat = getCategoryById(id);
+    if (cat != null) {
+      await _categoryRepository.updateCategory(cat.copyWith(name: newName, updatedAt: DateTime.now()));
+      loadNotes();
+      _triggerBackgroundSync();
     }
+  }
 
-    if (_manualCategories.contains(categoryName)) {
-      _manualCategories.remove(categoryName);
-      await _saveManualCategories();
-    }
-
+  Future<void> deleteCategory(String id) async {
+    await _categoryRepository.deleteCategory(id);
+    await _syncService.recordDeletedCategory(id);
     loadNotes();
+    _triggerBackgroundSync();
   }
 
   Future<void> clearLocalData() async {
-    final allNotes = _repository.getAllNotes();
-    for (var note in allNotes) {
+    // 危险操作，清空本地所有表
+    for (var note in _repository.getAllNotes()) {
       await _repository.deleteNote(note.id);
     }
-    _notes.clear();
-    _filteredNotes.clear();
-    _manualCategories.clear();
-    notifyListeners();
+    loadNotes();
   }
 }

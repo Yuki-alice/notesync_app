@@ -156,7 +156,7 @@ class _TodoDetailViewState extends State<TodoDetailView> {
           height: 64,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2))),
+            border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2))),
             color: theme.colorScheme.surface,
           ),
           child: Row(
@@ -269,7 +269,7 @@ class _TodoDetailViewState extends State<TodoDetailView> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Icon(Icons.crop_square_rounded, size: 22, color: theme.colorScheme.primary.withOpacity(0.4)),
+                    Icon(Icons.crop_square_rounded, size: 22, color: theme.colorScheme.primary.withValues(alpha: 0.4)),
                     const SizedBox(width: 16),
                     Expanded(
                       child: TextField(
@@ -280,7 +280,7 @@ class _TodoDetailViewState extends State<TodoDetailView> {
                         style: const TextStyle(fontSize: 16),
                         decoration: InputDecoration(
                           hintText: "准备做什么 (回车连续添加)...",
-                          hintStyle: TextStyle(color: theme.colorScheme.outline.withOpacity(0.6), fontSize: 16),
+                          hintStyle: TextStyle(color: theme.colorScheme.outline.withValues(alpha: 0.6), fontSize: 16),
                           border: InputBorder.none,
                           filled: false,
                           contentPadding: EdgeInsets.zero,
@@ -377,7 +377,7 @@ class _EditableSubTaskRowState extends State<_EditableSubTaskRow> {
                 borderRadius: BorderRadius.circular(6),
                 color: isDone ? widget.theme.colorScheme.primary : Colors.transparent,
                 border: Border.all(
-                  color: isDone ? widget.theme.colorScheme.primary : widget.theme.colorScheme.outline.withOpacity(0.6),
+                  color: isDone ? widget.theme.colorScheme.primary : widget.theme.colorScheme.outline.withValues(alpha: 0.6),
                   width: isDone ? 0 : 2,
                 ),
               ),

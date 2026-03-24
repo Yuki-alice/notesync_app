@@ -59,22 +59,22 @@ class MainLayoutMobile extends StatelessWidget {
           child: Container(
             // 只有渐变主题才在导航栏展示炫光
             decoration: BoxDecoration(
-              color: isDark ? Colors.black.withOpacity(0.65) : Colors.white.withOpacity(0.75),
+              color: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.75),
               gradient: currentStyle.vibe == ThemeVibe.gradient ? LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  theme.colorScheme.primary.withOpacity(0.15),
+                  theme.colorScheme.primary.withValues(alpha: 0.15),
                   Colors.transparent,
-                  theme.colorScheme.secondary.withOpacity(0.1),
+                  theme.colorScheme.secondary.withValues(alpha: 0.1),
                 ],
               ) : null,
-              border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2), width: 0.5)),
+              border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2), width: 0.5)),
             ),
             child: NavigationBar(
               backgroundColor: Colors.transparent, // 必须透明以透出下方的渐变和模糊
               elevation: 0,
-              indicatorColor: theme.colorScheme.primaryContainer.withOpacity(0.8),
+              indicatorColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.8),
               selectedIndex: selectedIndex,
               onDestinationSelected: onDestinationSelected,
               destinations: const [

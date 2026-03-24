@@ -150,7 +150,7 @@ class _CreateTodoContentState extends State<_CreateTodoContent> {
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
           elevation: 8,
-          shadowColor: Colors.black.withOpacity(0.2),
+          shadowColor: Colors.black.withValues(alpha: 0.2),
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -231,7 +231,7 @@ class _CreateTodoContentState extends State<_CreateTodoContent> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Icon(Icons.crop_square_rounded, size: 22, color: theme.colorScheme.primary.withOpacity(0.5)),
+                    Icon(Icons.crop_square_rounded, size: 22, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
                     const SizedBox(width: 12),
                     Expanded(
                       child: TextField(
@@ -242,7 +242,7 @@ class _CreateTodoContentState extends State<_CreateTodoContent> {
                         style: const TextStyle(fontSize: 16),
                         decoration: InputDecoration(
                           hintText: "准备做什么 (回车连续添加)...",
-                          hintStyle: TextStyle(color: theme.colorScheme.outline.withOpacity(0.6), fontSize: 16),
+                          hintStyle: TextStyle(color: theme.colorScheme.outline.withValues(alpha: 0.6), fontSize: 16),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -263,7 +263,7 @@ class _CreateTodoContentState extends State<_CreateTodoContent> {
                         _selectedDate == null ? "设置提醒" : DateFormat('MM-dd HH:mm').format(_selectedDate!),
                         style: TextStyle(color: _selectedDate != null ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
                       ),
-                      backgroundColor: _selectedDate != null ? theme.colorScheme.primaryContainer.withOpacity(0.5) : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                      backgroundColor: _selectedDate != null ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                       side: BorderSide.none,
                       shape: const StadiumBorder(),
                       onPressed: _pickDate,

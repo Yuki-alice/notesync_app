@@ -5,7 +5,7 @@ import '../../../../../core/providers/notes_provider.dart';
 Future<String?> showSetCategorySheet(BuildContext context, {String? currentCategory}) {
   return showModalBottomSheet<String>(
     context: context,
-    isScrollControlled: true, // 允许输入法顶起
+    isScrollControlled: true,
     showDragHandle: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
     builder: (context) => _SetCategorySheet(currentCategory: currentCategory),
@@ -33,7 +33,7 @@ class _SetCategorySheetState extends State<_SetCategorySheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final provider = Provider.of<NotesProvider>(context, listen: false);
-    final categories = provider.categories; // 获取现有分类列表
+    final categories = provider.categories; // 🌟 这是一个 List<Category> 对象列表
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
@@ -42,14 +42,12 @@ class _SetCategorySheetState extends State<_SetCategorySheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 标题
           Text(
             '设置分类',
             style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 24),
 
-          // 输入新分类
           TextField(
             controller: _controller,
             autofocus: false,
@@ -64,7 +62,6 @@ class _SetCategorySheetState extends State<_SetCategorySheet> {
                 borderSide: BorderSide.none,
               ),
               contentPadding: const EdgeInsets.symmetric(vertical: 16),
-              // 确认按钮 (仅当有输入时显示)
               suffixIcon: IconButton(
                 onPressed: () {
                   if (_controller.text.trim().isNotEmpty) {
@@ -88,18 +85,15 @@ class _SetCategorySheetState extends State<_SetCategorySheet> {
           ),
           const SizedBox(height: 12),
 
-          // 分类列表
           Wrap(
             spacing: 8,
             runSpacing: 12,
             children: [
-              // "无分类" 选项
               FilterChip(
                 label: const Text('无分类'),
                 selected: widget.currentCategory == null,
-                onSelected: (_) => Navigator.pop(context, ''), // 返回空字符串代表清除分类
+                onSelected: (_) => Navigator.pop(context, ''),
                 avatar: widget.currentCategory == null ? const Icon(Icons.check, size: 18) : null,
-                // 自定义未选中时的样式，使其看起来像 Outlined
                 backgroundColor: Colors.transparent,
                 shape: StadiumBorder(side: BorderSide(color: theme.colorScheme.outline)),
                 labelStyle: TextStyle(
@@ -107,13 +101,14 @@ class _SetCategorySheetState extends State<_SetCategorySheet> {
                 ),
               ),
 
-              // 现有分类列表
+              // 🌟 修复渲染逻辑
               ...categories.map((category) {
-                final isSelected = widget.currentCategory == category;
+                // 传进来的是兼容层的分类名称 (String)
+                final isSelected = widget.currentCategory == category.name;
                 return FilterChip(
-                  label: Text(category),
+                  label: Text(category.name), // 🌟 必须取出 name 属性
                   selected: isSelected,
-                  onSelected: (_) => Navigator.pop(context, category),
+                  onSelected: (_) => Navigator.pop(context, category.name), // 🌟 返回选中的 name
                   selectedColor: theme.colorScheme.primaryContainer,
                   checkmarkColor: theme.colorScheme.primary,
                   labelStyle: TextStyle(

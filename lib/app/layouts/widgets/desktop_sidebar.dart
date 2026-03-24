@@ -60,7 +60,7 @@ class DesktopSidebar extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: onFabPressed,
-                  hoverColor: theme.colorScheme.primary.withOpacity(0.1),
+                  hoverColor: theme.colorScheme.primary.withValues(alpha: 0.1),
                   child: SizedBox(
                     width: 40, height: 40,
                     child: Icon(Icons.add_rounded, size: 24, color: theme.colorScheme.onPrimaryContainer),
@@ -118,7 +118,7 @@ class DesktopSidebar extends StatelessWidget {
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
                   child: Container(
-                    decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.5), width: 1.5), boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.1), blurRadius: 6, offset: const Offset(0, 2))]),
+                    decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: 1.5), boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.1), blurRadius: 6, offset: const Offset(0, 2))]),
                     clipBehavior: Clip.antiAlias,
                     child: CircleAvatar(
                       radius: 16,

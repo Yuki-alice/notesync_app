@@ -30,7 +30,7 @@ class MainLayoutDesktop extends StatelessWidget {
 
     // 生成极浅的不透明底色
     final surfaceColor = Color.alphaBlend(
-      theme.colorScheme.primary.withOpacity(0.04),
+      theme.colorScheme.primary.withValues(alpha: 0.04),
       theme.colorScheme.surface,
     );
 
@@ -92,7 +92,7 @@ class MainLayoutDesktop extends StatelessWidget {
                     filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                     child: Container(
                       width: 64,
-                      color: surfaceColor.withOpacity(0.8),
+                      color: surfaceColor.withValues(alpha: 0.8),
                       child: DesktopSidebar(
                         selectedIndex: selectedIndex,
                         onDestinationSelected: onDestinationSelected,
@@ -111,9 +111,9 @@ class MainLayoutDesktop extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.3), width: 1),
+                      border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), width: 1),
                       boxShadow: [
-                        BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 4)),
+                        BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.04), blurRadius: 24, offset: const Offset(0, 4)),
                       ],
                     ),
                     clipBehavior: Clip.antiAlias,

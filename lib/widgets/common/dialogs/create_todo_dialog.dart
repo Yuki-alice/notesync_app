@@ -236,10 +236,10 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
                     decoration: InputDecoration(
                       hintText: '准备做什么？',
                       hintStyle: TextStyle(
-                          color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)
+                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
                       ),
                       filled: true,
-                      fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       prefixIcon: Icon(
                           Icons.edit_rounded,
@@ -267,11 +267,11 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
                     decoration: InputDecoration(
                       hintText: '添加详细描述...',
                       hintStyle: TextStyle(
-                        color: theme.colorScheme.outline.withOpacity(0.7),
+                        color: theme.colorScheme.outline.withValues(alpha: 0.7),
                         fontSize: 16,
                       ),
                       filled: true,
-                      fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       prefixIcon: Icon(
                           Icons.notes_rounded,
@@ -295,7 +295,7 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.1))),
+                border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.1))),
                 color: theme.colorScheme.surface,
               ),
               child: Row(

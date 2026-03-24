@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -6,10 +7,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../models/note.dart';
 
-
 class ImageStorageService {
   static const String _imageDirName = 'note_images';
-
 
   Future<Directory> get _baseDir async {
     final appDir = await getApplicationDocumentsDirectory();
@@ -30,7 +29,9 @@ class ImageStorageService {
     final isMobileOrMac = Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
 
     if (isMobileOrMac && (ext == '.jpg' || ext == '.jpeg' || ext == '.png' || ext == '.webp')) {
-      print('🗜️ 开始压缩图片: ${imageFile.lengthSync() / 1024} KB');
+      if (kDebugMode) {
+        print('🗜️ 开始压缩图片: ${imageFile.lengthSync() / 1024} KB');
+      }
 
       try {
         final result = await FlutterImageCompress.compressAndGetFile(
@@ -43,19 +44,25 @@ class ImageStorageService {
 
         if (result != null) {
           final compressedFile = File(result.path);
-          print('✅ 压缩完成: ${compressedFile.lengthSync() / 1024} KB');
+          if (kDebugMode) {
+            print('✅ 压缩完成: ${compressedFile.lengthSync() / 1024} KB');
+          }
         } else {
           // 压缩意外返回 null，回退到原样拷贝
           await imageFile.copy(targetPath);
         }
       } catch (e) {
         // 如果压缩过程出现任何未知的底层异常，也必须保证业务不中断，回退到拷贝
-        print('⚠️ 压缩失败，回退到原图: $e');
+        if (kDebugMode) {
+          print('⚠️ 压缩失败，回退到原图: $e');
+        }
         await imageFile.copy(targetPath);
       }
     } else {
       // 🟢 Windows/Linux 桌面端，或者不支持压缩的格式（如 gif），直接原样拷贝！
-      print('💻 当前平台或格式不执行压缩，原样保存');
+      if (kDebugMode) {
+        print('💻 当前平台或格式不执行压缩，原样保存');
+      }
       await imageFile.copy(targetPath);
     }
 
@@ -71,6 +78,7 @@ class ImageStorageService {
 
       final appDir = await getApplicationDocumentsDirectory();
 
+      // 🌟 免疫反斜杠：统理解析出纯粹的文件名
       final normalizedPath = path.replaceAll('\\', '/');
       final fileName = normalizedPath.split('/').last;
 
@@ -79,7 +87,9 @@ class ImageStorageService {
       if (await localFile.exists()) return localFile;
       return null;
     } catch (e) {
-      print('Error resolving image path: $e');
+      if (kDebugMode) {
+        print('Error resolving image path: $e');
+      }
       return null;
     }
   }
@@ -97,37 +107,43 @@ class ImageStorageService {
       final dir = await _baseDir;
       if (!await dir.exists()) return;
 
-      // 1. 收集所有笔记中引用的图片路径
-      final Set<String> usedImagePaths = {};
+      // 🌟 1. 收集所有存活笔记中引用的【纯图片文件名】
+      final Set<String> usedFileNames = {};
 
       for (var note in allNotes) {
-        if (!note.isRichText) continue;
+        // 🚨 核心逻辑修复：如果笔记在废纸篓里 (isDeleted)，它的图片也必须被判定为垃圾！
+        if (!note.isRichText || note.isDeleted) continue;
+
         try {
           final paths = Note.extractAllImagePaths(note.content);
-          usedImagePaths.addAll(paths);
+          for (var path in paths) {
+            // 🚨 核心逻辑修复：无论 Markdown 里存的是什么鬼路径，统一提纯为只有 "UUID.png" 的格式
+            usedFileNames.add(path.replaceAll('\\', '/').split('/').last);
+          }
         } catch (e) {
           continue;
         }
       }
 
-      // 2. 遍历本地文件夹，删除不在引用列表中的文件
+      // 🌟 2. 遍历本地文件夹，利用纯文件名进行最精确的对比绞杀
       final entities = dir.listSync();
       for (var entity in entities) {
         if (entity is File) {
           final fileName = p.basename(entity.path);
-          // 构建相对路径格式 (跟存的时候一样)
-          final relativePath = p.join(_imageDirName, fileName);
 
-          // 如果该文件既没有被以相对路径引用，也没有被以绝对路径引用，则删除
-          if (!usedImagePaths.contains(relativePath) &&
-              !usedImagePaths.contains(entity.path)) {
-            print('🗑️ GC: 删除无用图片 -> $relativePath');
+          // 如果本地磁盘里的这个文件名，不在上面的使用列表中，直接处决！
+          if (!usedFileNames.contains(fileName)) {
+            if (kDebugMode) {
+              print('🗑️ GC: 删除无用图片 -> $_imageDirName/$fileName');
+            }
             await entity.delete();
           }
         }
       }
     } catch (e) {
-      print('Image GC Error: $e');
+      if (kDebugMode) {
+        print('Image GC Error: $e');
+      }
     }
   }
 }

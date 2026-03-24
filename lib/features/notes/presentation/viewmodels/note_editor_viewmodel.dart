@@ -23,8 +23,10 @@ class NoteEditorViewModel extends ChangeNotifier {
   late quill.QuillController quillController;
   late TextEditingController titleController;
 
-  List<String> tags = [];
-  String? category;
+  // 🌟 修正为 ID
+  List<String> tagIds = [];
+  String? categoryId;
+
   bool isDirty = false;
   int wordCount = 0;
 
@@ -47,8 +49,9 @@ class NoteEditorViewModel extends ChangeNotifier {
 
   void _initControllers() {
     titleController = TextEditingController(text: _editingNote?.title ?? '');
-    tags = _editingNote?.tags.toList() ?? [];
-    category = _editingNote?.category;
+    // 🌟 修正为 ID
+    tagIds = _editingNote?.tagIds.toList() ?? [];
+    categoryId = _editingNote?.categoryId;
 
     try {
       if (_editingNote != null && _editingNote!.content.isNotEmpty) {
@@ -79,8 +82,8 @@ class NoteEditorViewModel extends ChangeNotifier {
       _updateWordCount();
       if (event.source == quill.ChangeSource.local) {
         _markAsDirty();
+
         if (isProMode && !_isAutoFormatting) {
-          // 🟢 极度精简：调用专属服务类进行格式化检测
           _isAutoFormatting = true;
           final didFormat = MarkdownShortcutService.format(quillController);
           if (didFormat) {
@@ -99,7 +102,6 @@ class NoteEditorViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 🟢 极度精简：调用专属导出服务
   String generateMarkdownContent() {
     return MarkdownExportService.generate(titleController.text.trim(), quillController);
   }
@@ -157,15 +159,17 @@ class NoteEditorViewModel extends ChangeNotifier {
       final newNote = await notesProvider.addNote(
           title: title.isEmpty ? '未命名笔记' : title,
           content: contentJson,
-          tags: tags,
-          category: category);
+          tagIds: tagIds,        // 🌟 修正为 ID
+          categoryId: categoryId // 🌟 修正为 ID
+      );
       _editingNote = newNote;
     } else {
       final updatedNote = _editingNote!.copyWith(
           title: title,
           content: contentJson,
-          tags: tags,
-          category: category,
+          tagIds: tagIds,        // 🌟 修正为 ID
+          categoryId: categoryId,// 🌟 修正为 ID
+          version: _editingNote!.version + 1, // 🌟 V2: 版本号递增
           updatedAt: DateTime.now());
       await notesProvider.updateNote(updatedNote);
       _editingNote = updatedNote;
@@ -175,21 +179,21 @@ class NoteEditorViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addTag(String tag) {
-    final trimmed = tag.trim();
-    if (trimmed.isNotEmpty && !tags.contains(trimmed)) {
-      tags.add(trimmed);
+  // 🌟 方法名和参数同步修正
+  void addTag(String tagId) {
+    if (tagId.isNotEmpty && !tagIds.contains(tagId)) {
+      tagIds.add(tagId);
       _markAsDirty();
     }
   }
 
-  void removeTag(String tag) {
-    tags.remove(tag);
+  void removeTag(String tagId) {
+    tagIds.remove(tagId);
     _markAsDirty();
   }
 
-  void setCategory(String? newCategory) {
-    category = newCategory;
+  void setCategoryId(String? newCategoryId) {
+    categoryId = newCategoryId;
     _markAsDirty();
   }
 

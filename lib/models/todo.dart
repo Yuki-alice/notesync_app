@@ -1,5 +1,4 @@
 import 'package:isar/isar.dart';
-
 part 'todo.g.dart';
 
 @collection
@@ -16,8 +15,13 @@ class Todo {
   String description;
   DateTime? dueDate;
   double sortOrder;
-  bool isDeleted;
 
+  // 🌟 V2 核心：关联分类与版本控制
+  String? categoryId;
+  int version;
+  String? lastModifiedBy;
+
+  bool isDeleted;
   List<SubTask> subTasks;
 
   Todo({
@@ -29,6 +33,9 @@ class Todo {
     this.description = '',
     this.dueDate,
     this.sortOrder = 0.0,
+    this.categoryId,
+    this.version = 1,
+    this.lastModifiedBy,
     this.isDeleted = false,
     this.subTasks = const [],
   });
@@ -42,6 +49,10 @@ class Todo {
     String? description,
     DateTime? dueDate,
     double? sortOrder,
+    String? categoryId,
+    bool clearCategory = false,
+    int? version,
+    String? lastModifiedBy,
     bool? isDeleted,
     List<SubTask>? subTasks,
   }) {
@@ -54,6 +65,9 @@ class Todo {
       description: description ?? this.description,
       dueDate: dueDate ?? this.dueDate,
       sortOrder: sortOrder ?? this.sortOrder,
+      categoryId: clearCategory ? null : (categoryId ?? this.categoryId),
+      version: version ?? this.version,
+      lastModifiedBy: lastModifiedBy ?? this.lastModifiedBy,
       isDeleted: isDeleted ?? this.isDeleted,
       subTasks: subTasks ?? this.subTasks,
     );

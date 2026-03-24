@@ -14,8 +14,15 @@ class Note {
   String content;
   DateTime createdAt;
   DateTime updatedAt;
-  List<String> tags;
-  String? category;
+
+  // 🌟 V2 核心：废弃原有的 String 列表，改为外键 ID 列表
+  List<String> tagIds;
+  String? categoryId;
+
+  // 🌟 V2 核心：注入版本控制引擎！
+  int version;
+  String? lastModifiedBy;
+
   bool isPinned;
   bool isDeleted;
 
@@ -25,8 +32,10 @@ class Note {
     required this.content,
     required this.createdAt,
     required this.updatedAt,
-    this.tags = const [],
-    this.category,
+    this.tagIds = const [],
+    this.categoryId,
+    this.version = 1,
+    this.lastModifiedBy,
     this.isPinned = false,
     this.isDeleted = false,
   });
@@ -52,18 +61,16 @@ class Note {
       return '';
     }
   }
-  /// 获取第一张图片的路径（用于卡片封面展示）
+
   String? get firstImagePath {
     final paths = extractAllImagePaths(content);
     return paths.isNotEmpty ? paths.first : null;
   }
 
-  /// 格式化更新时间 (使用相对时间：如"刚刚", "3小时前"，让笔记列表更具呼吸感)
   String get formattedUpdatedAt {
     return DateFormatter.formatRelativeTime(updatedAt);
   }
 
-  /// 格式化创建时间 (使用绝对时间)
   String get formattedCreatedAt {
     return DateFormatter.formatFullDateTime(createdAt);
   }
@@ -74,9 +81,11 @@ class Note {
     String? content,
     DateTime? createdAt,
     DateTime? updatedAt,
-    List<String>? tags,
-    String? category,
+    List<String>? tagIds,
+    String? categoryId,
     bool clearCategory = false,
+    int? version,
+    String? lastModifiedBy,
     bool? isPinned,
     bool? isDeleted,
   }) {
@@ -86,8 +95,10 @@ class Note {
       content: content ?? this.content,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      tags: tags ?? this.tags,
-      category: clearCategory ? null : (category ?? this.category),
+      tagIds: tagIds ?? this.tagIds,
+      categoryId: clearCategory ? null : (categoryId ?? this.categoryId),
+      version: version ?? this.version,
+      lastModifiedBy: lastModifiedBy ?? this.lastModifiedBy,
       isPinned: isPinned ?? this.isPinned,
       isDeleted: isDeleted ?? this.isDeleted,
     );
@@ -108,9 +119,7 @@ class Note {
           }
         }
       }
-    } catch (e) {
-      // 忽略解析错误
-    }
+    } catch (e) {}
     return paths;
   }
 }

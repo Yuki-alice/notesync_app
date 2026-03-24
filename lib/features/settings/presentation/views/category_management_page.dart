@@ -1,3 +1,4 @@
+// 文件路径: lib/features/notes/presentation/views/category_management_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -5,11 +6,9 @@ import '../../../../core/providers/notes_provider.dart';
 import '../../../../widgets/common/app_empty_state.dart';
 import '../../../../core/constants/app_dimens.dart';
 
-// 🟢 引入我们抽离出来的三个弹窗组件
 import '../../../../widgets/common/dialogs/add_category_dialog.dart';
 import '../../../../widgets/common/dialogs/delete_category_dialog.dart';
 import '../../../../widgets/common/dialogs/rename_category_dialog.dart';
-
 
 class CategoryManagementPage extends StatelessWidget {
   const CategoryManagementPage({super.key});
@@ -43,11 +42,11 @@ class CategoryManagementPage extends StatelessWidget {
             itemCount: categories.length,
             separatorBuilder: (context, index) => const SizedBox(height: AppDimens.listSpacing),
             itemBuilder: (context, index) {
-              final category = categories[index];
+              final category = categories[index]; // 🌟 这是一个 Category 对象
 
               return Card(
                 elevation: 0,
-                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.6),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimens.cardRadius)),
                 clipBehavior: Clip.antiAlias,
                 child: ListTile(
@@ -61,7 +60,7 @@ class CategoryManagementPage extends StatelessWidget {
                     child: Icon(Icons.folder_rounded, color: theme.colorScheme.onSecondaryContainer),
                   ),
                   title: Text(
-                    category,
+                    category.name, // 🌟 修复：取出 name 属性显示
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -79,10 +78,10 @@ class CategoryManagementPage extends StatelessWidget {
                           visualDensity: VisualDensity.compact,
                         ),
                         onPressed: () async {
-                          // 🟢 调用重命名弹窗
-                          final newName = await showRenameCategoryDialog(context, category);
+                          // 🌟 弹窗显示的是名字，但提交给后台的是 ID
+                          final newName = await showRenameCategoryDialog(context, category.name);
                           if (newName != null && context.mounted) {
-                            provider.renameCategory(category, newName);
+                            provider.renameCategory(category.id, newName);
                           }
                         },
                       ),
@@ -92,16 +91,15 @@ class CategoryManagementPage extends StatelessWidget {
                         icon: Icon(Icons.delete_rounded, size: 18, color: theme.colorScheme.error),
                         tooltip: '删除',
                         style: IconButton.styleFrom(
-                          backgroundColor: theme.colorScheme.errorContainer.withOpacity(0.5),
+                          backgroundColor: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
                           foregroundColor: theme.colorScheme.error,
                           visualDensity: VisualDensity.compact,
                         ),
                         onPressed: () async {
                           HapticFeedback.lightImpact();
-                          // 🟢 调用删除确认弹窗
-                          final confirm = await showDeleteCategoryDialog(context, category);
+                          final confirm = await showDeleteCategoryDialog(context, category.name);
                           if (confirm == true && context.mounted) {
-                            provider.deleteCategory(category);
+                            provider.deleteCategory(category.id); // 🌟 传 ID 删除
                           }
                         },
                       ),
@@ -116,7 +114,6 @@ class CategoryManagementPage extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           HapticFeedback.selectionClick();
-          // 🟢 调用新建分类弹窗
           final newCategory = await showAddCategoryDialog(context);
           if (newCategory != null && context.mounted) {
             Provider.of<NotesProvider>(context, listen: false).addCategory(newCategory);

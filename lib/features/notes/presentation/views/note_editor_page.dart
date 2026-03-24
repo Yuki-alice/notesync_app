@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart'; // 🌟 引入链接跳转支持
 
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/services/image_storage_service.dart';
@@ -17,7 +19,6 @@ import '../viewmodels/note_editor_viewmodel.dart';
 import '../widgets/editor_bottom_toolbar.dart';
 import 'note_export_preview_page.dart';
 
-// 🟢 引入全新的图片组件和右侧面板积木
 import '../widgets/note_image_embed.dart';
 import '../widgets/note_metadata_panel.dart';
 
@@ -69,6 +70,8 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
 
   final ScrollController _mainScrollController = ScrollController();
   final ScrollController _editorInnerScrollController = ScrollController();
+
+  final ImageStorageService _imageService = ImageStorageService();
 
   ToolbarPanel _activePanel = ToolbarPanel.none;
   final GlobalKey _boundaryKey = GlobalKey();
@@ -161,7 +164,7 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
           backgroundColor: surfaceColor,
           resizeToAvoidBottomInset: true,
           appBar: AppBar(
-            backgroundColor: surfaceColor.withOpacity(0.95), elevation: 0, scrolledUnderElevation: 0, centerTitle: true,
+            backgroundColor: surfaceColor.withValues(alpha: 0.95), elevation: 0, scrolledUnderElevation: 0, centerTitle: true,
             title: viewModel.isReadOnly ? Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.menu_book_rounded, size: 16, color: theme.colorScheme.primary), const SizedBox(width: 8), Text('沉浸阅读', style: TextStyle(color: theme.colorScheme.primary, fontSize: 15, fontWeight: FontWeight.bold))]) : null,
             leading: IconButton(icon: Icon(Icons.arrow_back_rounded, color: theme.colorScheme.onSurface), onPressed: () async { FocusScope.of(context).unfocus(); await viewModel.saveNote(); if (context.mounted) Navigator.pop(context); }),
             actions: [
@@ -172,9 +175,9 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), position: PopupMenuPosition.under, color: theme.colorScheme.surfaceContainerHighest,
                 onSelected: (value) => _handleExport(value, viewModel),
                 itemBuilder: (context) => [
-                  PopupMenuItem(value: 'image_preview', child: Row(children: [Icon(Icons.image_rounded, size: 20, color: theme.colorScheme.primary), const SizedBox(width: 12), const Text('生成长图分享 / 保存')])),
+                  PopupMenuItem(value: 'image_preview', child: Row(children: [Icon(Icons.image_outlined, size: 20, color: theme.colorScheme.primary), const SizedBox(width: 12), const Text('生成长图分享 / 保存')])),
                   const PopupMenuDivider(),
-                  PopupMenuItem(value: 'markdown', child: Row(children: [Icon(Icons.code_rounded, size: 20, color: theme.colorScheme.onSurfaceVariant), const SizedBox(width: 12), const Text('导出 / 分享 Markdown')])),
+                  PopupMenuItem(value: 'markdown', child: Row(children: [Icon(Icons.code_outlined, size: 20, color: theme.colorScheme.onSurfaceVariant), const SizedBox(width: 12), const Text('导出 / 分享 Markdown')])),
                 ],
               ),
               const SizedBox(width: 8),
@@ -208,9 +211,7 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
             ],
           ),
         ),
-        VerticalDivider(width: 1, thickness: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.3)),
-
-        // 🟢 调用解耦出的右侧边栏
+        VerticalDivider(width: 1, thickness: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
         const NoteMetadataPanel(isMobile: false),
       ],
     );
@@ -245,11 +246,8 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildTitleField(theme, viewModel), const SizedBox(height: 12),
-                    Text('${viewModel.currentNote != null ? DateFormatter.formatFullDateTime(viewModel.currentNote!.updatedAt) : DateFormatter.formatFullDateTime(DateTime.now())}  |  ${viewModel.wordCount}字', style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6), fontSize: 13, fontWeight: FontWeight.w500)), const SizedBox(height: 20),
-
-                    // 🟢 调用解耦出的手机端标签模块
-                    if (horizontalPadding == 24.0)
-                      const NoteMetadataPanel(isMobile: true),
+                    Text('${viewModel.currentNote != null ? DateFormatter.formatFullDateTime(viewModel.currentNote!.updatedAt) : DateFormatter.formatFullDateTime(DateTime.now())}  |  ${viewModel.wordCount}字', style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 13, fontWeight: FontWeight.w500)), const SizedBox(height: 20),
+                    if (horizontalPadding == 24.0) const NoteMetadataPanel(isMobile: true),
                   ],
                 ),
               ),
@@ -286,35 +284,147 @@ class _NoteEditorViewState extends State<_NoteEditorView> {
     return TextField(
       controller: viewModel.titleController, focusNode: _titleFocusNode, textInputAction: TextInputAction.next, readOnly: viewModel.isReadOnly,
       onEditingComplete: () { _editorFocusNode.requestFocus(); },
-      decoration: InputDecoration(hintText: '标题', hintStyle: TextStyle(color: theme.colorScheme.outline.withOpacity(0.3), fontSize: 34, fontWeight: FontWeight.bold), filled: false, border: InputBorder.none, focusedBorder: InputBorder.none, enabledBorder: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
-      style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 34, fontWeight: FontWeight.bold, height: 1.3), maxLines: null,
+      decoration: InputDecoration(
+          hintText: '写个好标题...',
+          hintStyle: TextStyle(color: theme.colorScheme.outline.withValues(alpha: 0.3), fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+          filled: false, border: InputBorder.none, focusedBorder: InputBorder.none, enabledBorder: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero
+      ),
+      style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 36, fontWeight: FontWeight.w900, height: 1.3, letterSpacing: 0.5), maxLines: null,
     );
   }
 
   Widget _buildQuillEditor(ThemeData theme, NoteEditorViewModel viewModel) {
-    // 这里我们先保留默认的样式，下一步我们就会在这里注入极其惊艳的 Typography 配置！
+    final defaultTextStyle = TextStyle(
+        fontSize: 16,
+        height: 1.8,
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+        letterSpacing: 0.4
+    );
+
+    final listTextStyle = TextStyle(
+        fontSize: 16,
+        height: 1.25,
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+        letterSpacing: 0.4
+    );
+
     return quill.QuillEditor.basic(
-      controller: viewModel.quillController, focusNode: _editorFocusNode,
+      controller: viewModel.quillController,
+      focusNode: _editorFocusNode,
       scrollController: _editorInnerScrollController,
       config: quill.QuillEditorConfig(
-        scrollable: false, expands: false, padding: EdgeInsets.zero, placeholder: '记点什么...', autoFocus: false,
+        scrollable: false, expands: false,
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        placeholder: '从这里开始你的灵感...',
+        autoFocus: false,
         showCursor: !viewModel.isReadOnly && !_isImageSelected,
+
+        // 🌟 核心修复：接管超链接点击，调起外部浏览器！
+        onLaunchUrl: (String? url) async {
+          if (url == null || url.isEmpty) return;
+          // 自动补全 http 头，防止 uri 解析失败
+          var parsedUrl = url.startsWith('http') ? url : 'https://$url';
+          try {
+            final uri = Uri.parse(parsedUrl);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          } catch (e) {
+            debugPrint('链接无法打开: $parsedUrl');
+          }
+        },
+
         embedBuilders: [
-          // 已经解耦并安全的图片插入组件
           ImageEmbedBuilder(
-            imageService: ImageStorageService(),
+            imageService: _imageService,
             onSelectionChange: (isSelected) {
               if (_isImageSelected != isSelected) setState(() => _isImageSelected = isSelected);
             },
           ),
         ],
         customStyles: quill.DefaultStyles(
-          paragraph: quill.DefaultTextBlockStyle(TextStyle(fontSize: 17, height: 1.6, color: theme.colorScheme.onSurface.withOpacity(0.85)), const quill.HorizontalSpacing(0, 0), const quill.VerticalSpacing(0, 0), const quill.VerticalSpacing(0, 0), null),
-          h1: quill.DefaultTextBlockStyle(TextStyle(fontSize: 24, fontWeight: FontWeight.bold, height: 1.5, color: theme.colorScheme.onSurface), const quill.HorizontalSpacing(0, 0), const quill.VerticalSpacing(16, 0), const quill.VerticalSpacing(0, 0), null),
+          paragraph: quill.DefaultTextBlockStyle(
+              defaultTextStyle,
+              const quill.HorizontalSpacing(0, 0),
+              const quill.VerticalSpacing(6, 6),
+              const quill.VerticalSpacing(0, 0),
+              null
+          ),
+          h1: quill.DefaultTextBlockStyle(
+              TextStyle(fontSize: 28, fontWeight: FontWeight.w900, height: 1.3, color: theme.colorScheme.onSurface, letterSpacing: 0.5),
+              const quill.HorizontalSpacing(0, 0),
+              const quill.VerticalSpacing(28, 12),
+              const quill.VerticalSpacing(0, 0),
+              null
+          ),
+          h2: quill.DefaultTextBlockStyle(
+              TextStyle(fontSize: 22, fontWeight: FontWeight.bold, height: 1.3, color: theme.colorScheme.onSurface.withValues(alpha: 0.9)),
+              const quill.HorizontalSpacing(0, 0),
+              const quill.VerticalSpacing(20, 10),
+              const quill.VerticalSpacing(0, 0),
+              null
+          ),
+          h3: quill.DefaultTextBlockStyle(
+              TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.3, color: theme.colorScheme.onSurface.withValues(alpha: 0.85)),
+              const quill.HorizontalSpacing(0, 0),
+              const quill.VerticalSpacing(16, 8),
+              const quill.VerticalSpacing(0, 0),
+              null
+          ),
+          quote: quill.DefaultTextBlockStyle(
+              TextStyle(fontSize: 15, height: 1.6, color: theme.colorScheme.onSurfaceVariant, fontStyle: FontStyle.italic),
+              const quill.HorizontalSpacing(16, 0),
+              const quill.VerticalSpacing(12, 12),
+              const quill.VerticalSpacing(0, 0),
+              BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 4))
+              )
+          ),
+          code: quill.DefaultTextBlockStyle(
+              GoogleFonts.firaCode(fontSize: 14, height: 1.5, color: theme.colorScheme.onSurfaceVariant),
+              const quill.HorizontalSpacing(16, 16),
+              const quill.VerticalSpacing(12, 12),
+              const quill.VerticalSpacing(0, 0),
+              BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3))
+              )
+          ),
+          lists: quill.DefaultListBlockStyle(
+              listTextStyle,
+              const quill.HorizontalSpacing(0, 0),
+              const quill.VerticalSpacing(8, 8),
+              const quill.VerticalSpacing(6, 6),
+              null, null
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildBottomToolbar(NoteEditorViewModel viewModel) { return SafeArea(top: false, child: EditorBottomToolbar(controller: viewModel.quillController, activePanel: _activePanel, onPanelChanged: _togglePanel, onUndo: viewModel.undo, onRedo: viewModel.redo, onPickImage: () async { FocusScope.of(context).unfocus(); setState(() => _activePanel = ToolbarPanel.none); await viewModel.pickAndInsertImage(); _editorFocusNode.requestFocus(); }, onFinish: () async { FocusScope.of(context).unfocus(); await viewModel.saveNote(); if (context.mounted) Navigator.pop(context); })); }
+  Widget _buildBottomToolbar(NoteEditorViewModel viewModel) {
+    return SafeArea(
+        top: false,
+        child: EditorBottomToolbar(
+            controller: viewModel.quillController,
+            activePanel: _activePanel,
+            onPanelChanged: _togglePanel,
+            onUndo: viewModel.undo,
+            onRedo: viewModel.redo,
+            onPickImage: () async {
+              FocusScope.of(context).unfocus();
+              setState(() => _activePanel = ToolbarPanel.none);
+              await viewModel.pickAndInsertImage();
+              _editorFocusNode.requestFocus();
+            },
+            onFinish: () async {
+              FocusScope.of(context).unfocus();
+              await viewModel.saveNote();
+              if (context.mounted) Navigator.pop(context);
+            }
+        )
+    );
+  }
 }

@@ -150,7 +150,7 @@ class _TodosPageState extends State<TodosPage> {
                   const TodoSyncStatusIndicator(),
                 ],
               ),
-              backgroundColor: theme.colorScheme.surface.withOpacity(0.95), // 顶层轻微半透
+              backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.95), // 顶层轻微半透
               surfaceTintColor: Colors.transparent,
               pinned: true,
               elevation: 0,
@@ -167,7 +167,7 @@ class _TodosPageState extends State<TodosPage> {
                   icon: const Icon(Icons.sync_rounded),
                   tooltip: "手动同步",
                   style: IconButton.styleFrom(
-                    backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha:0.5),
                     foregroundColor: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -204,7 +204,7 @@ class _TodosPageState extends State<TodosPage> {
                   leading: const Icon(Icons.search, size: 20),
                   elevation: WidgetStateProperty.all(0),
                   backgroundColor: WidgetStateProperty.all(
-                      theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)
+                      theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
                   ),
                   onChanged: (value) => provider.setSearchQuery(value),
                   constraints: const BoxConstraints(minHeight: 48, maxHeight: 48),
@@ -267,13 +267,13 @@ class _TodosPageState extends State<TodosPage> {
                             Container(
                               padding: const EdgeInsets.all(32),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.primaryContainer.withOpacity(0.4),
+                                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
                                   isSearching ? Icons.search_off_rounded : Icons.coffee_rounded,
                                   size: 64,
-                                  color: theme.colorScheme.primary.withOpacity(0.8)
+                                  color: theme.colorScheme.primary.withValues(alpha: 0.8)
                               ),
                             ),
                             const SizedBox(height: 24),
@@ -337,7 +337,7 @@ class _TodosPageState extends State<TodosPage> {
                   proxyDecorator: (child, index, animation) => Material(
                     elevation: 6,
                     color: Colors.transparent,
-                    shadowColor: Colors.black.withOpacity(0.2),
+                    shadowColor: Colors.black.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(16),
                     child: child,
                   ),
@@ -363,7 +363,7 @@ class _TodosPageState extends State<TodosPage> {
                           children: [
                             Text('已完成', style: TextStyle(color: theme.colorScheme.outline, fontWeight: FontWeight.bold)),
                             const SizedBox(width: 8),
-                            Expanded(child: Divider(color: theme.colorScheme.outlineVariant.withOpacity(0.5))),
+                            Expanded(child: Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
                           ],
                         ),
                       ),
@@ -474,7 +474,7 @@ class _TodosPageState extends State<TodosPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.touch_app_rounded, size: 48, color: theme.colorScheme.outline.withOpacity(0.5)),
+              Icon(Icons.touch_app_rounded, size: 48, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
               const SizedBox(height: 16),
               Text("点击左侧任务进行编辑", style: TextStyle(color: theme.colorScheme.outline)),
             ],
@@ -492,7 +492,7 @@ class _TodosPageState extends State<TodosPage> {
                 header,
                 Container(
                   height: minEditorHeight,
-                  decoration: BoxDecoration(border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2)))),
+                  decoration: BoxDecoration(border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)))),
                   child: detailView,
                 ),
               ],
@@ -504,7 +504,7 @@ class _TodosPageState extends State<TodosPage> {
               header,
               Expanded(
                 child: Container(
-                  decoration: BoxDecoration(border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2)))),
+                  decoration: BoxDecoration(border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)))),
                   child: detailView,
                 ),
               ),
@@ -546,14 +546,14 @@ class _TodosPageState extends State<TodosPage> {
                 child: Container(
                   width: screenWidth * 0.3,
                   decoration: BoxDecoration(
-                    border: Border(right: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.2))),
+                    border: Border(right: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2))),
                   ),
                   child: _buildTodoList(context, isDesktop: true),
                 ),
               ),
               Expanded(
                 child: Container(
-                  color: theme.colorScheme.surfaceContainerLow.withOpacity(0.3),
+                  color: theme.colorScheme.surfaceContainerLow.withValues(alpha: 0.3),
                   child: _buildRightContent(context, theme, todos, completedCount, progress),
                 ),
               ),
