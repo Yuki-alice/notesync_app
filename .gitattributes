@@ -1,0 +1,7 @@
+# 让 GitHub 忽略这些自动生成目录的语言统计
+web/* linguist-vendored
+windows/* linguist-vendored
+linux/* linguist-vendored
+macos/* linguist-vendored
+ios/* linguist-vendored
+android/* linguist-vendored
