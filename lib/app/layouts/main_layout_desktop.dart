@@ -1,129 +1,64 @@
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:window_manager/window_manager.dart';
+import 'package:provider/provider.dart';
+import '../../core/providers/theme_provider.dart';
 
-// 🟢 引入刚刚拆分出来的积木
-import 'widgets/desktop_sidebar.dart';
-
-class MainLayoutDesktop extends StatelessWidget {
+class MainLayoutMobile extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
   final Widget body;
-  final VoidCallback? onFabPressed;
-  final VoidCallback? onSettingsTap;
-  final VoidCallback? onTrashTap;
 
-  const MainLayoutDesktop({
+  const MainLayoutMobile({
     super.key,
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.body,
-    this.onFabPressed,
-    this.onSettingsTap,
-    this.onTrashTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    // 生成极浅的不透明底色
-    final surfaceColor = Color.alphaBlend(
-      theme.colorScheme.primary.withValues(alpha: 0.04),
-      theme.colorScheme.surface,
-    );
+    final isDark = theme.brightness == Brightness.dark;
+    final themeProvider = context.watch<ThemeProvider>();
+    final currentStyle = themeProvider.currentStyle;
 
     return Scaffold(
-      backgroundColor: surfaceColor,
-      body: Column(
-        children: [
-          // ==========================================
-          // 1️⃣ 顶部无边框沉浸式拖拽栏
-          // ==========================================
-          SizedBox(
-            height: 38,
-            child: Row(
-              children: [
-                Expanded(
-                  child: DragToMoveArea(
-                    child: Container(
-                      color: Colors.transparent,
-                      padding: const EdgeInsets.only(left: 16),
-                      alignment: Alignment.centerLeft,
-                      child: Row(
-                        children: [
-                          Icon(Icons.auto_awesome_rounded, size: 16, color: theme.colorScheme.primary),
-                          const SizedBox(width: 8),
-                          Text(
-                            'NoteSync',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                if (!Platform.isMacOS)
-                  SizedBox(
-                    width: 138,
-                    child: WindowCaption(
-                      brightness: theme.brightness,
-                      backgroundColor: Colors.transparent,
-                    ),
-                  ),
+      extendBody: true,
+      backgroundColor: theme.colorScheme.surface,
+
+      // 🌟 极致精简：直接将主体扔进来，彻底与外层窗口解耦
+      body: body,
+
+      bottomNavigationBar: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.75),
+              gradient: currentStyle.vibe == ThemeVibe.gradient ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  theme.colorScheme.primary.withValues(alpha: 0.15),
+                  Colors.transparent,
+                  theme.colorScheme.secondary.withValues(alpha: 0.1),
+                ],
+              ) : null,
+              border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2), width: 0.5)),
+            ),
+            child: NavigationBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              indicatorColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.8),
+              selectedIndex: selectedIndex,
+              onDestinationSelected: onDestinationSelected,
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.description_outlined), selectedIcon: Icon(Icons.description_rounded), label: '笔记'),
+                NavigationDestination(icon: Icon(Icons.check_circle_outlined), selectedIcon: Icon(Icons.check_circle_rounded), label: '待办'),
               ],
             ),
           ),
-
-          // ==========================================
-          // 2️⃣ 下方主工作区拼装
-          // ==========================================
-          Expanded(
-            child: Row(
-              children: [
-                // 🟢 左侧：高级磨砂玻璃侧边栏积木
-                ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Container(
-                      width: 64,
-                      color: surfaceColor.withValues(alpha: 0.8),
-                      child: DesktopSidebar(
-                        selectedIndex: selectedIndex,
-                        onDestinationSelected: onDestinationSelected,
-                        onFabPressed: onFabPressed,
-                        onSettingsTap: onSettingsTap,
-                        onTrashTap: onTrashTap,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // 🟢 右侧：业务主体悬浮卡片积木
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.fromLTRB(8, 0, 16, 16),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), width: 1),
-                      boxShadow: [
-                        BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.04), blurRadius: 24, offset: const Offset(0, 4)),
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: body,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

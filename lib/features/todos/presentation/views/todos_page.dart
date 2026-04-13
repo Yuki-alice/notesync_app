@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-// 🟢 引入交错动画包
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 import '../../../../core/providers/todos_provider.dart';
@@ -81,7 +80,6 @@ class _TodosPageState extends State<TodosPage> {
     }
   }
 
-  // 🟢 核心改造：将单个待办卡片包裹在交错动画中
   Widget _buildTodoItem(BuildContext context, Todo todo, int index, TodosProvider provider, bool isDesktop, {int animationIndexOffset = 0}) {
     final isSelected = isDesktop && todo.id == _selectedTodoId;
 
@@ -104,11 +102,10 @@ class _TodosPageState extends State<TodosPage> {
       ),
     );
 
-    // 🟢 使用 KeyedSubtree 极其关键：因为 SliverReorderableList 强制要求根节点必须有 Key 才能拖拽！
     return KeyedSubtree(
       key: ValueKey(todo.id),
       child: AnimationConfiguration.staggeredList(
-        position: index + animationIndexOffset, // 保证所有元素的出场顺序是连贯的
+        position: index + animationIndexOffset,
         duration: const Duration(milliseconds: 375),
         child: SlideAnimation(
           verticalOffset: 50.0,
@@ -135,11 +132,10 @@ class _TodosPageState extends State<TodosPage> {
         final completedCount = completed.length;
         final progress = _calculateProgress(completedCount, totalCount);
 
-        // 动态构建 Slivers，以便精确控制动画索引
         List<Widget> slivers = [];
-        int animIndex = 0; // 动画全局排序号
+        int animIndex = 0;
 
-        // 1. 顶部 AppBar (回归克制紧凑风格)
+        // 1. 顶部 AppBar
         slivers.add(
             SliverAppBar(
               title: Row(
@@ -150,18 +146,13 @@ class _TodosPageState extends State<TodosPage> {
                   const TodoSyncStatusIndicator(),
                 ],
               ),
-              backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.95), // 顶层轻微半透
+              backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.95),
               surfaceTintColor: Colors.transparent,
               pinned: true,
               elevation: 0,
               actions: isDesktop
                   ? [
-                FilledButton.icon(
-                  onPressed: () => _openTodoDialog(context),
-                  icon: const Icon(Icons.add_rounded, size: 20),
-                  label: const Text('新待办', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(width: 12),
+                // 🌟 修改：大屏端删除了“新待办”和“设置”，因为左侧全局边栏已经有了。仅保留云端同步按钮。
                 IconButton.filledTonal(
                   onPressed: () => context.read<TodosProvider>().syncWithCloud(),
                   icon: const Icon(Icons.sync_rounded),
@@ -170,11 +161,6 @@ class _TodosPageState extends State<TodosPage> {
                     backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha:0.5),
                     foregroundColor: theme.colorScheme.onSurfaceVariant,
                   ),
-                ),
-                const SizedBox(width: 16),
-                IconButton(
-                  onPressed: () => Navigator.pushNamed(context, AppRoutes.settings),
-                  icon: const Icon(Icons.settings_outlined),
                 ),
                 const SizedBox(width: 16),
               ]
@@ -224,12 +210,12 @@ class _TodosPageState extends State<TodosPage> {
             )
         );
 
-        // 3. 进度概览卡片 (加入出场动画)
+        // 3. 进度概览卡片
         if (!isSearching && totalCount > 0 && !isDesktop) {
           slivers.add(
             SliverToBoxAdapter(
               child: AnimationConfiguration.staggeredList(
-                position: animIndex++, // 占据第 0 号动画位
+                position: animIndex++,
                 duration: const Duration(milliseconds: 375),
                 child: SlideAnimation(
                   verticalOffset: 50.0,
@@ -249,7 +235,7 @@ class _TodosPageState extends State<TodosPage> {
           );
         }
 
-        // 4. 空状态 或 列表渲染
+        // 4. 空状态
         if (todos.isEmpty) {
           slivers.add(
               SliverFillRemaining(
@@ -282,8 +268,9 @@ class _TodosPageState extends State<TodosPage> {
                               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                             ),
                             const SizedBox(height: 8),
+                            // 🌟 修改：优化空状态文案，使其在有底部悬浮按钮的手机和有侧边栏的桌面端都能说得通。
                             Text(
-                              isSearching ? '换个关键词试试吧' : '点击下方按钮，敲击回车连贯创建',
+                              isSearching ? '换个关键词试试吧' : '点击 "+" 按钮，开始规划你的一天',
                               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                             ),
                           ],
@@ -295,7 +282,7 @@ class _TodosPageState extends State<TodosPage> {
               )
           );
         } else {
-          // 进行中标题 (加入出场动画)
+          // 列表渲染逻辑... (保持不变)
           if (incomplete.isNotEmpty) {
             slivers.add(
               SliverPadding(
@@ -315,7 +302,6 @@ class _TodosPageState extends State<TodosPage> {
               ),
             );
 
-            // 进行中列表
             final incompleteOffset = animIndex;
             slivers.add(
               SliverPadding(
@@ -347,7 +333,6 @@ class _TodosPageState extends State<TodosPage> {
             animIndex += incomplete.length;
           }
 
-          // 已完成标题 (加入出场动画)
           if (completed.isNotEmpty) {
             slivers.add(
               SliverPadding(
@@ -373,7 +358,6 @@ class _TodosPageState extends State<TodosPage> {
               ),
             );
 
-            // 已完成列表
             final completedOffset = animIndex;
             slivers.add(
               SliverPadding(
@@ -389,11 +373,9 @@ class _TodosPageState extends State<TodosPage> {
             animIndex += completed.length;
           }
 
-          // 底部大间距防挡
           slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 120)));
         }
 
-        // 🟢 核心引擎：将整个 CustomScrollView 包裹在 AnimationLimiter 中触发联控动画
         Widget scrollView = AnimationLimiter(
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
@@ -562,11 +544,10 @@ class _TodosPageState extends State<TodosPage> {
               : _buildTodoList(context, isDesktop: false),
         ),
 
-        // 🟢 极简悬浮按钮：被安全垫高，避开毛玻璃底部导航栏
         floatingActionButton: isDesktop
             ? null
             : Padding(
-          padding: const EdgeInsets.only(right: 12, bottom: 100), // 彻底救出毛玻璃区域
+          padding: const EdgeInsets.only(right: 12, bottom: 100),
           child: FloatingActionButton(
             heroTag: 'todo_fab',
             onPressed: () {

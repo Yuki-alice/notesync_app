@@ -109,6 +109,69 @@ class MyApp extends StatelessWidget {
         themeMode: themeProvider.themeMode,
         initialRoute: AppRoutes.home,
         onGenerateRoute: AppRouter.onGenerateRoute,
+
+        // 🌟 核心全局框架修复：在这里接管所有页面的外层！
+        builder: (context, child) {
+          // 严格的操作系统白名单判断：只允许真正的电脑系统显示自定义标题栏
+          final isDesktopOS = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+
+          if (!isDesktopOS) {
+            // 如果是手机或平板，直接原样返回路由，绝不画蛇添足！
+            return child!;
+          }
+
+          // 如果是电脑端：给所有的页面统一加上这层隐形的全局拖拽栏
+          final theme = Theme.of(context);
+          return Scaffold(
+            backgroundColor: theme.colorScheme.surface,
+            body: Column(
+              children: [
+                // 顶部无边框沉浸式全局拖拽栏
+                SizedBox(
+                  height: 38,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: DragToMoveArea(
+                          child: Container(
+                            color: Colors.transparent,
+                            padding: const EdgeInsets.only(left: 16),
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              children: [
+                                Icon(Icons.auto_awesome_rounded, size: 16, color: theme.colorScheme.primary),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'NoteSync',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (!Platform.isMacOS)
+                        SizedBox(
+                          width: 138,
+                          child: WindowCaption(
+                            brightness: theme.brightness,
+                            backgroundColor: Colors.transparent,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // 这里渲染实际的页面内容（如首页、设置页、编辑页）
+                Expanded(child: ClipRect(child: child!)),
+              ],
+            ),
+          );
+        },
+
         theme: ThemeData(
           textTheme: textTheme,
           useMaterial3: true,
