@@ -1,85 +1,29 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:flutter/services.dart';
 
-import 'core/database/simple_database_service.dart';
-import 'core/providers/auth_provider.dart';
+import 'core/init/app_initializer.dart';
+import 'core/providers/global_providers.dart';
 import 'core/providers/theme_provider.dart';
-import 'core/providers/notes_provider.dart';
-import 'core/providers/todos_provider.dart';
-import 'core/repositories/category_repository.dart';
-import 'core/repositories/note_repository.dart';
-import 'core/repositories/tag_repository.dart';
-import 'core/repositories/todo_repository.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'core/theme/app_theme.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
-import 'core/services/lan_sync_service.dart';
-
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarDividerColor: Colors.transparent,
-    ),
-  );
-
-  await Supabase.initialize(
-    url: 'https://mauzvvakcqqhrcphcgmf.supabase.co',
-    anonKey: 'sb_publishable_8HmK4iGLBFj3hk2GJ9a1Xw_yDHC6rPj',
-  );
-
-  final dbService = SimpleDatabaseService();
   try {
-    await dbService.init();
+    // 1. 执行全局底层初始化 (数据库、云端、窗口)
+    await AppInitializer.init();
+
+    // 2. 注入全局 Provider 并运行 App
+    runApp(const GlobalProviders(child: MyApp()));
   } catch (e) {
     runApp(ErrorApp(error: e.toString()));
-    return;
   }
-
-  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-    await windowManager.ensureInitialized();
-    WindowOptions windowOptions = const WindowOptions(
-      size: Size(1024, 768),
-      minimumSize: Size(360, 600),
-      center: true,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
-    );
-    windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    });
-  }
-
-  final noteRepo = NoteRepository(dbService.isar);
-  final todoRepo = TodoRepository(dbService.isar);
-  final categoryRepo = CategoryRepository(dbService.isar);
-  final tagRepo = TagRepository(dbService.isar);
-
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => NotesProvider(noteRepo,categoryRepo,tagRepo)),
-        ChangeNotifierProvider(create: (_) => TodosProvider(todoRepo)),
-        ChangeNotifierProvider(create: (_) => LanSyncService()),
-      ],
-      child: const MyApp(),
-    ),
-  );
 }
 
 class MyApp extends StatelessWidget {
@@ -87,9 +31,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final seedColor = themeProvider.themeColor;
-    final textTheme = GoogleFonts.notoSansScTextTheme(Theme.of(context).textTheme);
+    final themeProvider = context.watch<ThemeProvider>();
 
     final isDarkMode = themeProvider.themeMode == ThemeMode.dark ||
         (themeProvider.themeMode == ThemeMode.system &&
@@ -104,29 +46,26 @@ class MyApp extends StatelessWidget {
         systemNavigationBarIconBrightness: isDarkMode ? Brightness.light : Brightness.dark,
       ),
       child: MaterialApp(
-        title: '笔记同步',
+        title: 'NoteSync',
         debugShowCheckedModeBanner: false,
         themeMode: themeProvider.themeMode,
         initialRoute: AppRoutes.home,
         onGenerateRoute: AppRouter.onGenerateRoute,
 
-        // 🌟 核心全局框架修复：在这里接管所有页面的外层！
+        // 生成深浅两套解耦的主题
+        theme: AppTheme.getTheme(context: context, seedColor: themeProvider.themeColor, isDark: false),
+        darkTheme: AppTheme.getTheme(context: context, seedColor: themeProvider.themeColor, isDark: true),
+
+        // 全局窗口包裹器：为桌面端统一添加控制栏
         builder: (context, child) {
-          // 严格的操作系统白名单判断：只允许真正的电脑系统显示自定义标题栏
           final isDesktopOS = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+          if (!isDesktopOS) return child!; // 手机平板直接原样返回
 
-          if (!isDesktopOS) {
-            // 如果是手机或平板，直接原样返回路由，绝不画蛇添足！
-            return child!;
-          }
-
-          // 如果是电脑端：给所有的页面统一加上这层隐形的全局拖拽栏
           final theme = Theme.of(context);
           return Scaffold(
             backgroundColor: theme.colorScheme.surface,
             body: Column(
               children: [
-                // 顶部无边框沉浸式全局拖拽栏
                 SizedBox(
                   height: 38,
                   child: Row(
@@ -157,48 +96,18 @@ class MyApp extends StatelessWidget {
                       if (!Platform.isMacOS)
                         SizedBox(
                           width: 138,
-                          child: WindowCaption(
-                            brightness: theme.brightness,
-                            backgroundColor: Colors.transparent,
-                          ),
+                          child: WindowCaption(brightness: theme.brightness, backgroundColor: Colors.transparent),
                         ),
                     ],
                   ),
                 ),
-                // 这里渲染实际的页面内容（如首页、设置页、编辑页）
                 Expanded(child: ClipRect(child: child!)),
               ],
             ),
           );
         },
 
-        theme: ThemeData(
-          textTheme: textTheme,
-          useMaterial3: true,
-          brightness: Brightness.light,
-          colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.light, surfaceTint: seedColor.withValues(alpha: 0.05)),
-          scaffoldBackgroundColor: const Color(0xFFFDFDFD),
-          appBarTheme: const AppBarTheme(centerTitle: false, scrolledUnderElevation: 0, backgroundColor: Colors.transparent),
-          inputDecorationTheme: InputDecorationTheme(
-            filled: true, fillColor: Colors.grey.withValues(alpha: 0.05),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-          floatingActionButtonTheme: FloatingActionButtonThemeData(elevation: 4, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-        ),
-        darkTheme: ThemeData(
-          textTheme: textTheme,
-          useMaterial3: true,
-          brightness: Brightness.dark,
-          colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.dark, surfaceTint: seedColor.withValues(alpha: 0.1)),
-          scaffoldBackgroundColor: const Color(0xFF1A1C1E),
-          appBarTheme: const AppBarTheme(centerTitle: false, scrolledUnderElevation: 0, backgroundColor: Colors.transparent),
-          inputDecorationTheme: InputDecorationTheme(
-            filled: true, fillColor: Colors.white.withValues(alpha: 0.05),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-        ),
+        // 国际化支持
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
@@ -226,7 +135,7 @@ class ErrorApp extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline_rounded, size: 64, color: Colors.redAccent),
+                const Icon(Icons.error_outline_rounded, size: 64, color: Colors.white),
                 const SizedBox(height: 16),
                 const Text("应用启动失败", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
                 const SizedBox(height: 8),
