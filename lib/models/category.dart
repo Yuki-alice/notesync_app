@@ -48,4 +48,33 @@ class Category {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
+  // ==========================================
+  // 🌟 JSON 序列化 (用于局域网和云端同步)
+  // ==========================================
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'color': color,
+      'icon': icon,
+      'sortOrder': sortOrder,
+      'isDeleted': isDeleted,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+    };
+  }
+
+  factory Category.fromJson(Map<String, dynamic> json) {
+    return Category(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      color: json['color'] as String?,
+      icon: json['icon'] as String?,
+      sortOrder: (json['sortOrder'] as num?)?.toDouble() ?? 0.0,
+      isDeleted: json['isDeleted'] as bool? ?? false,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
+    );
+  }
 }

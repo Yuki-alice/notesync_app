@@ -62,7 +62,7 @@ class ElegantThemeModeToggle extends StatelessWidget {
                           duration: const Duration(milliseconds: 200),
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                             color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                           ),
                           child: Row(

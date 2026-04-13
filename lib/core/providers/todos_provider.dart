@@ -1,11 +1,14 @@
-// 文件路径: lib/core/providers/todos_provider.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/repositories/todo_repository.dart';
 import '../../models/todo.dart';
 import '../../core/services/supabase_sync_service.dart';
+import '../../core/services/webdav_sync_service.dart';
+import 'package:isar/isar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum TodoSyncState { idle, syncing, success, error, unauthenticated }
 
@@ -23,11 +26,13 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
 
   TodoSyncState _syncState = TodoSyncState.idle;
   TodoSyncState get syncState => _syncState;
-
+  StreamSubscription<void>? _dbSubscription;
   TodosProvider(this._repository) {
     WidgetsBinding.instance.addObserver(this);
     _syncService = SupabaseSyncService(null, _repository);
-
+    _dbSubscription = _repository.watchTodosChanged().listen((_) {
+      loadTodos();
+    });
     loadTodos();
     syncWithCloud();
   }
@@ -44,38 +49,68 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel();
     _syncTimer?.cancel();
+    _dbSubscription?.cancel();
     super.dispose();
   }
 
-  // =================================================================
-  // ☁️ 云端同步逻辑
-  // =================================================================
 
   void _setSyncState(TodoSyncState state) {
     _syncState = state;
     notifyListeners();
   }
 
+  Future<bool> _isSyncAllowed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('isAutoSyncEnabled') ?? false;
+  }
+
   Future<void> syncWithCloud() async {
-    if (Supabase.instance.client.auth.currentUser == null) {
-      _setSyncState(TodoSyncState.unauthenticated);
+    // 1. 检查总闸
+    if (!await _isSyncAllowed()) {
+      debugPrint('⚠️ [SYNC-TODO] 云端同步已关闭，跳过本次任务');
       return;
     }
+
     if (_syncState == TodoSyncState.syncing) return;
     _setSyncState(TodoSyncState.syncing);
 
     try {
-      await _syncService.syncTodos(
-          onSyncComplete: () {
-            loadTodos();
-          }
-      );
+      final prefs = await SharedPreferences.getInstance();
+
+      // 🌟 核心修复：读取用户在 UI 上选择的模式，而不是死抠配置字段
+      final syncMode = prefs.getString('sync_mode') ?? 'supabase';
+
+      if (syncMode == 'webdav') {
+        // =====================================
+        // 🚀 路由 A：WebDAV 引擎
+        // =====================================
+        final webDavService = WebDavSyncService(Isar.getInstance()!);
+        await webDavService.syncAll();
+
+      } else {
+        // =====================================
+        // 🚀 路由 B：Supabase 引擎
+        // =====================================
+        if (Supabase.instance.client.auth.currentUser == null) {
+          _setSyncState(TodoSyncState.unauthenticated);
+          return;
+        }
+        await _syncService.syncTodos(
+            onSyncComplete: () {
+              loadTodos();
+            }
+        );
+      }
+
+      loadTodos();
 
       _setSyncState(TodoSyncState.success);
       Future.delayed(const Duration(milliseconds: 2500), () {
         if (_syncState == TodoSyncState.success) _setSyncState(TodoSyncState.idle);
       });
+
     } catch (e) {
+      debugPrint('❌ [SYNC-TODO] 同步引擎遭遇致命错误: $e');
       _setSyncState(TodoSyncState.error);
       Future.delayed(const Duration(seconds: 3), () {
         if (_syncState == TodoSyncState.error) _setSyncState(TodoSyncState.idle);
@@ -83,8 +118,9 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
-  void _triggerBackgroundSync() {
+  void _triggerBackgroundSync() async{
     _syncTimer?.cancel();
+    if(!await _isSyncAllowed()) return;
     _syncTimer = Timer(const Duration(seconds: 3), () {
       syncWithCloud();
     });
@@ -105,9 +141,11 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     return list;
   }
 
-  void loadTodos() {
-    _todos = _repository.getAllTodos();
-    _applyFilters();
+  Future<void> loadTodos() async {
+    final results = await _repository.searchTodos(_searchQuery, null);
+    _todos = results;
+    _filteredTodos = results;
+    notifyListeners();
   }
 
   void _applyFilters() {
@@ -285,13 +323,18 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     _triggerBackgroundSync();
   }
 
-  Future<void> clearLocalData() async {
-    final allTodos = _repository.getAllTodos();
-    for (var todo in allTodos) {
-      await _repository.deleteTodo(todo.id);
-    }
+  void clearLocalData() {
+    _debounceTimer?.cancel();
+    _syncTimer?.cancel();
+
+    _searchQuery = '';
     _todos.clear();
     _filteredTodos.clear();
+
     notifyListeners();
+  }
+  void clearTimers() {
+    _debounceTimer?.cancel();
+    _syncTimer?.cancel();
   }
 }

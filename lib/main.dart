@@ -20,6 +20,7 @@ import 'core/repositories/todo_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
+import 'core/services/lan_sync_service.dart';
 
 
 void main() async {
@@ -74,6 +75,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => NotesProvider(noteRepo,categoryRepo,tagRepo)),
         ChangeNotifierProvider(create: (_) => TodosProvider(todoRepo)),
+        ChangeNotifierProvider(create: (_) => LanSyncService()),
       ],
       child: const MyApp(),
     ),

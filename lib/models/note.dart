@@ -9,14 +9,14 @@ class Note {
 
   @Index(unique: true, replace: true)
   String id;
-
   String title;
   String content;
   DateTime createdAt;
   DateTime updatedAt;
 
-  // 🌟 V2 核心：废弃原有的 String 列表，改为外键 ID 列表
+
   List<String> tagIds;
+  @Index()
   String? categoryId;
 
   // 🌟 V2 核心：注入版本控制引擎！
@@ -121,5 +121,39 @@ class Note {
       }
     } catch (e) {}
     return paths;
+  }
+  // ==========================================
+  // 🌟 JSON 序列化 (用于局域网和云端同步)
+  // ==========================================
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'content': content,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'tagIds': tagIds,
+      'categoryId': categoryId,
+      'version': version,
+      'lastModifiedBy': lastModifiedBy,
+      'isPinned': isPinned,
+      'isDeleted': isDeleted,
+    };
+  }
+
+  factory Note.fromJson(Map<String, dynamic> json) {
+    return Note(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      content: json['content'] as String,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      tagIds: (json['tagIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      categoryId: json['categoryId'] as String?,
+      version: json['version'] as int? ?? 1,
+      lastModifiedBy: json['lastModifiedBy'] as String?,
+      isPinned: json['isPinned'] as bool? ?? false,
+      isDeleted: json['isDeleted'] as bool? ?? false,
+    );
   }
 }

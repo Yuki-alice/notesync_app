@@ -52,14 +52,24 @@ class TodoRepository {
     });
   }
 
-  Future<void> toggleTodoStatus(String id) async {
-    final todo = getTodoById(id);
-    if (todo != null) {
-      final updatedTodo = todo.copyWith(
-        isCompleted: !todo.isCompleted,
-        updatedAt: DateTime.now(),
-      );
-      await updateTodo(updatedTodo);
+  Future<List<Todo>> searchTodos(String query, String? categoryId) async {
+    var q = _isar.todos.filter().isDeletedEqualTo(false);
+
+    if (categoryId != null && categoryId.isNotEmpty) {
+      q = q.categoryIdEqualTo(categoryId);
     }
+
+    if (query.trim().isNotEmpty) {
+      q = q.group((q) => q.titleContains(query, caseSensitive: false)
+          .or()
+          .descriptionContains(query, caseSensitive: false));
+    }
+
+    return await q.sortByIsCompleted().thenByCreatedAtDesc().findAll();
+  }
+
+  // 🌟 暴露给 Provider 用的响应式流
+  Stream<void> watchTodosChanged() {
+    return _isar.todos.watchLazy(fireImmediately: true);
   }
 }

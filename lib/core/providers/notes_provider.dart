@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:isar/isar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/repositories/note_repository.dart';
@@ -11,6 +13,7 @@ import '../../core/services/image_storage_service.dart';
 import '../../core/services/supabase_sync_service.dart';
 import '../repositories/category_repository.dart';
 import '../repositories/tag_repository.dart';
+import '../../core/services/webdav_sync_service.dart';
 
 enum SyncState { idle, syncing, success, error, unauthenticated }
 
@@ -22,6 +25,8 @@ enum NoteSortOption {
   final String label;
   const NoteSortOption(this.label);
 }
+
+StreamSubscription<void>? _dbSubscription;
 
 class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   final NoteRepository _repository;
@@ -44,12 +49,12 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   NoteSortOption _sortOption = NoteSortOption.updatedNewest;
 
   Timer? _debounceTimer;
-
   late final SupabaseSyncService _syncService;
   Timer? _syncTimer;
 
   SyncState _syncState = SyncState.idle;
   SyncState get syncState => _syncState;
+  StreamSubscription<void>? _dbSubscription;
 
   void _setSyncState(SyncState state) {
     _syncState = state;
@@ -59,9 +64,10 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   // 🌟 构造函数注入新仓库
   NotesProvider(this._repository, this._categoryRepository, this._tagRepository) {
     WidgetsBinding.instance.addObserver(this);
-    // 🌟 修复：用 null 占住第二个 TodoRepository 的位置
     _syncService = SupabaseSyncService(_repository, null, _categoryRepository, _tagRepository);
-
+    _dbSubscription = _repository.watchNotesChanged().listen((_) {
+      loadNotes();
+    });
     loadNotes();
     _cleanUpOldTrash();
     syncWithCloud();
@@ -79,6 +85,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel();
     _syncTimer?.cancel();
+    _dbSubscription?.cancel();
     super.dispose();
   }
 
@@ -109,8 +116,8 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   // =========================================================================
   // 核心加载与同步
   // =========================================================================
-  void loadNotes() {
-    // 🌟 V2: 瞬间从本地 SQLite 加载所有数据到内存池
+  Future<void> loadNotes() async {
+    final results = await _repository.searchNotes(_searchQuery, _selectedCategoryId);
     _categories = _categoryRepository.getAllCategories();
     _tags = _tagRepository.getAllTags();
     _notes = _repository.getAllNotes();
@@ -128,39 +135,45 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     _triggerBackgroundSync();
     return tag;
   }
+  Future<bool> _isSyncAllowed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('isAutoSyncEnabled') ?? false;
+  }
 
   Future<void> syncWithCloud() async {
-    if (Supabase.instance.client.auth.currentUser == null) {
-      _setSyncState(SyncState.unauthenticated);
-      return;
-    }
+    // 1. 检查总闸
+    if (!await _isSyncAllowed()) return;
+
     if (_syncState == SyncState.syncing) return;
     _setSyncState(SyncState.syncing);
 
     try {
-      await _syncService.syncNotes(
-        onTextSyncComplete: () {
-          _plainTextCache.clear();
-          loadNotes();
-        },
-      );
-      _plainTextCache.clear();
-      loadNotes();
+      final prefs = await SharedPreferences.getInstance();
 
+      final syncMode = prefs.getString('sync_mode') ?? 'supabase';
+
+      if (syncMode == 'webdav') {
+        final webDavService = WebDavSyncService(Isar.getInstance()!);
+        await webDavService.syncAll();
+        _plainTextCache.clear();
+      } else {
+
+        if (Supabase.instance.client.auth.currentUser == null) {
+          _setSyncState(SyncState.unauthenticated);
+          return;
+        }
+        await _syncService.syncNotes(onTextSyncComplete: () => loadNotes());
+      }
+      loadNotes();
       _setSyncState(SyncState.success);
-      Future.delayed(const Duration(milliseconds: 2500), () {
-        if (_syncState == SyncState.success) _setSyncState(SyncState.idle);
-      });
     } catch (e) {
       _setSyncState(SyncState.error);
-      Future.delayed(const Duration(seconds: 3), () {
-        if (_syncState == SyncState.error) _setSyncState(SyncState.idle);
-      });
     }
   }
 
-  void _triggerBackgroundSync() {
+  void _triggerBackgroundSync() async{
     _syncTimer?.cancel();
+    if(!await _isSyncAllowed()) return;
     _syncTimer = Timer(const Duration(seconds: 5), () {
       syncWithCloud();
     });
@@ -368,11 +381,21 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     _triggerBackgroundSync();
   }
 
-  Future<void> clearLocalData() async {
-    // 危险操作，清空本地所有表
-    for (var note in _repository.getAllNotes()) {
-      await _repository.deleteNote(note.id);
-    }
-    loadNotes();
+  void clearLocalData() {
+    _debounceTimer?.cancel();
+    _syncTimer?.cancel();
+    _plainTextCache.clear();
+    _selectedCategoryId = null;
+    _searchQuery = '';
+    _notes.clear();
+    _filteredNotes.clear();
+    _categories.clear();
+    _tags.clear();
+    notifyListeners();
   }
+  void clearTimers(){
+    _debounceTimer?.cancel();
+    _syncTimer?.cancel();
+  }
+
 }

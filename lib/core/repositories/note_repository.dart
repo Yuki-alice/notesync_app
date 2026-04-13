@@ -52,14 +52,23 @@ class NoteRepository {
     });
   }
 
-  List<Note> searchNotes(String query) {
-    if (query.isEmpty) return getAllNotes();
+  Future<List<Note>> searchNotes(String query, String? categoryId) async {
+    var q = _isar.notes.filter().isDeletedEqualTo(false);
 
-    final lowercaseQuery = query.toLowerCase();
-    final notes = _isar.notes.where().findAllSync();
-    return notes.where((note) {
-      return note.title.toLowerCase().contains(lowercaseQuery) ||
-          note.plainText.toLowerCase().contains(lowercaseQuery);
-    }).toList();
+    if (categoryId != null && categoryId.isNotEmpty) {
+      q = q.categoryIdEqualTo(categoryId);
+    }
+
+    if (query.trim().isNotEmpty) {
+      q = q.group((q) => q.titleContains(query, caseSensitive: false)
+          .or()
+          .contentContains(query, caseSensitive: false));
+    }
+
+    return await q.sortByIsPinnedDesc().thenByUpdatedAtDesc().findAll();
+  }
+
+  Stream<void> watchNotesChanged() {
+    return _isar.notes.watchLazy(fireImmediately: true);
   }
 }

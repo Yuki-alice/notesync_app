@@ -72,7 +72,50 @@ class Todo {
       subTasks: subTasks ?? this.subTasks,
     );
   }
+  // ==========================================
+  // 🌟 JSON 序列化 (用于局域网和云端同步)
+  // ==========================================
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'isCompleted': isCompleted,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'description': description,
+      'dueDate': dueDate?.toIso8601String(),
+      'sortOrder': sortOrder,
+      'categoryId': categoryId,
+      'version': version,
+      'lastModifiedBy': lastModifiedBy,
+      'isDeleted': isDeleted,
+      // 嵌套序列化子任务
+      'subTasks': subTasks.map((st) => st.toMap()).toList(),
+    };
+  }
+
+  factory Todo.fromJson(Map<String, dynamic> json) {
+    return Todo(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      isCompleted: json['isCompleted'] as bool? ?? false,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      description: json['description'] as String? ?? '',
+      dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate'] as String) : null,
+      sortOrder: (json['sortOrder'] as num?)?.toDouble() ?? 0.0,
+      categoryId: json['categoryId'] as String?,
+      version: json['version'] as int? ?? 1,
+      lastModifiedBy: json['lastModifiedBy'] as String?,
+      isDeleted: json['isDeleted'] as bool? ?? false,
+      // 解析嵌套的子任务
+      subTasks: (json['subTasks'] as List<dynamic>?)
+          ?.map((e) => SubTask.fromMap(e as Map<String, dynamic>))
+          .toList() ?? [],
+    );
+  }
 }
+
 
 @embedded
 class SubTask {

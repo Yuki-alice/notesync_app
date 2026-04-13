@@ -37,6 +37,13 @@ dependencies:
   share_plus: ^12.0.1
   gal: ^2.3.2
   url_launcher: ^6.3.2
+  archive: ^3.4.10
+  file_picker: ^11.0.2
+  path: ^1.9.1
+  webdav_client: ^1.2.2
+  nsd: ^5.0.1
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
 
 dev_dependencies:
   flutter_test:
