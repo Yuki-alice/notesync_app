@@ -1,26 +1,38 @@
-# ✨ NoteSync - 你的跨端灵感与生产力中枢
+# NoteSync 🚀
 
-NoteSync 是一款对标顶级商业标准打造的跨平台 (移动/桌面) 笔记与待办管理工具。它不仅拥有极致优雅的无边框设计与流畅的交互动画，更提供了坚如磐石的端云同步体验。
+**隐私优先、跨平台、拥有双引擎同步能力的第二大脑。**
 
-## 🌟 核心特性 (Key Features)
+NoteSync 不仅仅是一个笔记应用。它通过极客的方式解决了多端同步的痛点：既能通过 **WebDAV** 拥抱云端，也能通过 **局域网 P2P** 在内网实现闪电般的物理传输。
 
-- **☁️ 极速端云同步 (Cloud Sync)**
-  基于 Supabase 构建的高可用同步引擎。无论是万字长文、高清配图，还是碎片化的待办清单，都能在你的手机与电脑间毫秒级流转。
+---
 
-- **🎨 超级调色盘与沉浸式 UI (Immersive Design)**
-  内置多款高级预设主题（如落日橘辉、薄荷微风）。桌面端支持全局高斯模糊与云母 (Mica) 质感侧边栏；移动端支持精美的交错式瀑布流与 OpenContainer 物理空间过渡动画。
+## ✨ 核心特性
 
-- **✍️ 所见即所得的流式编辑器 (WYSIWYG Editor)**
-  深度定制的富文本引擎。支持优雅的图片穿插排版、悬浮图片交互菜单，并无缝兼容 Markdown 高频快捷键输入，让写作成为一种“心流”享受。
+### 🔐 双引擎同步系统 (Sync Engine V2)
+- **WebDAV 云端同步**：支持坚果云、Nextcloud 等标准协议，实现多设备增量同步。
+- **局域网 P2P 雷达**：
+    - **零配置发现**：基于 mDNS 协议，设备间无需输入 IP，自动“握手”。
+    - **物理流传输**：不仅同步文字，更支持图片附件的流式拉取。
+    - **路径重写引擎**：智能解决 Windows 与 Android 之间物理路径不兼容的痛点。
+- **冲突解决**：采用 LWW (Last Write Wins) 确定性算法，确保数据一致性。
 
-- **🗂️ 全局资产中枢 (Digital Identity Dashboard)**
-  不止是冷冰冰的设置列表。NoteSync 为你生成专属的“数字身份卡片”，实时记录你的陪伴天数、创作累计字数与个性签名，让每一滴心血都清晰可见。
+### 🎨 现代感设计
+- **Material Design 3**：全量应用 MD3 规范，支持深色模式。
+- **动态 UI**：可视化存储看板、局域网设备扫描雷达。
+- **流畅体验**：基于 Isar 高性能数据库，所有操作即时响应。
 
-- **✅ 待办引擎 (Todo Matrix)**
-  支持基于日期、优先级的待办管理。独创双向拖拽重排与直观的进度环形图，轻松拿捏你的今日计划。
+### 📝 创作与整理
+- **富文本/Markdown**：支持图片插入、列表、任务清单。
+- **多级整理**：强大的分类（Category）与标签（Tag）系统。
 
-## 🚀 最新动态 (Recent Updates)
-- [x] 重构编辑器底层架构，抽离 Markdown 解析与快捷键拦截引擎。
-- [x] 完美修复 CustomScrollView 在复杂动画树下的下拉刷新阻断问题。
-- [x] 重写瀑布流图片异步渲染机制，利用 FutureBuilder 实现毫秒级平滑加载。
-- [x] 接入 Supabase `userMetadata` 极速存取，上线全新个人数据资产看板。
+---
+
+## 🛠️ 技术栈
+
+- **Framework**: [Flutter](https://flutter.dev)
+- **Database**: [Isar](https://isar.dev) (NoSQL, 高性能本地存储)
+- **Networking**: [Shelf](https://pub.dev/packages/shelf) (本地微型服务), [nsd](https://pub.dev/packages/nsd) (mDNS 发现)
+- **State Management**: [Provider](https://pub.dev/packages/provider)
+
+---
+
