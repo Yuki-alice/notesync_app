@@ -41,6 +41,8 @@ class TodoRepository {
   }
 
   Future<void> updateTodo(Todo todo) async {
+    todo.version += 1;
+    todo.updatedAt = DateTime.now();
     await _isar.writeTxn(() async {
       await _isar.todos.put(todo);
     });

@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/providers/todos_provider.dart';
+import '../../../../core/providers/theme_provider.dart';
+import '../../../../core/providers/auth_provider.dart';
 import '../../../../utils/toast_utils.dart';
 import 'webdav_config_page.dart';
 
@@ -76,7 +78,9 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.all(24),
         children: [
-          // 🌟 核心总闸
+          // ==========================================
+          // 🌟 1. 数据同步总闸
+          // ==========================================
           Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLowest, borderRadius: BorderRadius.circular(24), border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3))),
@@ -95,7 +99,9 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
           ),
           const SizedBox(height: 32),
 
-          // 🌟 引擎选择 (受总闸控制)
+          // ==========================================
+          // 🌟 2. 引擎选择 (受总闸控制)
+          // ==========================================
           IgnorePointer(
             ignoring: !_isAutoSync,
             child: Opacity(
@@ -162,6 +168,48 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
               ),
             ),
           ),
+
+          const SizedBox(height: 32),
+
+          // ==========================================
+          // 🌟 3. 个性化偏好漫游 (利用 UserProfiles jsonb 引擎)
+          // ==========================================
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 12),
+            child: Text('应用偏好', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
+          ),
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLowest, borderRadius: BorderRadius.circular(24), border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3))),
+            child: Consumer2<ThemeProvider, AuthProvider>(
+                builder: (context, themeProvider, authProvider, child) {
+                  final isAuth = authProvider.isAuthenticated;
+
+                  return SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    value: themeProvider.syncSettingsToCloud,
+                    // 如果未登录，直接禁用开关
+                    onChanged: isAuth ? (value) {
+                      themeProvider.toggleSyncSettings(value, authProvider);
+                      if (value) {
+                        ToastUtils.showSuccess(context, '偏好漫游已开启');
+                      }
+                    } : null,
+                    title: Text('设置云漫游', style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface, fontSize: 16)),
+                    subtitle: Text(
+                        isAuth ? '跨设备同步你的深浅模式与主题颜色' : '请先登录以开启配置漫游',
+                        style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13)
+                    ),
+                    secondary: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: theme.colorScheme.secondary.withValues(alpha: 0.1), shape: BoxShape.circle),
+                      child: Icon(Icons.palette_rounded, color: theme.colorScheme.secondary),
+                    ),
+                  );
+                }
+            ),
+          ),
+          const SizedBox(height: 48),
         ],
       ),
     );

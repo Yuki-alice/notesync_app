@@ -41,6 +41,8 @@ class NoteRepository {
   }
 
   Future<void> updateNote(Note note) async {
+    note.version += 1;
+    note.updatedAt = DateTime.now();
     await _isar.writeTxn(() async {
       await _isar.notes.put(note);
     });

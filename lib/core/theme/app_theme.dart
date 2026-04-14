@@ -7,8 +7,13 @@ class AppTheme {
     required Color seedColor,
     required bool isDark,
   }) {
-    final textTheme = GoogleFonts.notoSansScTextTheme(Theme.of(context).textTheme);
     final brightness = isDark ? Brightness.dark : Brightness.light;
+
+    // 🌟 核心修复：明确根据深浅模式，提取正确的基础底色文字主题
+    final baseTextTheme = isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme;
+    // 注入 Google Fonts，此时深色模式下就会自动使用白色/亮灰色基底了！
+    final textTheme = GoogleFonts.notoSansScTextTheme(baseTextTheme);
+
     final bgColor = isDark ? const Color(0xFF1A1C1E) : const Color(0xFFFDFDFD);
     final inputFillColor = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.withValues(alpha: 0.05);
 
