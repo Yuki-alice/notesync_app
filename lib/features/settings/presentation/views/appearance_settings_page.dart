@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/providers/theme_provider.dart';
 import '../widgets/theme_mode_toggle.dart';
 
@@ -38,7 +39,10 @@ class AppearanceSettingsPage extends StatelessWidget {
             ),
             child: ElegantThemeModeToggle(
               currentMode: themeProvider.themeMode,
-              onChanged: (mode) => themeProvider.setThemeMode(mode),
+              onChanged: (mode){
+                final auth = context.read<AuthProvider>();
+                themeProvider.setThemeMode(mode, authProvider: auth);
+              },
             ),
           ),
           const SizedBox(height: 32),
@@ -60,7 +64,10 @@ class AppearanceSettingsPage extends StatelessWidget {
                 final isSelected = themeProvider.currentThemeId == style.id;
 
                 return GestureDetector(
-                  onTap: () => themeProvider.setThemeStyle(style.id),
+                  onTap: () {
+                    final auth = context.read<AuthProvider>();
+                    themeProvider.setThemeStyle(style.id, authProvider: auth);
+                  },
                   child: Column(
                     children: [
                       // 📱 手机骨架卡片

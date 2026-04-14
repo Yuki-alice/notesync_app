@@ -69,8 +69,8 @@ class SettingsPage extends StatelessWidget {
                   _SettingGroupContainer(
                     children: [
                       _buildNavTile(context, icon: Icons.palette_outlined, title: '外观与主题', subtitle: '深色模式与个性强调色', titleStyle: titleStyle, subStyle: subStyle, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppearanceSettingsPage()))),
-                      Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withOpacity(0.15)),
-                      const ProModeSwitchTile(),
+                      Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15)),
+                      const ProModeSwitch(), // 🌟 核心修复：类名正确对应
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -80,7 +80,7 @@ class SettingsPage extends StatelessWidget {
                   _SettingGroupContainer(
                     children: [
                       _buildNavTile(context, icon: Icons.cloud_sync_outlined, title: '云端同步配置', subtitle: '多引擎同步与同步状态管理', titleStyle: titleStyle, subStyle: subStyle, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SyncSettingsPage()))),
-                      Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withOpacity(0.15)),
+                      Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15)),
                       _buildNavTile(context, icon: Icons.storage_rounded, title: '存储与备份', subtitle: '空间占用分析与本地快照', titleStyle: titleStyle, subStyle: subStyle, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StorageSettingsPage()))),
                     ],
                   ),
@@ -90,8 +90,8 @@ class SettingsPage extends StatelessWidget {
                   const _SectionTitle('整理与安全'),
                   _SettingGroupContainer(
                     children: [
-                      _buildNavTile(context, icon: Icons.category_outlined, title: '分类管理', subtitle: '添加、重命名或逻辑排序', titleStyle: titleStyle, subStyle: subStyle, onTap: () => Navigator.pushNamed(context, AppRoutes.categories)),
-                      Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withOpacity(0.15)),
+                      _buildNavTile(context, icon: Icons.category_outlined, title: '分类管理', subtitle: '添加、重命名或删除分类', titleStyle: titleStyle, subStyle: subStyle, onTap: () => Navigator.pushNamed(context, AppRoutes.categories)),
+                      Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15)),
                       _buildNavTile(context, icon: Icons.delete_outline_rounded, title: '回收站', subtitle: '找回误删的笔记与待办', titleStyle: titleStyle, subStyle: subStyle, onTap: () => Navigator.pushNamed(context, AppRoutes.trash)),
                     ],
                   ),
@@ -113,7 +113,6 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  // 🌟 移除了 theme 参数，改为内部自行获取，杜绝报错
   Widget _buildNavTile(BuildContext context, {required IconData icon, required String title, required String subtitle, required TextStyle titleStyle, required TextStyle subStyle, required VoidCallback onTap}) {
     final theme = Theme.of(context);
     return InkWell(
@@ -124,7 +123,7 @@ class SettingsPage extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
               child: Icon(icon, color: theme.colorScheme.primary, size: 20),
             ),
             const SizedBox(width: 16),
@@ -156,7 +155,6 @@ class _SectionTitle extends StatelessWidget {
 class _SettingGroupContainer extends StatelessWidget {
   final List<Widget> children;
 
-  // 🌟 移除了 theme 参数，改为内部自行获取，杜绝报错
   const _SettingGroupContainer({required this.children});
 
   @override
@@ -164,12 +162,12 @@ class _SettingGroupContainer extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Material(
         color: theme.colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(24),
-        clipBehavior: Clip.antiAlias, // 完美裁切 Hover 水波纹
+        clipBehavior: Clip.antiAlias,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
       ),
     );

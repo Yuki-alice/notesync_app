@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/providers/auth_provider.dart';
 import '../core/providers/notes_provider.dart';
+import '../core/providers/theme_provider.dart';
 import '../features/notes/presentation/views/notes_page.dart';
 import '../features/todos/presentation/views/todos_page.dart';
 import '../features/notes/presentation/views/note_editor_page.dart';
@@ -28,6 +30,9 @@ class _MainScreenState extends State<MainScreen> {
   bool? _wasDesktop;
   StreamSubscription<AuthState>? _authStateSubscription;
 
+  // 🌟 新增：持久化引用 AuthProvider 以便精确监听
+  late AuthProvider _authProvider;
+
   final List<Widget> _pages = const [
     NotesPage(),
     TodosPage(),
@@ -37,19 +42,41 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentIndex);
+
+    // 🌟 核心修复 1：挂载监听器
+    _authProvider = context.read<AuthProvider>();
+    _authProvider.addListener(_onAuthChanged);
+
     _authStateSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final AuthChangeEvent event = data.event;
       if (event == AuthChangeEvent.signedIn) {
         if (mounted) {
+          // 登录成功时，只触发笔记和待办的同步
           context.read<NotesProvider>().syncWithCloud();
           context.read<TodosProvider>().syncWithCloud();
         }
       }
     });
+
+    // 🌟 首次启动兜底检查
+    _checkAndPullSettings();
+  }
+
+  // 🌟 核心修复 2：当 AuthProvider 数据刷新完成时，精确触发漫游对齐
+  void _onAuthChanged() {
+    _checkAndPullSettings();
+  }
+
+  void _checkAndPullSettings() {
+    // 必须等待 authProvider 真正从数据库拿到了 cloudSettings 字典后，再通知主题引擎对齐！
+    if (_authProvider.isAuthenticated && _authProvider.cloudSettings.isNotEmpty) {
+      context.read<ThemeProvider>().tryPullSettingsFromCloud(_authProvider);
+    }
   }
 
   @override
   void dispose() {
+    _authProvider.removeListener(_onAuthChanged); // 🌟 别忘了注销监听，防止内存泄漏
     _pageController?.dispose();
     _authStateSubscription?.cancel();
     super.dispose();
@@ -67,7 +94,7 @@ class _MainScreenState extends State<MainScreen> {
       if (mounted) {
         _pageController?.animateToPage(
           index,
-          duration: const Duration(milliseconds: 350), // 稍微调慢一点点，更显丝滑
+          duration: const Duration(milliseconds: 350),
           curve: Curves.easeOutCubic,
         );
       }
@@ -124,7 +151,6 @@ class _MainScreenState extends State<MainScreen> {
             }
             _wasDesktop = isDesktop;
 
-            // 🟢 找回原汁原味的 PageView 物理滑动
             final body = PageView(
               controller: _pageController,
               onPageChanged: _onPageChanged,
@@ -145,7 +171,7 @@ class _MainScreenState extends State<MainScreen> {
                 onFabPressed: _onFabPressed,
                 onSettingsTap: _onSettingsTap,
                 onTrashTap: _onTrashTap,
-                body: body, // 桌面端为了防止滑动导致两侧布局乱掉，也可以选择禁用物理滑动
+                body: body,
               );
             }
           },

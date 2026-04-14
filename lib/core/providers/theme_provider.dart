@@ -9,28 +9,23 @@ class AppThemeStyle {
   final String name;
   final Color seedColor;
   final ThemeVibe vibe;
-
-  const AppThemeStyle({
-    required this.id, required this.name, required this.seedColor, this.vibe = ThemeVibe.solid,
-  });
+  const AppThemeStyle({required this.id, required this.name, required this.seedColor, this.vibe = ThemeVibe.solid});
 }
 
 class ThemeProvider with ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   String _currentThemeId = 'classic_blue';
-  bool _syncSettingsToCloud = false; // 🌟 新增：用户是否开启了配置漫游
+  bool _isProMode = false;
+  bool _syncSettingsToCloud = false;
 
   late SharedPreferences _prefs;
 
   ThemeMode get themeMode => _themeMode;
   bool get isDarkMode => _themeMode == ThemeMode.dark;
+  bool get isProMode => _isProMode;
   bool get syncSettingsToCloud => _syncSettingsToCloud;
 
-  AppThemeStyle get currentStyle => presetThemes.firstWhere(
-          (t) => t.id == _currentThemeId,
-      orElse: () => presetThemes.first
-  );
-
+  AppThemeStyle get currentStyle => presetThemes.firstWhere((t) => t.id == _currentThemeId, orElse: () => presetThemes.first);
   Color get themeColor => currentStyle.seedColor;
   String get currentThemeId => _currentThemeId;
 
@@ -51,62 +46,58 @@ class ThemeProvider with ChangeNotifier {
 
   Future<void> _loadThemePrefs() async {
     _prefs = await SharedPreferences.getInstance();
-    final modeIndex = _prefs.getInt('theme_mode_index') ?? ThemeMode.system.index;
-    _themeMode = ThemeMode.values[modeIndex];
+    _themeMode = ThemeMode.values[_prefs.getInt('theme_mode_index') ?? ThemeMode.system.index];
     _currentThemeId = _prefs.getString('theme_style_id') ?? 'classic_blue';
-    _syncSettingsToCloud = _prefs.getBool('sync_settings_to_cloud') ?? false; // 默认不漫游，尊重设备独立性
+    _isProMode = _prefs.getBool('isProMode') ?? false;
+    _syncSettingsToCloud = _prefs.getBool('sync_settings_to_cloud') ?? false;
     notifyListeners();
   }
 
-  // 🌟 新增：切换是否允许云端漫游设置
+  // 🌟 核心修复：防反向覆盖的开关逻辑
   Future<void> toggleSyncSettings(bool value, AuthProvider authProvider) async {
     _syncSettingsToCloud = value;
     await _prefs.setBool('sync_settings_to_cloud', value);
-    notifyListeners();
-
-    // 如果用户刚刚打开了同步开关，立即将当前设备的配置推送到云端作为基准
-    if (value) {
-      _pushSettingsToCloud(authProvider);
+    if (value && authProvider.isAuthenticated) {
+      if (authProvider.cloudSettings.isNotEmpty) {
+        await tryPullSettingsFromCloud(authProvider);
+      } else {
+        await _pushSettingsToCloud(authProvider);
+      }
     }
+    notifyListeners();
   }
 
-  // 🌟 新增：从云端拉取设置并覆盖本地 (建议在主界面的 initState 里，或登录成功后调用)
+  // 🌟 核心修复：全量拉取
   Future<void> tryPullSettingsFromCloud(AuthProvider authProvider) async {
     if (!_syncSettingsToCloud || !authProvider.isAuthenticated) return;
-
-    final cloudSettings = authProvider.cloudSettings;
-    if (cloudSettings.isEmpty) return;
+    final cloud = authProvider.cloudSettings;
+    if (cloud.isEmpty) return;
 
     bool changed = false;
-
-    if (cloudSettings.containsKey('theme_mode_index')) {
-      final cloudMode = ThemeMode.values[cloudSettings['theme_mode_index']];
-      if (_themeMode != cloudMode) {
-        _themeMode = cloudMode;
-        await _prefs.setInt('theme_mode_index', cloudMode.index);
-        changed = true;
-      }
+    if (cloud.containsKey('theme_mode_index')) {
+      _themeMode = ThemeMode.values[cloud['theme_mode_index']];
+      await _prefs.setInt('theme_mode_index', _themeMode.index);
+      changed = true;
     }
-
-    if (cloudSettings.containsKey('theme_style_id')) {
-      final cloudStyleId = cloudSettings['theme_style_id'];
-      if (_currentThemeId != cloudStyleId) {
-        _currentThemeId = cloudStyleId;
-        await _prefs.setString('theme_style_id', _currentThemeId);
-        changed = true;
-      }
+    if (cloud.containsKey('theme_style_id')) {
+      _currentThemeId = cloud['theme_style_id'];
+      await _prefs.setString('theme_style_id', _currentThemeId);
+      changed = true;
     }
-
+    if (cloud.containsKey('is_pro_mode')) {
+      _isProMode = cloud['is_pro_mode'];
+      await _prefs.setBool('isProMode', _isProMode);
+      changed = true;
+    }
     if (changed) notifyListeners();
   }
 
-  // 内部辅助方法：推送到云端
   Future<void> _pushSettingsToCloud(AuthProvider authProvider) async {
     if (!_syncSettingsToCloud || !authProvider.isAuthenticated) return;
-
     await authProvider.updateCloudSettings({
       'theme_mode_index': _themeMode.index,
       'theme_style_id': _currentThemeId,
+      'is_pro_mode': _isProMode,
     });
   }
 
@@ -115,16 +106,22 @@ class ThemeProvider with ChangeNotifier {
     _themeMode = mode;
     await _prefs.setInt('theme_mode_index', mode.index);
     notifyListeners();
-
     if (authProvider != null) _pushSettingsToCloud(authProvider);
   }
 
   Future<void> setThemeStyle(String themeId, {AuthProvider? authProvider}) async {
     if (_currentThemeId == themeId) return;
     _currentThemeId = themeId;
-    await _prefs.setString('theme_style_id', _currentThemeId);
+    await _prefs.setString('theme_style_id', themeId);
     notifyListeners();
+    if (authProvider != null) _pushSettingsToCloud(authProvider);
+  }
 
+  Future<void> setProMode(bool value, {AuthProvider? authProvider}) async {
+    if (_isProMode == value) return;
+    _isProMode = value;
+    await _prefs.setBool('isProMode', value);
+    notifyListeners();
     if (authProvider != null) _pushSettingsToCloud(authProvider);
   }
 }

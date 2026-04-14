@@ -79,11 +79,15 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
         padding: const EdgeInsets.all(24),
         children: [
           // ==========================================
-          // 🌟 1. 数据同步总闸
+          // 🌟 1. 核心笔记/待办数据同步总闸
           // ==========================================
           Container(
             clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLowest, borderRadius: BorderRadius.circular(24), border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3))),
+            decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3))
+            ),
             child: SwitchListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               value: _isAutoSync,
@@ -100,7 +104,7 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
           const SizedBox(height: 32),
 
           // ==========================================
-          // 🌟 2. 引擎选择 (受总闸控制)
+          // 🌟 2. 同步引擎配置 (受总闸控制)
           // ==========================================
           IgnorePointer(
             ignoring: !_isAutoSync,
@@ -115,7 +119,11 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
                   ),
                   Container(
                     clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLowest, borderRadius: BorderRadius.circular(24), border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3))),
+                    decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3))
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -124,7 +132,7 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Text('选择你的数据保险箱', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                              Text('数据存储位置', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                               const SizedBox(height: 16),
                               SegmentedButton<String>(
                                 segments: const [
@@ -172,7 +180,7 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
           const SizedBox(height: 32),
 
           // ==========================================
-          // 🌟 3. 个性化偏好漫游 (利用 UserProfiles jsonb 引擎)
+          // 🌟 3. 设置云漫游开关 (本模块的核心修复)
           // ==========================================
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 12),
@@ -180,7 +188,11 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
           ),
           Container(
             clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLowest, borderRadius: BorderRadius.circular(24), border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3))),
+            decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3))
+            ),
             child: Consumer2<ThemeProvider, AuthProvider>(
                 builder: (context, themeProvider, authProvider, child) {
                   final isAuth = authProvider.isAuthenticated;
@@ -192,12 +204,12 @@ class _SyncSettingsPageState extends State<SyncSettingsPage> {
                     onChanged: isAuth ? (value) {
                       themeProvider.toggleSyncSettings(value, authProvider);
                       if (value) {
-                        ToastUtils.showSuccess(context, '偏好漫游已开启');
+                        ToastUtils.showSuccess(context, '设置漫游已开启');
                       }
                     } : null,
                     title: Text('设置云漫游', style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface, fontSize: 16)),
                     subtitle: Text(
-                        isAuth ? '跨设备同步你的深浅模式与主题颜色' : '请先登录以开启配置漫游',
+                        isAuth ? '同步主题外观、深浅模式及专业编辑配置' : '请先登录以开启设置漫游',
                         style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13)
                     ),
                     secondary: Container(

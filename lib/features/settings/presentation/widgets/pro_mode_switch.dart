@@ -1,54 +1,64 @@
+// 文件路径: lib/features/settings/presentation/widgets/pro_mode_switch.dart
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import '../../../../core/providers/theme_provider.dart';
+import '../../../../core/providers/auth_provider.dart';
 
-class ProModeSwitchTile extends StatefulWidget {
-  const ProModeSwitchTile({super.key});
-
-  @override
-  State<ProModeSwitchTile> createState() => _ProModeSwitchTileState();
-}
-
-class _ProModeSwitchTileState extends State<ProModeSwitchTile> {
-  bool _isProMode = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPreference();
-  }
-
-  Future<void> _loadPreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() => _isProMode = prefs.getBool('isProMode') ?? false);
-  }
-
-  Future<void> _toggleMode(bool value) async {
-    setState(() => _isProMode = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isProMode', value);
-  }
+class ProModeSwitch extends StatelessWidget {
+  const ProModeSwitch({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
+    final authProvider = context.read<AuthProvider>();
     final theme = Theme.of(context);
-    return SwitchListTile(
-      value: _isProMode,
-      onChanged: _toggleMode,
-      // 🌟 修复：强行锁死 fontSize 15，和普通的列表对齐！
-      title: Text(
-          '专业编辑模式',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)
-      ),
-      // 🌟 修复：强行锁死 fontSize 12！
-      subtitle: Text(
-          '支持 Markdown 语法 (如 "# " 生成标题)',
-          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)
-      ),
-      secondary: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
-        // 🌟 修复：把 Icon 的大小也锁死为 20！
-        child: Icon(Icons.code_rounded, color: theme.colorScheme.primary, size: 20),
+
+    // 🌟 完全复用 settings_page 中 _buildNavTile 的精调字体样式
+    final titleStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface);
+    final subStyle = TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant);
+
+    return InkWell(
+      onTap: () {
+        // 点击整行也能切换开关
+        themeProvider.setProMode(!themeProvider.isProMode, authProvider: authProvider);
+      },
+      child: Padding(
+        // 🌟 完全复用 _buildNavTile 的 Padding
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            // 🌟 核心修复：图标背景改为与其他选项一模一样的圆角矩形
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12)
+              ),
+              child: Icon(Icons.code_rounded, color: theme.colorScheme.primary, size: 20),
+            ),
+            const SizedBox(width: 16),
+
+            // 🌟 中间文字区域对齐
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('专业编辑模式', style: titleStyle),
+                  const SizedBox(height: 2),
+                  Text('启用 Markdown 快捷语法 (如输入 # 加空格)', style: subStyle),
+                ],
+              ),
+            ),
+
+            // 🌟 右侧原生开关
+            Switch(
+              value: themeProvider.isProMode,
+              onChanged: (val) {
+                themeProvider.setProMode(val, authProvider: authProvider);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
