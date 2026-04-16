@@ -128,7 +128,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
                   const SizedBox(height: 24),
 
                   // 🌟 分隔线
-                  Divider(color: theme.colorScheme.outlineVariant.withOpacity(0.3), height: 1),
+                  Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), height: 1),
                   const SizedBox(height: 24),
 
                   quill.QuillEditor.basic(
@@ -156,7 +156,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
                     child: Text(
                       '--- 生成自 NoteSync ---',
                       style: TextStyle(
-                          color: theme.colorScheme.outline.withOpacity(0.5),
+                          color: theme.colorScheme.outline.withValues(alpha: 0.5),
                           letterSpacing: 2.0,
                           fontSize: 12
                       ),
@@ -201,7 +201,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
               child: Container(
                 decoration: BoxDecoration(
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))
                   ],
                 ),
                 child: Image.memory(_imageBytes!), // 直接展示生成的内存图片
@@ -217,7 +217,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
             color: theme.colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))
+              BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -5))
             ],
           ),
           child: Column(

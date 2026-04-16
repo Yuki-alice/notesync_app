@@ -465,4 +465,11 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     _debounceTimer?.cancel();
     _syncTimer?.cancel();
   }
+  Note? getNoteById(String id) {
+    try {
+      return notes.firstWhere((note) => note.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
 }

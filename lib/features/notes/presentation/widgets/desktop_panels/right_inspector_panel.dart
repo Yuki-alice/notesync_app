@@ -9,8 +9,9 @@ import '../../viewmodels/note_editor_viewmodel.dart';
 import '../dialogs/add_tag_dialog.dart';
 import '../dialogs/set_category_sheet.dart';
 import '../editor_toolbar/components/premium_pill.dart';
+// 🌟 引入我们刚才新建的超链接弹窗
+import '../dialogs/hyperlink_dialog.dart';
 
-// 🌟 核心修正：类名正式改为 RightInspectorPanel，且去掉不必要的 const 限制
 class RightInspectorPanel extends StatefulWidget {
   const RightInspectorPanel({super.key});
 
@@ -25,53 +26,62 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final viewModel = context.watch<NoteEditorViewModel>();
+    final colorScheme = theme.colorScheme;
 
-    return Column(
-      children: [
-        // 1:1 Craft 顶部 Tab
-        Container(
-          height: 60,
-          padding: const EdgeInsets.only(top: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildTextTab('插入', 0, theme),
-              _buildTextTab('样式', 1, theme),
-              _buildTextTab('页面', 2, theme),
-            ],
+    return Container(
+      color: Colors.transparent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(child: _buildTab('插入', Icons.add_circle_outline_rounded, 0, colorScheme)),
+                Expanded(child: _buildTab('样式', Icons.text_format_rounded, 1, colorScheme)),
+                Expanded(child: _buildTab('页面', Icons.info_outline_rounded, 2, colorScheme)),
+              ],
+            ),
           ),
-        ),
+          Divider(height: 1, color: colorScheme.outlineVariant.withOpacity(0.2)),
 
-        Expanded(
-          child: AnimatedBuilder(
-            animation: viewModel.quillController,
-            builder: (context, _) {
-              if (_currentTab == 0) return _buildInsertTab(theme, viewModel);
-              if (_currentTab == 1) return _buildStyleTab(theme, viewModel);
-              return _buildPageTab(theme, viewModel);
-            },
+          Expanded(
+            child: AnimatedBuilder(
+              animation: viewModel.quillController,
+              builder: (context, _) {
+                if (_currentTab == 0) return _buildInsertTab(theme, viewModel);
+                if (_currentTab == 1) return _buildStyleTab(theme, viewModel);
+                return _buildPageTab(theme, viewModel);
+              },
+            ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTextTab(String label, int index, ThemeData theme) {
-    final isActive = _currentTab == index;
-    return GestureDetector(
-      onTap: () => setState(() => _currentTab = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: isActive ? theme.colorScheme.primary : Colors.transparent, width: 2))
-        ),
-        alignment: Alignment.center,
-        child: Text(label, style: TextStyle(fontSize: 13, fontWeight: isActive ? FontWeight.bold : FontWeight.w500, color: isActive ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant)),
+        ],
       ),
     );
   }
 
-  // 样式、插入、页面面板逻辑保持原样...
+  Widget _buildTab(String label, IconData icon, int index, ColorScheme colorScheme) {
+    final isActive = _currentTab == index;
+    return GestureDetector(
+      onTap: () => setState(() => _currentTab = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: isActive ? colorScheme.primary : Colors.transparent, width: 2)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: isActive ? colorScheme.primary : colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(fontSize: 13, fontWeight: isActive ? FontWeight.w600 : FontWeight.w500, color: isActive ? colorScheme.primary : colorScheme.onSurfaceVariant)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildStyleTab(ThemeData theme, NoteEditorViewModel viewModel) {
     final controller = viewModel.quillController;
     final style = controller.getSelectionStyle();
@@ -93,7 +103,7 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
     bool isQuote = style.attributes['blockquote']?.value == true;
 
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       physics: const BouncingScrollPhysics(),
       children: [
         _buildHeader(theme, '标题与正文'),
@@ -108,6 +118,7 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
           _SegmentItem(label: '引用', isActive: isQuote, onTap: () => _format(controller, quill.Attribute.blockQuote)),
           _SegmentItem(label: '代码块', isActive: isCode, onTap: () => _format(controller, quill.Attribute.codeBlock)),
         ]),
+
         const SizedBox(height: 28),
         _buildHeader(theme, '基础排版'),
         _buildSegmentedGroup(theme, [
@@ -123,13 +134,14 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
           _SegmentItem(icon: Icons.format_list_numbered_rounded, isActive: isOL, onTap: () => _format(controller, quill.Attribute.ol)),
           _SegmentItem(icon: Icons.format_clear_rounded, isActive: false, onTap: () => controller.formatSelection(quill.Attribute.clone(quill.Attribute.bold, null))),
         ]),
+
         const SizedBox(height: 28),
         _buildHeader(theme, '颜色与高亮'),
         Row(
           children: [
-            quill.QuillToolbarColorButton(controller: controller, isBackground: false, options: quill.QuillToolbarColorButtonOptions(iconData: Icons.format_color_text_rounded, iconTheme: quill.QuillIconTheme(iconButtonUnselectedData: quill.IconButtonData(style: IconButton.styleFrom(backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5), shape: const CircleBorder()))))),
+            quill.QuillToolbarColorButton(controller: controller, isBackground: false, options: quill.QuillToolbarColorButtonOptions(iconData: Icons.format_color_text_rounded, iconTheme: quill.QuillIconTheme(iconButtonUnselectedData: quill.IconButtonData(style: IconButton.styleFrom(backgroundColor: theme.colorScheme.onSurface.withOpacity(0.04), shape: const CircleBorder()))))),
             const SizedBox(width: 12),
-            quill.QuillToolbarColorButton(controller: controller, isBackground: true, options: quill.QuillToolbarColorButtonOptions(iconData: Icons.format_color_fill_rounded, iconTheme: quill.QuillIconTheme(iconButtonUnselectedData: quill.IconButtonData(style: IconButton.styleFrom(backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5), shape: const CircleBorder()))))),
+            quill.QuillToolbarColorButton(controller: controller, isBackground: true, options: quill.QuillToolbarColorButtonOptions(iconData: Icons.format_color_fill_rounded, iconTheme: quill.QuillIconTheme(iconButtonUnselectedData: quill.IconButtonData(style: IconButton.styleFrom(backgroundColor: theme.colorScheme.onSurface.withOpacity(0.04), shape: const CircleBorder()))))),
           ],
         ),
       ],
@@ -145,28 +157,76 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
     }
   }
 
+  // 🌟 修复报错的核心区
   Widget _buildInsertTab(ThemeData theme, NoteEditorViewModel viewModel) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
+      physics: const BouncingScrollPhysics(),
       children: [
         _buildHeader(theme, '媒体资源'),
         _buildActionRow(theme, Icons.image_outlined, '插入相册图片', () => viewModel.pickAndInsertImage()),
-        _buildActionRow(theme, Icons.link_rounded, '插入超链接', () => viewModel.quillController.formatSelection(quill.Attribute.link)),
+
+        _buildActionRow(theme, Icons.link_rounded, '插入超链接', () async {
+          final controller = viewModel.quillController;
+          final selection = controller.selection;
+
+          // 1. 使用 start 和 end 而非 index / length
+          final int start = selection.start;
+          final int end = selection.end;
+          final int length = end - start;
+
+          String text = '';
+          if (length > 0) {
+            text = controller.document.getPlainText(start, length).trim();
+          }
+
+          final result = await showDialog<Map<String, String>>(
+            context: context,
+            builder: (context) => HyperlinkDialog(initialText: text),
+          );
+
+          if (result != null && result['url']!.isNotEmpty) {
+            final linkText = result['text']!.isEmpty ? result['url']! : result['text']!;
+            final linkUrl = result['url']!;
+
+            // 2. 替换文字
+            if (length > 0) {
+              controller.replaceText(start, length, linkText, TextSelection.collapsed(offset: start + linkText.length));
+            } else {
+              controller.document.insert(start, linkText);
+              controller.updateSelection(TextSelection.collapsed(offset: start + linkText.length), quill.ChangeSource.local);
+            }
+
+            // 3. 修复 Attribute.link 报错，使用 quill.LinkAttribute() 实例
+            controller.formatText(start, linkText.length, quill.LinkAttribute(linkUrl));
+          }
+        }),
       ],
     );
   }
 
   Widget _buildActionRow(ThemeData theme, IconData icon, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        child: Row(children: [
-          Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 12),
-          Text(label, style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface)),
-        ]),
+    final colorScheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          hoverColor: colorScheme.onSurface.withOpacity(0.04),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 12),
+                Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorScheme.onSurface)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -174,80 +234,73 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
   Widget _buildPageTab(ThemeData theme, NoteEditorViewModel viewModel) {
     final provider = context.watch<NotesProvider>();
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
+      physics: const BouncingScrollPhysics(),
       children: [
         _buildHeader(theme, '统计信息'),
         _buildInfoItem(theme, '创建', _formatDate(viewModel.currentNote?.createdAt)),
         _buildInfoItem(theme, '修改', _formatDate(viewModel.currentNote?.updatedAt)),
         _buildInfoItem(theme, '字数', '${viewModel.wordCount} 字'),
+
         const SizedBox(height: 32),
         _buildHeader(theme, '收纳位置'),
         PremiumPill(
           icon: Icons.folder_outlined,
           label: provider.getCategoryById(viewModel.categoryId)?.name ?? '未分类',
           color: theme.colorScheme.onSurfaceVariant,
-          backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+          backgroundColor: theme.colorScheme.onSurface.withOpacity(0.04),
           onTap: () async {
             final res = await showSetCategorySheet(context, currentCategory: provider.getCategoryById(viewModel.categoryId)?.name);
             if (res != null) viewModel.setCategoryId(res.isEmpty ? null : provider.categories.firstWhere((c) => c.name == res).id);
           },
         ),
+
         const SizedBox(height: 32),
         _buildHeader(theme, '关联标签'),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          ...viewModel.tagIds.map((id) => provider.getTagById(id)).whereType<Tag>().map((t) => PremiumTagPill(tag: t, theme: theme, onDelete: () => viewModel.removeTag(t.id))),
-          PremiumPill(
-            icon: Icons.add_rounded, label: '标签', color: theme.colorScheme.onSurfaceVariant, backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-            onTap: () async {
-              final name = await showAddTagDialog(context);
-              if (name != null && name.trim().isNotEmpty) viewModel.addTag((await provider.createTag(name.trim())).id);
-            },
-          ),
-        ])
+        Wrap(
+            spacing: 8, runSpacing: 8,
+            children: [
+              ...viewModel.tagIds.map((id) => provider.getTagById(id)).whereType<Tag>().map((t) => PremiumTagPill(tag: t, theme: theme, onDelete: () => viewModel.removeTag(t.id))),
+              PremiumPill(icon: Icons.add_rounded, label: '标签', color: theme.colorScheme.onSurfaceVariant, backgroundColor: theme.colorScheme.onSurface.withOpacity(0.04), onTap: () async { final name = await showAddTagDialog(context); if (name != null && name.trim().isNotEmpty) viewModel.addTag((await provider.createTag(name.trim())).id); }),
+            ]
+        )
       ],
     );
   }
 
   Widget _buildHeader(ThemeData theme, String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(title, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.outline, letterSpacing: 1.0)),
-    );
+    return Padding(padding: const EdgeInsets.only(left: 4, bottom: 12), child: Text(title.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: theme.colorScheme.outline, letterSpacing: 1.2)));
   }
 
   Widget _buildInfoItem(ThemeData theme, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(label, style: TextStyle(color: theme.colorScheme.outline, fontSize: 13)),
-        Text(value, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500)),
-      ]),
-    );
+    return Padding(padding: const EdgeInsets.only(left: 4, right: 4, bottom: 10), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: theme.colorScheme.outline, fontSize: 13)), Text(value, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500))]));
   }
 
   Widget _buildSegmentedGroup(ThemeData theme, List<_SegmentItem> items) {
+    final colorScheme = theme.colorScheme;
     return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: colorScheme.onSurface.withOpacity(0.04), borderRadius: BorderRadius.circular(8)),
       child: Row(
         children: items.map((item) {
           return Expanded(
-            child: GestureDetector(
-              onTap: item.onTap,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                decoration: BoxDecoration(
-                  color: item.isActive ? theme.colorScheme.surface : Colors.transparent,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: item.onTap,
                   borderRadius: BorderRadius.circular(6),
-                  boxShadow: item.isActive ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 1))] : [],
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(color: item.isActive ? colorScheme.surface : Colors.transparent, borderRadius: BorderRadius.circular(6), boxShadow: item.isActive ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 1))] : []),
+                    alignment: Alignment.center,
+                    child: item.label != null
+                        ? Text(item.label!, style: TextStyle(fontSize: 12, fontWeight: item.isActive ? FontWeight.w600 : FontWeight.w500, color: item.isActive ? colorScheme.primary : colorScheme.onSurfaceVariant))
+                        : Icon(item.icon, size: 18, color: item.isActive ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                  ),
                 ),
-                alignment: Alignment.center,
-                child: item.label != null
-                    ? Text(item.label!, style: TextStyle(fontSize: 12, fontWeight: item.isActive ? FontWeight.bold : FontWeight.w500, color: item.isActive ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant))
-                    : Icon(item.icon, size: 18, color: item.isActive ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant),
               ),
             ),
           );
