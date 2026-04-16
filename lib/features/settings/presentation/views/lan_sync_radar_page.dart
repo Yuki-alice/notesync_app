@@ -69,8 +69,8 @@ class _LanSyncRadarPageState extends State<LanSyncRadarPage> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLowest,
               borderRadius: BorderRadius.circular(28),
-              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
-              border: Border.all(color: lanSync.isActive ? theme.colorScheme.primary.withOpacity(0.3) : Colors.transparent, width: 2),
+              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))],
+              border: Border.all(color: lanSync.isActive ? theme.colorScheme.primary.withValues(alpha: 0.3) : Colors.transparent, width: 2),
             ),
             child: Column(
               children: [
@@ -122,7 +122,7 @@ class _LanSyncRadarPageState extends State<LanSyncRadarPage> {
                   icon: Icon(Icons.refresh_rounded, color: theme.colorScheme.primary),
                   tooltip: '刷新雷达',
                   style: IconButton.styleFrom(
-                    backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                    backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
                     padding: const EdgeInsets.all(8),
                   ),
                 ),
@@ -153,14 +153,14 @@ class _LanSyncRadarPageState extends State<LanSyncRadarPage> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   leading: Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), shape: BoxShape.circle),
+                    decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
                     child: Icon(Icons.smartphone_rounded, color: theme.colorScheme.primary),
                   ),
                   title: Text(device.name ?? '未知设备', style: const TextStyle(fontWeight: FontWeight.bold)),

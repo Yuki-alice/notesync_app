@@ -152,7 +152,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLowest,
               borderRadius: BorderRadius.circular(28),
-              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
+              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,7 +188,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
                 // 🌟 新增：展示设备上的真实物理存储路径
                 if (!_isCalculating) ...[
                   const SizedBox(height: 16),
-                  Divider(height: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.2)),
+                  Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
                   const SizedBox(height: 16),
                   Text('数据保存在设备路径：', style: TextStyle(fontSize: 11, color: theme.colorScheme.outline)),
                   const SizedBox(height: 4),
@@ -208,7 +208,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLowest,
               borderRadius: BorderRadius.circular(28),
-              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
+              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))],
             ),
             child: Column(
               children: [
@@ -224,7 +224,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Divider(height: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.2)),
+                  child: Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
                 ),
                 _buildActionRow(
                   theme,
@@ -260,14 +260,14 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: theme.colorScheme.secondaryContainer.withOpacity(0.3),
+              color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(28),
             ),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: theme.colorScheme.secondary.withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
+                  decoration: BoxDecoration(color: theme.colorScheme.secondary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
                   child: Icon(Icons.delete_sweep_rounded, color: theme.colorScheme.secondary, size: 24),
                 ),
                 const SizedBox(width: 16),
@@ -285,7 +285,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
                 FilledButton.tonal(
                   onPressed: _cleanRedundantImages, // 🌟 绑定真正的清理方法
                   style: FilledButton.styleFrom(
-                    backgroundColor: theme.colorScheme.secondary.withOpacity(0.15),
+                    backgroundColor: theme.colorScheme.secondary.withValues(alpha: 0.15),
                     foregroundColor: theme.colorScheme.secondary,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -340,7 +340,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: activeColor.withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(color: activeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
             child: Icon(icon, color: activeColor, size: 24),
           ),
           const SizedBox(width: 16),

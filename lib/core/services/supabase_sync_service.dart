@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
+
 
 import '../repositories/category_repository.dart';
 import '../repositories/note_repository.dart';
@@ -119,7 +119,7 @@ class SupabaseSyncService {
 
       // 3. 笔记主表拉取比对 (基于更新时间兜底，兼容版本号)
       final cloudMetadata = await _fetchCloudMetadata('notes', currentUserId);
-      final localMetaMap = _noteRepo!.getAllNotesMetadata();
+      final localMetaMap = _noteRepo.getAllNotesMetadata();
 
       final plan = _reconcileData(
         localMetaMap: localMetaMap,
@@ -138,7 +138,7 @@ class SupabaseSyncService {
       }
 
       for (var id in plan.toDeleteLocally) {
-        await _noteRepo!.deleteNote(id);
+        await _noteRepo.deleteNote(id);
         _SyncLogger.info('NOTE', '👻 成功抹除本地幽灵笔记: $id');
       }
 
@@ -147,7 +147,7 @@ class SupabaseSyncService {
 
       // 4. 图片资源分离同步
       try {
-        final allNotes = _noteRepo!.getAllNotes();
+        final allNotes = _noteRepo.getAllNotes();
 
         if (pushedNotes.isNotEmpty) await _uploadImages(pushedNotes);
 
@@ -289,7 +289,7 @@ class SupabaseSyncService {
     }
 
     // ----- 2. 分类双向增量同步 (基于 updatedAt 时间戳) -----
-    final localCats = _categoryRepo!.getAllCategories();
+    final localCats = _categoryRepo.getAllCategories();
     final cloudCatsData = await _supabase.from('categories').select().eq('user_id', userId);
 
     final localCatsMap = { for (var c in localCats) c.id: c };

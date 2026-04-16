@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 
 import '../../../../../core/services/image_storage_service.dart';
@@ -68,11 +67,11 @@ class _EditorDesktopLayoutState extends State<EditorDesktopLayout> {
     final isDark = theme.brightness == Brightness.dark;
     final baseColor = isDark
         ? theme.colorScheme.surface
-        : Color.alphaBlend(theme.colorScheme.primary.withOpacity(0.03), theme.colorScheme.surface);
+        : Color.alphaBlend(theme.colorScheme.primary.withValues(alpha: 0.03), theme.colorScheme.surface);
 
     final deskColor = isDark
         ? theme.colorScheme.surfaceContainerHighest
-        : Color.alphaBlend(theme.colorScheme.primary.withOpacity(0.12), theme.colorScheme.surface);
+        : Color.alphaBlend(theme.colorScheme.primary.withValues(alpha: 0.12), theme.colorScheme.surface);
 
     final paperColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
@@ -106,8 +105,8 @@ class _EditorDesktopLayoutState extends State<EditorDesktopLayout> {
                       decoration: BoxDecoration(
                         color: deskColor,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.15), width: 1),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
+                        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15), width: 1),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))],
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
@@ -124,7 +123,7 @@ class _EditorDesktopLayoutState extends State<EditorDesktopLayout> {
                                 decoration: BoxDecoration(
                                   color: paperColor,
                                   borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 24, offset: const Offset(0, 8))],
+                                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 24, offset: const Offset(0, 8))],
                                 ),
                                 child: Padding(
                                   padding: const EdgeInsets.fromLTRB(64, 40, 64, 160),
@@ -234,7 +233,7 @@ class _TopbarBtn extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        hoverColor: theme.colorScheme.onSurface.withOpacity(0.05),
+        hoverColor: theme.colorScheme.onSurface.withValues(alpha: 0.05),
         child: Padding(padding: const EdgeInsets.all(8.0), child: iconWidget),
       ),
     );
@@ -277,7 +276,7 @@ class _DesktopCraftReaderLayoutState extends State<DesktopCraftReaderLayout> {
     final isDark = theme.brightness == Brightness.dark;
     final craftBackgroundColor = isDark
         ? theme.colorScheme.surfaceContainerHighest
-        : Color.alphaBlend(theme.colorScheme.primary.withOpacity(0.18), theme.colorScheme.surface);
+        : Color.alphaBlend(theme.colorScheme.primary.withValues(alpha: 0.18), theme.colorScheme.surface);
 
     return Scaffold(
       backgroundColor: craftBackgroundColor,
@@ -296,7 +295,7 @@ class _DesktopCraftReaderLayoutState extends State<DesktopCraftReaderLayout> {
                   decoration: BoxDecoration(
                     color: colorScheme.surface,
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 32, offset: const Offset(0, 12))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 32, offset: const Offset(0, 12))],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,7 +369,7 @@ class _DesktopCraftReaderLayoutState extends State<DesktopCraftReaderLayout> {
       color: isPrimary ? colorScheme.primaryContainer : colorScheme.surface,
       borderRadius: BorderRadius.circular(24),
       elevation: 4,
-      shadowColor: Colors.black.withOpacity(0.15),
+      shadowColor: Colors.black.withValues(alpha: 0.15),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(24),

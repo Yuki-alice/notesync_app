@@ -310,7 +310,7 @@ class _LeftNavigationPanelState extends State<LeftNavigationPanel> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _buildTabs(theme),
           ),
-          Divider(height: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.2)),
+          Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
           // 核心列表区域
           Expanded(
             child: _buildTabContent(theme, viewModel),
@@ -349,10 +349,10 @@ class _LeftNavigationPanelState extends State<LeftNavigationPanel> {
       decoration: BoxDecoration(
         color: isFocused
             ? colorScheme.surface
-            : colorScheme.onSurface.withOpacity(0.04), // 极淡的底色，不喧宾夺主
+            : colorScheme.onSurface.withValues(alpha: 0.04), // 极淡的底色，不喧宾夺主
         borderRadius: BorderRadius.circular(6), // 回归沉稳的小圆角
         border: Border.all(
-          color: isFocused ? colorScheme.primary.withOpacity(0.5) : Colors.transparent,
+          color: isFocused ? colorScheme.primary.withValues(alpha: 0.5) : Colors.transparent,
           width: 1,
         ),
       ),
@@ -377,7 +377,7 @@ class _LeftNavigationPanelState extends State<LeftNavigationPanel> {
                 hintText: isDocSearch ? '搜索文档...' : '搜索全局笔记...',
                 hintStyle: theme.textTheme.bodyMedium?.copyWith(
                   fontSize: 13,
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                 ),
                 border: InputBorder.none,
                 isDense: true,
@@ -434,7 +434,7 @@ class _LeftNavigationPanelState extends State<LeftNavigationPanel> {
           ],
 
           if (_searchQuery.isNotEmpty) ...[
-            Container(width: 1, height: 14, color: colorScheme.outlineVariant.withOpacity(0.5), margin: const EdgeInsets.symmetric(horizontal: 4)),
+            Container(width: 1, height: 14, color: colorScheme.outlineVariant.withValues(alpha: 0.5), margin: const EdgeInsets.symmetric(horizontal: 4)),
             _buildIconButton(
               Icons.close_rounded,
               colorScheme,
@@ -466,7 +466,7 @@ class _LeftNavigationPanelState extends State<LeftNavigationPanel> {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(4),
-        hoverColor: colorScheme.onSurface.withOpacity(0.08),
+        hoverColor: colorScheme.onSurface.withValues(alpha: 0.08),
         child: Padding(
           padding: const EdgeInsets.all(4.0),
           child: Icon(icon, size: 16, color: colorScheme.onSurfaceVariant),
@@ -647,7 +647,7 @@ class _DirectoryGroupWidgetState extends State<_DirectoryGroupWidget> {
           child: InkWell(
             onTap: () => setState(() => _isExpanded = !_isExpanded),
             borderRadius: BorderRadius.circular(6),
-            hoverColor: colorScheme.onSurface.withOpacity(0.04),
+            hoverColor: colorScheme.onSurface.withValues(alpha: 0.04),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
               child: Row(
@@ -698,7 +698,7 @@ class _DirectoryGroupWidgetState extends State<_DirectoryGroupWidget> {
               decoration: BoxDecoration(
                 border: Border(
                     left: BorderSide(
-                      color: colorScheme.outlineVariant.withOpacity(0.4),
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.4),
                       width: 1.5,
                     )
                 ),
@@ -724,13 +724,13 @@ class _DirectoryGroupWidgetState extends State<_DirectoryGroupWidget> {
         child: InkWell(
           onTap: () => widget.onNoteTap(note),
           borderRadius: BorderRadius.circular(6),
-          hoverColor: colorScheme.onSurface.withOpacity(0.04),
+          hoverColor: colorScheme.onSurface.withValues(alpha: 0.04),
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
             decoration: BoxDecoration(
               // 选中态变得克制专业，不再大面积涂抹颜色
-              color: isActive ? colorScheme.primary.withOpacity(0.08) : Colors.transparent,
+              color: isActive ? colorScheme.primary.withValues(alpha: 0.08) : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
             ),
             child: Row(

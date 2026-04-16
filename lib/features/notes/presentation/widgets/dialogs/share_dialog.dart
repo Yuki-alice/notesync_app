@@ -121,7 +121,7 @@ class _ShareDialogState extends State<ShareDialog> {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        hoverColor: colorScheme.primary.withOpacity(0.05),
+        hoverColor: colorScheme.primary.withValues(alpha: 0.05),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Row(

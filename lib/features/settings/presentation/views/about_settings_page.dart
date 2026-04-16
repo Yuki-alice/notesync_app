@@ -72,7 +72,7 @@ class _AboutSettingsPageState extends State<AboutSettingsPage> {
         builder: (ctx, scrollController) => Column(
           children: [
             const SizedBox(height: 12),
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.4), borderRadius: BorderRadius.circular(2))),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 20),
             Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
@@ -114,9 +114,9 @@ class _AboutSettingsPageState extends State<AboutSettingsPage> {
                 Container(
                   width: 88, height: 88,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [theme.colorScheme.primary, theme.colorScheme.primary.withOpacity(0.7)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    gradient: LinearGradient(colors: [theme.colorScheme.primary, theme.colorScheme.primary.withValues(alpha: 0.7)], begin: Alignment.topLeft, end: Alignment.bottomRight),
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: [BoxShadow(color: theme.colorScheme.primary.withOpacity(0.2), blurRadius: 24, offset: const Offset(0, 12))],
+                    boxShadow: [BoxShadow(color: theme.colorScheme.primary.withValues(alpha: 0.2), blurRadius: 24, offset: const Offset(0, 12))],
                   ),
                   child: const Icon(Icons.edit_document, size: 40, color: Colors.white),
                 ),
@@ -125,7 +125,7 @@ class _AboutSettingsPageState extends State<AboutSettingsPage> {
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5), borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10)),
                   child: Text('Version 2.2.0 (Build 204)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurfaceVariant)),
                 ),
               ],
@@ -179,7 +179,7 @@ class _AboutSettingsPageState extends State<AboutSettingsPage> {
   Widget _buildGroupContainer(ThemeData theme, List<Widget> children) {
     return Container(
       decoration: BoxDecoration(
-        boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 8))],
+        boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.02), blurRadius: 20, offset: const Offset(0, 8))],
       ),
       child: Material(
         color: theme.colorScheme.surfaceContainerLowest,
@@ -200,7 +200,7 @@ class _AboutSettingsPageState extends State<AboutSettingsPage> {
   Widget _buildDivider(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.only(left: 60, right: 20),
-      child: Divider(height: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.2)),
+      child: Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
     );
   }
 
@@ -213,7 +213,7 @@ class _AboutSettingsPageState extends State<AboutSettingsPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
               child: Icon(icon, color: theme.colorScheme.primary, size: 20),
             ),
             const SizedBox(width: 16),

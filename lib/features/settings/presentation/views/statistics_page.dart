@@ -168,7 +168,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLowest,
               borderRadius: BorderRadius.circular(28),
-              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
+              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))],
             ),
             child: Column(
               children: [
@@ -201,7 +201,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLowest, // 统一的卡片底色
               borderRadius: BorderRadius.circular(28),
-              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
+              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,7 +211,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   children: [
                     Container(
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
                       child: Icon(personaIcon, size: 24, color: theme.colorScheme.primary),
                     ),
                     const SizedBox(width: 16),
@@ -230,7 +230,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 const SizedBox(height: 24),
 
                 // --- 2. 极简分隔线 ---
-                Divider(height: 1, color: theme.colorScheme.outlineVariant.withOpacity(0.2)),
+                Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
                 const SizedBox(height: 20),
 
                 // --- 3. 15天热力图打卡区 ---
@@ -253,7 +253,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         Container(
                           width: 24, height: 24,
                           decoration: BoxDecoration(
-                            color: isActive ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                            color: isActive ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: isActive ? const Icon(Icons.check_rounded, size: 16, color: Colors.white) : null,
@@ -270,7 +270,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.secondaryContainer.withOpacity(0.4),
+                    color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
@@ -301,7 +301,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLowest,
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
+              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))],
             ),
             child: notesProvider.tags.isEmpty
                 ? _buildEmptyHint(theme, '暂无标签数据')
@@ -312,9 +312,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: color.withOpacity(0.2)),
+                    border: Border.all(color: color.withValues(alpha: 0.2)),
                   ),
                   child: Text('# ${tag.name}', style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600)),
                 );
@@ -333,7 +333,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLowest,
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
+              boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))],
             ),
             child: _isLoadingImages
                 ? const Center(child: CircularProgressIndicator())
@@ -379,7 +379,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
             child: Icon(icon, color: theme.colorScheme.primary, size: 24),
           ),
           const SizedBox(width: 16),

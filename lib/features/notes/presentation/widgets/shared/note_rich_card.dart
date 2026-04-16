@@ -23,7 +23,7 @@ class SharedNoteRichCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     // 🌟 高级渐变背景逻辑
-    final bgColor1 = isDark ? const Color(0xFF1A1D21) : Color.alphaBlend(colorScheme.primary.withOpacity(0.15), colorScheme.surface);
+    final bgColor1 = isDark ? const Color(0xFF1A1D21) : Color.alphaBlend(colorScheme.primary.withValues(alpha: 0.15), colorScheme.surface);
     final bgColor2 = isDark ? const Color(0xFF121212) : colorScheme.surfaceContainerLowest;
     final paperColor = isDark ? const Color(0xFF242424) : Colors.white;
 
@@ -47,7 +47,7 @@ class SharedNoteRichCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 40,
                   offset: const Offset(0, 20),
                 ),
@@ -111,7 +111,7 @@ class SharedNoteRichCard extends StatelessWidget {
               Text(
                 'Powered by NoteSync',
                 style: TextStyle(
-                  color: colorScheme.onSurface.withOpacity(0.6),
+                  color: colorScheme.onSurface.withValues(alpha: 0.6),
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.5,

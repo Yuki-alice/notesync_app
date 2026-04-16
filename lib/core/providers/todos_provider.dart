@@ -8,7 +8,7 @@ import '../../models/todo.dart';
 import '../../core/services/supabase_sync_service.dart';
 import '../../core/services/webdav_sync_service.dart';
 import 'package:isar/isar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
 
 enum TodoSyncState { idle, syncing, success, error, unauthenticated }
 

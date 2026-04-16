@@ -102,7 +102,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
   Widget _buildCapturingState(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
     // 🌟 提取高级的渐变背景色
-    final bgColor1 = isDark ? const Color(0xFF1A1D21) : Color.alphaBlend(theme.colorScheme.primary.withOpacity(0.15), theme.colorScheme.surface);
+    final bgColor1 = isDark ? const Color(0xFF1A1D21) : Color.alphaBlend(theme.colorScheme.primary.withValues(alpha: 0.15), theme.colorScheme.surface);
     final bgColor2 = isDark ? const Color(0xFF121212) : theme.colorScheme.surfaceContainerLowest;
     final paperColor = isDark ? const Color(0xFF242424) : Colors.white;
 
@@ -135,7 +135,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
                       color: paperColor,
                       borderRadius: BorderRadius.circular(24), // 圆润的卡片感
                       boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 40, offset: const Offset(0, 20)),
+                        BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 40, offset: const Offset(0, 20)),
                       ],
                     ),
                     // 纸张内部的高级留白
@@ -203,7 +203,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
                       Text(
                         'Powered by NoteSync',
                         style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.5,
@@ -258,7 +258,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 30, offset: const Offset(0, 10))
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 30, offset: const Offset(0, 10))
                     ],
                   ),
                   // 为了在预览时不显得过大卡顿，稍微裁剪圆角预览
@@ -279,7 +279,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
             color: theme.colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, -4))
+              BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, -4))
             ],
           ),
           child: Column(

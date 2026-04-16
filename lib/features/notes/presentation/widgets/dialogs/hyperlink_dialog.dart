@@ -69,7 +69,7 @@ class _HyperlinkDialogState extends State<HyperlinkDialog> with SingleTickerProv
               decoration: InputDecoration(
                 labelText: '显示文本',
                 filled: true,
-                fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
               ),
             ),
@@ -78,7 +78,7 @@ class _HyperlinkDialogState extends State<HyperlinkDialog> with SingleTickerProv
             Container(
               height: 40,
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: TabBar(
@@ -157,7 +157,7 @@ class _HyperlinkDialogState extends State<HyperlinkDialog> with SingleTickerProv
                 leading: const Icon(Icons.description_outlined, size: 18),
                 title: Text(note.title.isEmpty ? '无标题文档' : note.title),
                 selected: isSelected,
-                selectedTileColor: colorScheme.primaryContainer.withOpacity(0.4),
+                selectedTileColor: colorScheme.primaryContainer.withValues(alpha: 0.4),
                 onTap: () {
                   setState(() {
                     _searchQuery = 'notesync://note/${note.id}';

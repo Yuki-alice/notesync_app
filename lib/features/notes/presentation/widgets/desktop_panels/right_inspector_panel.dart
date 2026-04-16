@@ -44,7 +44,7 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
               ],
             ),
           ),
-          Divider(height: 1, color: colorScheme.outlineVariant.withOpacity(0.2)),
+          Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.2)),
 
           Expanded(
             child: AnimatedBuilder(
@@ -139,9 +139,9 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
         _buildHeader(theme, '颜色与高亮'),
         Row(
           children: [
-            quill.QuillToolbarColorButton(controller: controller, isBackground: false, options: quill.QuillToolbarColorButtonOptions(iconData: Icons.format_color_text_rounded, iconTheme: quill.QuillIconTheme(iconButtonUnselectedData: quill.IconButtonData(style: IconButton.styleFrom(backgroundColor: theme.colorScheme.onSurface.withOpacity(0.04), shape: const CircleBorder()))))),
+            quill.QuillToolbarColorButton(controller: controller, isBackground: false, options: quill.QuillToolbarColorButtonOptions(iconData: Icons.format_color_text_rounded, iconTheme: quill.QuillIconTheme(iconButtonUnselectedData: quill.IconButtonData(style: IconButton.styleFrom(backgroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.04), shape: const CircleBorder()))))),
             const SizedBox(width: 12),
-            quill.QuillToolbarColorButton(controller: controller, isBackground: true, options: quill.QuillToolbarColorButtonOptions(iconData: Icons.format_color_fill_rounded, iconTheme: quill.QuillIconTheme(iconButtonUnselectedData: quill.IconButtonData(style: IconButton.styleFrom(backgroundColor: theme.colorScheme.onSurface.withOpacity(0.04), shape: const CircleBorder()))))),
+            quill.QuillToolbarColorButton(controller: controller, isBackground: true, options: quill.QuillToolbarColorButtonOptions(iconData: Icons.format_color_fill_rounded, iconTheme: quill.QuillIconTheme(iconButtonUnselectedData: quill.IconButtonData(style: IconButton.styleFrom(backgroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.04), shape: const CircleBorder()))))),
           ],
         ),
       ],
@@ -214,7 +214,7 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
-          hoverColor: colorScheme.onSurface.withOpacity(0.04),
+          hoverColor: colorScheme.onSurface.withValues(alpha: 0.04),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
@@ -248,7 +248,7 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
           icon: Icons.folder_outlined,
           label: provider.getCategoryById(viewModel.categoryId)?.name ?? '未分类',
           color: theme.colorScheme.onSurfaceVariant,
-          backgroundColor: theme.colorScheme.onSurface.withOpacity(0.04),
+          backgroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.04),
           onTap: () async {
             final res = await showSetCategorySheet(context, currentCategory: provider.getCategoryById(viewModel.categoryId)?.name);
             if (res != null) viewModel.setCategoryId(res.isEmpty ? null : provider.categories.firstWhere((c) => c.name == res).id);
@@ -261,7 +261,7 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
             spacing: 8, runSpacing: 8,
             children: [
               ...viewModel.tagIds.map((id) => provider.getTagById(id)).whereType<Tag>().map((t) => PremiumTagPill(tag: t, theme: theme, onDelete: () => viewModel.removeTag(t.id))),
-              PremiumPill(icon: Icons.add_rounded, label: '标签', color: theme.colorScheme.onSurfaceVariant, backgroundColor: theme.colorScheme.onSurface.withOpacity(0.04), onTap: () async { final name = await showAddTagDialog(context); if (name != null && name.trim().isNotEmpty) viewModel.addTag((await provider.createTag(name.trim())).id); }),
+              PremiumPill(icon: Icons.add_rounded, label: '标签', color: theme.colorScheme.onSurfaceVariant, backgroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.04), onTap: () async { final name = await showAddTagDialog(context); if (name != null && name.trim().isNotEmpty) viewModel.addTag((await provider.createTag(name.trim())).id); }),
             ]
         )
       ],
@@ -280,7 +280,7 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
     final colorScheme = theme.colorScheme;
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: colorScheme.onSurface.withOpacity(0.04), borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(color: colorScheme.onSurface.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(8)),
       child: Row(
         children: items.map((item) {
           return Expanded(
@@ -294,7 +294,7 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
                     padding: const EdgeInsets.symmetric(vertical: 6),
-                    decoration: BoxDecoration(color: item.isActive ? colorScheme.surface : Colors.transparent, borderRadius: BorderRadius.circular(6), boxShadow: item.isActive ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 1))] : []),
+                    decoration: BoxDecoration(color: item.isActive ? colorScheme.surface : Colors.transparent, borderRadius: BorderRadius.circular(6), boxShadow: item.isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 1))] : []),
                     alignment: Alignment.center,
                     child: item.label != null
                         ? Text(item.label!, style: TextStyle(fontSize: 12, fontWeight: item.isActive ? FontWeight.w600 : FontWeight.w500, color: item.isActive ? colorScheme.primary : colorScheme.onSurfaceVariant))
