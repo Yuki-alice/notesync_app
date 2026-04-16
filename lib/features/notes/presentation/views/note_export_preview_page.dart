@@ -13,7 +13,6 @@ import '../../../../core/services/image_storage_service.dart';
 import '../../../../utils/toast_utils.dart';
 import '../widgets/note_image_embed.dart';
 
-
 class NoteExportPreviewPage extends StatefulWidget {
   final String title;
   final String deltaJson;
@@ -34,7 +33,6 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
   @override
   void initState() {
     super.initState();
-    // 🌟 1. 还原富文本数据
     try {
       final doc = quill.Document.fromJson(jsonDecode(widget.deltaJson));
       _controller = quill.QuillController(
@@ -45,28 +43,27 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
       _controller = quill.QuillController.basic();
     }
 
-    // 🌟 2. 延迟捕获：给本地图片足够的解码和排版时间
+    // 给富文本和图片加载预留更充足的时间
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _captureFullNoteImage();
     });
   }
 
   Future<void> _captureFullNoteImage() async {
-    // 缓冲 600 毫秒，确保 Quill 引擎中的 Image.file 全部绘制到屏幕上
-    await Future.delayed(const Duration(milliseconds: 600));
+    // 等待 800 毫秒，确保图片等资源全渲染完毕
+    await Future.delayed(const Duration(milliseconds: 800));
 
     try {
       final boundary = _boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) return;
 
-      // 如果 UI 还在请求重绘，再等一帧
       if (boundary.debugNeedsPaint) {
-        await Future.delayed(const Duration(milliseconds: 50));
+        await Future.delayed(const Duration(milliseconds: 100));
         return _captureFullNoteImage();
       }
 
-      // 🌟 3. 提取高清图片 (pixelRatio: 2.0 保证文字不发虚)
-      final image = await boundary.toImage(pixelRatio: ui.window.devicePixelRatio ?? 2.0);
+      // 提取高清图片
+      final image = await boundary.toImage(pixelRatio: 2.5); // 调高像素比，文字更锐利
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
 
       if (byteData != null && mounted) {
@@ -88,11 +85,11 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
     return Scaffold(
       backgroundColor: theme.colorScheme.surfaceContainerHighest,
       appBar: AppBar(
-        title: const Text('分享预览', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('生成精美长图', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         centerTitle: true,
         backgroundColor: theme.colorScheme.surfaceContainerHighest,
+        elevation: 0,
       ),
-      // 🌟 状态切换：捕获完成前显示骨架/Loading，完成后显示可操作的真实图片
       body: _isCaptured && _imageBytes != null
           ? _buildPreviewAndActions(theme)
           : _buildCapturingState(theme),
@@ -100,84 +97,140 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
   }
 
   /// ====================================================================
-  /// 状态 A：正在幕后捕获中
+  /// 状态 A：后台高质量画布排版区 (用户不可见或被 Loading 遮挡)
   /// ====================================================================
   Widget _buildCapturingState(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    // 🌟 提取高级的渐变背景色
+    final bgColor1 = isDark ? const Color(0xFF1A1D21) : Color.alphaBlend(theme.colorScheme.primary.withOpacity(0.15), theme.colorScheme.surface);
+    final bgColor2 = isDark ? const Color(0xFF121212) : theme.colorScheme.surfaceContainerLowest;
+    final paperColor = isDark ? const Color(0xFF242424) : Colors.white;
+
     return Stack(
       children: [
-        // 🌟 【核心修复区】：我们要把完整的 Quill 扔到一个隐藏的边界里！
-        // 必须用 SingleChildScrollView 包含，确保不受屏幕高度限制
-        SingleChildScrollView(
+        // 🌟 核心黑科技：InteractiveViewer 允许我们在手机上渲染比手机宽得多的 Widget！
+        // 这样文字就不会被挤压，长宽比极度完美。
+        InteractiveViewer(
+          constrained: false, // 允许子组件突破屏幕尺寸
           child: RepaintBoundary(
             key: _boundaryKey,
             child: Container(
-              color: theme.colorScheme.surface, // 导出的图片背景色
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+              // 🌟 强制设定画布宽度为 760 (黄金阅读宽度)，告别手机屏幕的面条感！
+              width: 760,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [bgColor1, bgColor2],
+                ),
+              ),
+              // 留出超大外边距，露出漂亮的高级背景
+              padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 64),
               child: Column(
-                mainAxisSize: MainAxisSize.min, // 确保高度包裹内容
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    widget.title.isEmpty ? '未命名笔记' : widget.title,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: theme.colorScheme.onSurface,
-                      height: 1.3,
+                  // 🌟 白色卡片实体 (纸张)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: paperColor,
+                      borderRadius: BorderRadius.circular(24), // 圆润的卡片感
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 40, offset: const Offset(0, 20)),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 24),
+                    // 纸张内部的高级留白
+                    padding: const EdgeInsets.symmetric(horizontal: 64, vertical: 72),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 大标题排版
+                        Text(
+                          widget.title.isEmpty ? '未命名笔记' : widget.title,
+                          style: TextStyle(
+                            fontSize: 42,
+                            fontWeight: FontWeight.w900,
+                            color: theme.colorScheme.onSurface,
+                            height: 1.3,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
 
-                  // 🌟 分隔线
-                  Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), height: 1),
-                  const SizedBox(height: 24),
+                        // 优雅的分割线和时间戳
+                        Row(
+                          children: [
+                            Icon(Icons.calendar_today_rounded, size: 16, color: theme.colorScheme.outline),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}',
+                              style: TextStyle(color: theme.colorScheme.outline, fontSize: 15, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 48),
 
-                  quill.QuillEditor.basic(
-                    controller: _controller,
-                    focusNode: FocusNode(),
-                    scrollController: ScrollController(),
-                    config: quill.QuillEditorConfig(
-                      // 🌟 修复 1：绝对不能让他滚动！必须把内容完全撑开！
-                      scrollable: false,
-                      expands: false,
-                      autoFocus: false,
-                      showCursor: false,
-                      // 🌟 修复 2：必须把 ImageEmbedBuilder 带上，否则 Quill 遇到图片就装死！
-                      embedBuilders: [
-                        ImageEmbedBuilder(
-                          imageService: _imageService,
-                          onSelectionChange: (_) {}, // 预览模式不需要选中状态
+                        // 富文本内容
+                        quill.QuillEditor.basic(
+                          controller: _controller,
+                          focusNode: FocusNode(),
+                          scrollController: ScrollController(),
+                          config: quill.QuillEditorConfig(
+                            scrollable: false,
+                            expands: false,
+                            autoFocus: false,
+                            showCursor: false,
+                            embedBuilders: [
+                              ImageEmbedBuilder(
+                                imageService: _imageService,
+                                onSelectionChange: (_) {},
+                              ),
+                            ],
+                            // 可以注入你在桌面端用的那套高级 Style
+                          ),
                         ),
                       ],
                     ),
                   ),
 
-                  const SizedBox(height: 60),
-                  Center(
-                    child: Text(
-                      '--- 生成自 NoteSync ---',
-                      style: TextStyle(
-                          color: theme.colorScheme.outline.withValues(alpha: 0.5),
-                          letterSpacing: 2.0,
-                          fontSize: 12
+                  // 🌟 底部 Branding 落款
+                  const SizedBox(height: 40),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.auto_awesome_rounded, size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Powered by NoteSync',
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.5,
+                        ),
                       ),
-                    ),
-                  )
+                    ],
+                  ),
+                  const SizedBox(height: 20), // 底部留白
                 ],
               ),
             ),
           ),
         ),
 
-        // 覆盖在上面的遮罩 Loading
+        // 🌟 Loading 遮罩层，在图片生成好之前挡住乱跳的排版过程
         Container(
           color: theme.colorScheme.surfaceContainerHighest,
-          child: const Center(
+          child: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('正在精心排版并绘制图片...', style: TextStyle(fontWeight: FontWeight.bold)),
+                CircularProgressIndicator(strokeWidth: 3, color: theme.colorScheme.primary),
+                const SizedBox(height: 24),
+                Text(
+                  '正在精心绘制排版...',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: theme.colorScheme.onSurfaceVariant),
+                ),
               ],
             ),
           ),
@@ -187,37 +240,46 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
   }
 
   /// ====================================================================
-  /// 状态 B：捕获完成，展示图片和按钮
+  /// 状态 B：捕获完成，展示缩放预览与分享按钮
   /// ====================================================================
   Widget _buildPreviewAndActions(ThemeData theme) {
     return Column(
       children: [
-        // 预览区
+        // 预览区 (支持手势缩放查看长图细节)
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            physics: const BouncingScrollPhysics(),
+          child: InteractiveViewer(
+            minScale: 0.1,
+            maxScale: 3.0,
+            boundaryMargin: const EdgeInsets.all(40),
             child: Center(
-              child: Container(
-                decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))
-                  ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 30, offset: const Offset(0, 10))
+                    ],
+                  ),
+                  // 为了在预览时不显得过大卡顿，稍微裁剪圆角预览
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(_imageBytes!),
+                  ),
                 ),
-                child: Image.memory(_imageBytes!), // 直接展示生成的内存图片
               ),
             ),
           ),
         ),
 
-        // 底部操作区
+        // 底部操作区 (Craft 风格的圆润按钮)
         Container(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -5))
+              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, -4))
             ],
           ),
           child: Column(
@@ -227,13 +289,14 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     backgroundColor: theme.colorScheme.primary,
                     foregroundColor: theme.colorScheme.onPrimary,
                   ),
-                  icon: const Icon(Icons.share_rounded),
-                  label: const Text('分享长图', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  icon: const Icon(Icons.ios_share_rounded, size: 20),
+                  label: const Text('分享至微信 / 社交平台', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                   onPressed: () async {
                     try {
                       final directory = await getTemporaryDirectory();
@@ -249,29 +312,29 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                   ),
-                  icon: const Icon(Icons.save_alt_rounded),
-                  label: const Text('保存到相册 / 本地', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  icon: const Icon(Icons.download_rounded, size: 20),
+                  label: const Text('保存到手机相册', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                   onPressed: () async {
                     try {
                       final directory = await getTemporaryDirectory();
                       final imagePath = '${directory.path}/share_${DateTime.now().millisecondsSinceEpoch}.png';
                       await File(imagePath).writeAsBytes(_imageBytes!);
 
-                      if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
+                      if (Platform.isAndroid || Platform.isIOS) {
                         await Gal.putImage(imagePath);
-                        if (mounted) ToastUtils.showSuccess(context, '已保存到相册 ✨');
+                        if (mounted) ToastUtils.showSuccess(context, '✨ 长图已保存到相册');
                       } else {
                         final dlDir = await getDownloadsDirectory();
                         await File(imagePath).copy('${dlDir?.path}/NoteSync_${DateTime.now().millisecondsSinceEpoch}.png');
-                        if (mounted) ToastUtils.showSuccess(context, '已保存到下载文件夹 ✨');
+                        if (mounted) ToastUtils.showSuccess(context, '✨ 长图已保存到下载文件夹');
                       }
                     } catch (e) {
-                      if (mounted) ToastUtils.showError(context, '保存失败或没有权限');
+                      if (mounted) ToastUtils.showError(context, '保存失败，请检查相册权限');
                     }
                   },
                 ),
