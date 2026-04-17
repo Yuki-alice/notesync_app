@@ -536,7 +536,7 @@ class SupabaseSyncService {
       final lastSyncTime = lastSyncStr != null ? DateTime.parse(lastSyncStr) : null;
 
       final cloudMetadata = await _fetchCloudMetadata('todos', currentUserId);
-      final localMetaMap = _todoRepo!.getAllTodosMetadata();
+      final localMetaMap = await _todoRepo!.getAllTodosMetadata();
 
       final plan = _reconcileData(
         localMetaMap: localMetaMap,
@@ -601,7 +601,7 @@ class SupabaseSyncService {
   Future<void> _pushTodos(List<String> idsToPush, String userId) async {
     List<Map<String, dynamic>> payloads = [];
     for (var id in idsToPush) {
-      final fullTodo = _todoRepo!.getTodoById(id);
+      final fullTodo = await _todoRepo!.getTodoById(id);
       if (fullTodo != null) {
         payloads.add({
           'id': fullTodo.id,

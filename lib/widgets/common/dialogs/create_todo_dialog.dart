@@ -1,87 +1,113 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import '../../../models/todo.dart';
 
-// 🟢 核心修改：自适应入口函数
-Future<Todo?> showCreateTodoDialog({
-  required BuildContext context,
-  Todo? existingTodo,
-}) {
+import '../../../models/todo.dart';
+import 'create_todo_sheet.dart'; // 引入手机端的 Sheet 备用降级
+
+// 🌟 统一的标准返回数据结构
+class CreateTodoResult {
+  final String title;
+  final DateTime? dueDate;
+  final List<SubTask> subTasks;
+  CreateTodoResult({required this.title, this.dueDate, required this.subTasks});
+}
+
+// 🟢 架构师级终极入口：智能双端路由
+Future<CreateTodoResult?> showAppCreateTodoDialog(BuildContext context, {Todo? existingTodo}) {
   final isDesktop = MediaQuery.of(context).size.width >= 600;
 
   if (isDesktop) {
-    // 💻 桌面端：显示居中弹窗 (Dialog)
-    return showDialog<Todo>(
+    // 💻 电脑端：呼出高级居中悬浮弹窗
+    return showDialog<CreateTodoResult>(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        clipBehavior: Clip.antiAlias,
-        child: SizedBox(
-          width: 500, // 限制弹窗宽度
-          child: CreateTodoSheet(existingTodo: existingTodo, isDialog: true),
-        ),
-      ),
+      barrierColor: Colors.black.withValues(alpha: 0.4), // 柔和的遮罩
+      builder: (context) => _DesktopTodoDialog(existingTodo: existingTodo),
     );
   } else {
-    // 📱 移动端：显示底部抽屉 (Bottom Sheet)
-    return showModalBottomSheet<Todo>(
+    // 📱 手机端：降级呼出你之前写好的精致底部抽屉
+    return showModalBottomSheet<CreateTodoResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      showDragHandle: true,
-      useSafeArea: true,
-      builder: (context) => CreateTodoSheet(existingTodo: existingTodo, isDialog: false),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      builder: (ctx) => showCreateTodoSheet(context, existingTodo: existingTodo) as Widget,
     );
   }
 }
 
-class CreateTodoSheet extends StatefulWidget {
+// =========================================================================
+// 💻 桌面端专属高级弹窗实现
+// =========================================================================
+class _DesktopTodoDialog extends StatefulWidget {
   final Todo? existingTodo;
-  final bool isDialog; // [新增] 标记是否为弹窗模式
-
-  const CreateTodoSheet({super.key, this.existingTodo, this.isDialog = false});
+  const _DesktopTodoDialog({this.existingTodo});
 
   @override
-  State<CreateTodoSheet> createState() => _CreateTodoSheetState();
+  State<_DesktopTodoDialog> createState() => _DesktopTodoDialogState();
 }
 
-class _CreateTodoSheetState extends State<CreateTodoSheet> {
-  // ... (状态变量保持不变: _titleController, _descController, _selectedDate 等)
+class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
   late TextEditingController _titleController;
-  late TextEditingController _descController;
+  late TextEditingController _inputController;
   final FocusNode _titleFocus = FocusNode();
+  final FocusNode _inputFocus = FocusNode();
 
   DateTime? _selectedDate;
-  TimeOfDay? _selectedTime;
+  List<SubTask> _subTasks = [];
 
   @override
   void initState() {
     super.initState();
-    final todo = widget.existingTodo;
-    _titleController = TextEditingController(text: todo?.title ?? '');
-    _descController = TextEditingController(text: todo?.description ?? '');
+    _titleController = TextEditingController(text: widget.existingTodo?.title ?? '');
+    _inputController = TextEditingController();
+    _selectedDate = widget.existingTodo?.dueDate;
 
-    if (todo?.dueDate != null) {
-      _selectedDate = todo!.dueDate;
-      _selectedTime = TimeOfDay.fromDateTime(todo.dueDate!);
+    if (widget.existingTodo != null && widget.existingTodo!.subTasks.isNotEmpty) {
+      _subTasks = List.from(widget.existingTodo!.subTasks);
     }
 
-    if (widget.existingTodo == null) {
-      Future.delayed(const Duration(milliseconds: 200), () {
-        if (mounted) _titleFocus.requestFocus();
-      });
-    }
+    // 弹窗出现时，默认让主标题获取焦点（如果是新建的话）
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        if (widget.existingTodo == null) {
+          _titleFocus.requestFocus();
+        } else {
+          _inputFocus.requestFocus();
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _descController.dispose();
+    _inputController.dispose();
     _titleFocus.dispose();
+    _inputFocus.dispose();
     super.dispose();
   }
 
-  // ... (保持 _pickDate, _pickTime, _submit 逻辑不变，直接复制之前的代码即可)
+  // 响应回车添加子任务
+  void _onSubTaskSubmitted(String value) {
+    if (value.trim().isEmpty) return;
+
+    setState(() {
+      _subTasks.add(SubTask(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: value.trim(),
+      ));
+      _inputController.clear();
+    });
+
+    _inputFocus.requestFocus(); // 焦点吸附，支持连续敲击回车录入
+  }
+
+  void _removeSubTask(String id) {
+    setState(() => _subTasks.removeWhere((t) => t.id == id));
+  }
+
+  // 桌面端优雅的日期时间选择器
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final pickedDate = await showDatePicker(
@@ -89,308 +115,240 @@ class _CreateTodoSheetState extends State<CreateTodoSheet> {
       initialDate: _selectedDate ?? now,
       firstDate: now.subtract(const Duration(days: 365)),
       lastDate: now.add(const Duration(days: 365 * 5)),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme,
-          ),
-          child: child!,
-        );
-      },
     );
-
     if (pickedDate != null) {
-      setState(() {
-        final oldTime = _selectedTime ?? const TimeOfDay(hour: 9, minute: 0);
-        _selectedDate = DateTime(
-            pickedDate.year,
-            pickedDate.month,
-            pickedDate.day,
-            oldTime.hour,
-            oldTime.minute
-        );
-        if (_selectedTime == null) _selectedTime = oldTime;
-      });
-    }
-  }
-
-  // 选择时间
-  Future<void> _pickTime() async {
-    final now = TimeOfDay.now();
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: _selectedTime ?? now,
-      builder: (BuildContext context, Widget? child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-          child: child!,
-        );
-      },
-    );
-
-    if (pickedTime != null) {
-      setState(() {
-        _selectedTime = pickedTime;
-        final baseDate = _selectedDate ?? DateTime.now();
-        _selectedDate = DateTime(
-          baseDate.year,
-          baseDate.month,
-          baseDate.day,
-          pickedTime.hour,
-          pickedTime.minute,
-        );
-      });
+      final pickedTime = await showTimePicker(
+        context: context,
+        initialTime: _selectedDate != null
+            ? TimeOfDay.fromDateTime(_selectedDate!)
+            : const TimeOfDay(hour: 9, minute: 0),
+      );
+      if (pickedTime != null && mounted) {
+        setState(() {
+          _selectedDate = DateTime(
+              pickedDate.year, pickedDate.month, pickedDate.day,
+              pickedTime.hour, pickedTime.minute
+          );
+        });
+      }
     }
   }
 
   void _submit() {
-    final title = _titleController.text.trim();
-    if (title.isEmpty) return;
-
-    DateTime? finalDueDate;
-    if (_selectedDate != null) {
-      final t = _selectedTime ?? const TimeOfDay(hour: 0, minute: 0);
-      finalDueDate = DateTime(
-        _selectedDate!.year,
-        _selectedDate!.month,
-        _selectedDate!.day,
-        t.hour,
-        t.minute,
-      );
+    if (_inputController.text.trim().isNotEmpty) {
+      _subTasks.add(SubTask(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: _inputController.text.trim(),
+      ));
     }
 
-    final result = Todo(
-      id: widget.existingTodo?.id ?? '',
-      title: title,
-      description: _descController.text.trim(),
-      dueDate: finalDueDate,
-      isCompleted: widget.existingTodo?.isCompleted ?? false,
-      createdAt: widget.existingTodo?.createdAt ?? DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
+    // 过滤空任务
+    List<SubTask> finalSubTasks = _subTasks.where((t) => t.title.trim().isNotEmpty).toList();
+    String finalTitle = _titleController.text.trim();
 
-    Navigator.pop(context, result);
+    if (finalTitle.isEmpty && finalSubTasks.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+
+    if (finalTitle.isEmpty && finalSubTasks.length == 1) {
+      finalTitle = finalSubTasks.first.title;
+      finalSubTasks.clear();
+    } else if (finalTitle.isEmpty) {
+      finalTitle = finalSubTasks.isNotEmpty ? '待办清单' : '未命名待办';
+    }
+
+    Navigator.pop(context, CreateTodoResult(
+      title: finalTitle,
+      dueDate: _selectedDate,
+      subTasks: finalSubTasks,
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
-    // ... (保持 dateText 逻辑不变)
-    final hasDate = _selectedDate != null;
-    final hasTime = _selectedTime != null;
-
-    String dateText = '';
-    if (hasDate) {
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final target = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day);
-
-      if (target == today) {
-        dateText = '今天';
-      } else if (target == today.add(const Duration(days: 1))) {
-        dateText = '明天';
-      } else {
-        dateText = DateFormat('MM月dd日').format(_selectedDate!);
-      }
-
-      if (hasTime) {
-        dateText += ' ${_selectedTime!.format(context)}';
-      }
-    }
-
-
-    return Container(
-      // 如果是 Dialog 模式，给一个白色/深色背景，否则是透明的（由 BottomSheet 控制）
-      color: widget.isDialog ? theme.colorScheme.surface : null,
-      padding: EdgeInsets.only(bottom: widget.isDialog ? 0 : bottomPadding + 16),
-      child: SingleChildScrollView(
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      elevation: 24,
+      backgroundColor: theme.colorScheme.surface,
+      child: Container(
+        width: 500, // 🌟 黄金比例宽度，拒绝无限拉伸
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85, // 防止超出屏幕高度
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min, // 紧凑型包裹
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 🟢 如果是 Dialog，加一个标题栏
-            if (widget.isDialog)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-                child: Text(
-                  widget.existingTodo == null ? '新待办' : '编辑待办',
-                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            // --- 头部标题栏 ---
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    widget.existingTodo == null ? '新建待办' : '编辑待办',
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    color: theme.colorScheme.onSurfaceVariant,
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+
+            // --- 内容滚动区 ---
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. 主标题输入
+                    TextField(
+                      controller: _titleController,
+                      focusNode: _titleFocus,
+                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                      decoration: InputDecoration(
+                        hintText: "准备做什么？",
+                        hintStyle: TextStyle(color: theme.colorScheme.outlineVariant),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                      onSubmitted: (_) => _inputFocus.requestFocus(), // 回车跳到子任务
+                    ),
+
+                    const SizedBox(height: 16),
+                    Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), height: 1),
+                    const SizedBox(height: 16),
+
+                    // 2. 子任务列表 (原汁原味移植)
+                    if (_subTasks.isNotEmpty)
+                      Column(
+                        children: _subTasks.map((task) => Padding(
+                          key: ValueKey(task.id),
+                          padding: const EdgeInsets.only(bottom: 12.0),
+                          child: Row(
+                            children: [
+                              Icon(
+                                  task.isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                  size: 20,
+                                  color: task.isCompleted ? theme.colorScheme.primary : theme.colorScheme.outline
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  initialValue: task.title,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: task.isCompleted ? theme.colorScheme.outline : theme.colorScheme.onSurface,
+                                    decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                  onChanged: (val) {
+                                    final index = _subTasks.indexWhere((t) => t.id == task.id);
+                                    if (index != -1) {
+                                      _subTasks[index] = _subTasks[index].copyWith(title: val);
+                                    }
+                                  },
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close_rounded, size: 16),
+                                color: theme.colorScheme.outlineVariant,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () => _removeSubTask(task.id),
+                              )
+                            ],
+                          ),
+                        )).toList(),
+                      ),
+
+                    // 3. 连续添加栏
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_task_rounded, size: 20, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _inputController,
+                            focusNode: _inputFocus,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: _onSubTaskSubmitted,
+                            style: const TextStyle(fontSize: 15),
+                            decoration: InputDecoration(
+                              hintText: "添加子待办 (敲击回车连续添加)...",
+                              hintStyle: TextStyle(color: theme.colorScheme.outline.withValues(alpha: 0.6), fontSize: 15),
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
-
-            // 1. 输入区域
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _titleController,
-                    focusNode: _titleFocus,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                      fontSize: 20, // 稍微调小一点字体
-                    ),
-                    decoration: InputDecoration(
-                      hintText: '准备做什么？',
-                      hintStyle: TextStyle(
-                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)
-                      ),
-                      filled: true,
-                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      prefixIcon: Icon(
-                          Icons.edit_rounded,
-                          color: theme.colorScheme.primary
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                    maxLines: 2,
-                    minLines: 1,
-                    textInputAction: TextInputAction.next,
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  TextField(
-                    controller: _descController,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: theme.colorScheme.onSurface,
-                      height: 1.5,
-                      fontSize: 16,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: '添加详细描述...',
-                      hintStyle: TextStyle(
-                        color: theme.colorScheme.outline.withValues(alpha: 0.7),
-                        fontSize: 16,
-                      ),
-                      filled: true,
-                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      prefixIcon: Icon(
-                          Icons.notes_rounded,
-                          color: theme.colorScheme.outline
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      isDense: true,
-                    ),
-                    minLines: 3, // 默认显示多一点行数
-                    maxLines: 5,
-                    keyboardType: TextInputType.multiline,
-                  ),
-                ],
-              ),
             ),
 
-            // 2. 底部工具栏
+            // --- 底部动作栏 ---
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.1))),
                 color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildToolbarButton(
-                    context,
-                    icon: Icons.calendar_today_rounded,
-                    label: hasDate && !hasTime ? dateText : '日期',
-                    isActive: hasDate,
-                    onTap: _pickDate,
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  _buildToolbarButton(
-                    context,
-                    icon: Icons.access_time_rounded,
-                    label: hasTime ? dateText : '时间',
-                    isActive: hasTime,
-                    onTap: _pickTime,
-                  ),
-
-                  const Spacer(),
-
-                  if (hasDate)
-                    IconButton(
-                      onPressed: () {
-                        setState(() {
-                          _selectedDate = null;
-                          _selectedTime = null;
-                        });
-                      },
-                      icon: const Icon(Icons.notifications_off_outlined),
-                      tooltip: '清除提醒',
-                      visualDensity: VisualDensity.compact,
-                      color: theme.colorScheme.outline,
+                  ActionChip(
+                    avatar: Icon(Icons.notifications_active_rounded, size: 16, color: _selectedDate != null ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+                    label: Text(
+                      _selectedDate == null ? "设置提醒时间" : DateFormat('MM-dd HH:mm').format(_selectedDate!),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: _selectedDate != null ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant
+                      ),
                     ),
-
-                  const SizedBox(width: 8),
-
-                  FilledButton(
-                    onPressed: _submit,
-                    style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    ),
-                    child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold)),
+                    backgroundColor: _selectedDate != null
+                        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
+                        : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    side: BorderSide.none,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    onPressed: _pickDate,
+                  ),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _submit,
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        ),
+                        child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ... (保留 _buildToolbarButton 辅助方法)
-  Widget _buildToolbarButton(BuildContext context, {
-    required IconData icon,
-    required VoidCallback onTap,
-    required String label,
-    bool isActive = false,
-  }) {
-    final theme = Theme.of(context);
-
-    final bgColor = isActive
-        ? theme.colorScheme.primary
-        : theme.colorScheme.surfaceContainerHigh;
-
-    final fgColor = isActive
-        ? theme.colorScheme.onPrimary
-        : theme.colorScheme.onSurfaceVariant;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18, color: fgColor),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: fgColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
               ),
             ),
           ],

@@ -9,7 +9,6 @@ import '../../core/services/supabase_sync_service.dart';
 import '../../core/services/webdav_sync_service.dart';
 import 'package:isar/isar.dart';
 
-
 enum TodoSyncState { idle, syncing, success, error, unauthenticated }
 
 class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
@@ -24,14 +23,19 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
   Timer? _debounceTimer;
   Timer? _syncTimer;
 
+
+  DateTime? _dbWatcherSilenceUntil;
   TodoSyncState _syncState = TodoSyncState.idle;
   TodoSyncState get syncState => _syncState;
   StreamSubscription<void>? _dbSubscription;
+
   TodosProvider(this._repository) {
     WidgetsBinding.instance.addObserver(this);
     _syncService = SupabaseSyncService(null, _repository);
     _dbSubscription = _repository.watchTodosChanged().listen((_) {
-      loadTodos();
+      if (_dbWatcherSilenceUntil == null || DateTime.now().isAfter(_dbWatcherSilenceUntil!)) {
+        loadTodos();
+      }
     });
     loadTodos();
     syncWithCloud();
@@ -52,7 +56,6 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     _dbSubscription?.cancel();
     super.dispose();
   }
-
 
   void _setSyncState(TodoSyncState state) {
     _syncState = state;
@@ -144,18 +147,21 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
   Future<void> loadTodos() async {
     final results = await _repository.searchTodos(_searchQuery, null);
     _todos = results;
-    _filteredTodos = results;
-    notifyListeners();
+    // 🌟 致命修复：必须调用 _applyFilters() 进行内存级排序，绝不能直接赋值
+    _applyFilters();
   }
 
-  void _applyFilters() {
+void _applyFilters() {
     var result = _todos.where((t) => !t.isDeleted).toList();
 
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       result = result.where((t) {
-        return t.title.toLowerCase().contains(query) ||
-            t.description.toLowerCase().contains(query);
+        final matchTitle = t.title.toLowerCase().contains(query);
+        final matchDesc = t.description.toLowerCase().contains(query);
+        final matchSubTask = t.subTasks.any((sub) => sub.title.toLowerCase().contains(query));
+
+        return matchTitle || matchDesc || matchSubTask;
       }).toList();
     }
 
@@ -183,16 +189,12 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     });
   }
 
-  // =================================================================
-  // ✏️ 增删改查逻辑
-  // =================================================================
 
-  // 🟢 核心修改：在参数里加上 subTasks，并传入给 Todo 模型
   Future<void> addTodo({
     required String title,
     String? description,
     DateTime? dueDate,
-    List<SubTask> subTasks = const [], // 🌟 新增参数
+    List<SubTask> subTasks = const [],
   }) async {
     double newSortOrder = 0.0;
     if (activeTodos.isNotEmpty) {
@@ -209,7 +211,7 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
       isDeleted: false,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
-      subTasks: subTasks, // 🌟 传入给新对象
+      subTasks: subTasks,
     );
 
     await _repository.addTodo(todo);
@@ -241,32 +243,48 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
+
   Future<void> reorderTodos(int oldIndex, int newIndex) async {
     if (oldIndex < newIndex) newIndex -= 1;
 
-    final processingList = activeTodos;
-    if (oldIndex < 0 || oldIndex >= processingList.length || newIndex < 0 || newIndex > processingList.length) return;
+    // 1. 极速提取当前列表的“未完成”项 (因为 UI 只有未完成项才能拖拽)
+    final incompleteTodos = _filteredTodos.where((t) => !t.isCompleted).toList();
+    if (oldIndex < 0 || oldIndex >= incompleteTodos.length || newIndex < 0 || newIndex > incompleteTodos.length) return;
 
-    final item = processingList.removeAt(oldIndex);
-    processingList.insert(newIndex, item);
+    // 2. 纯内存极速换位，绝对不触发任何耗时的 Sort 算法
+    final item = incompleteTodos.removeAt(oldIndex);
+    incompleteTodos.insert(newIndex, item);
 
+    // 3. 立即拼合列表并强制通知 UI 渲染 (第一帧立刻让拖拽卡片安家，绝不闪烁)
+    final completedTodos = _filteredTodos.where((t) => t.isCompleted).toList();
+    _filteredTodos = [...incompleteTodos, ...completedTodos];
+    notifyListeners();
+
+    // 4. 开启 2 秒的数据库监听静默期！
+    // 拖拽后的 2 秒内，无视底层 Isar 发出的任何更新广播，切断引发闪烁的源头
+    _dbWatcherSilenceUntil = DateTime.now().add(const Duration(seconds: 2));
+
+    // 5. 在后台悄悄计算 sortOrder 并写入数据库，此时 UI 已经完全安定
     List<Future> dbTasks = [];
     bool hasChanges = false;
-    for (int i = 0; i < processingList.length; i++) {
-      final todo = processingList[i];
-      final newOrder = i * 1000.0;
+
+    for (int i = 0; i < incompleteTodos.length; i++) {
+      final todo = incompleteTodos[i];
+      final newOrder = i * 1000.0; // 重新分配权重
 
       if (todo.sortOrder != newOrder) {
         hasChanges = true;
         final updatedTodo = todo.copyWith(sortOrder: newOrder, updatedAt: DateTime.now());
 
+
         final indexInMain = _todos.indexWhere((t) => t.id == todo.id);
         if (indexInMain != -1) _todos[indexInMain] = updatedTodo;
+
         dbTasks.add(_repository.updateTodo(updatedTodo));
       }
     }
 
-    _applyFilters();
+
     await Future.wait(dbTasks);
 
     if (hasChanges) {
@@ -333,6 +351,7 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
 
     notifyListeners();
   }
+
   void clearTimers() {
     _debounceTimer?.cancel();
     _syncTimer?.cancel();

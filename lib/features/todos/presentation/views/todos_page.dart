@@ -1,4 +1,3 @@
-// 文件路径: lib/features/todos/presentation/views/todos_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -102,20 +101,11 @@ class _TodosPageState extends State<TodosPage> {
       ),
     );
 
+    // 🌟 紧急修复：移除 RepaintBoundary，防止 ReorderableList 拖拽悬浮时丢失尺寸引发的 HitTest 崩溃。
+    // 只保留 KeyedSubtree 即可完美确保组件极速复用 (解决闪烁)。
     return KeyedSubtree(
       key: ValueKey(todo.id),
-      child: AnimationConfiguration.staggeredList(
-        position: index + animationIndexOffset,
-        duration: const Duration(milliseconds: 375),
-        child: SlideAnimation(
-          verticalOffset: 50.0,
-          child: FadeInAnimation(
-            child: RepaintBoundary(
-              child: child,
-            ),
-          ),
-        ),
-      ),
+      child: child,
     );
   }
 
@@ -152,7 +142,6 @@ class _TodosPageState extends State<TodosPage> {
               elevation: 0,
               actions: isDesktop
                   ? [
-                // 🌟 修改：大屏端删除了“新待办”和“设置”，因为左侧全局边栏已经有了。仅保留云端同步按钮。
                 IconButton.filledTonal(
                   onPressed: () => context.read<TodosProvider>().syncWithCloud(),
                   icon: const Icon(Icons.sync_rounded),
@@ -210,7 +199,7 @@ class _TodosPageState extends State<TodosPage> {
             )
         );
 
-        // 3. 进度概览卡片
+        // 3. 进度概览卡片 (手机端)
         if (!isSearching && totalCount > 0 && !isDesktop) {
           slivers.add(
             SliverToBoxAdapter(
@@ -268,7 +257,6 @@ class _TodosPageState extends State<TodosPage> {
                               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                             ),
                             const SizedBox(height: 8),
-                            // 🌟 修改：优化空状态文案，使其在有底部悬浮按钮的手机和有侧边栏的桌面端都能说得通。
                             Text(
                               isSearching ? '换个关键词试试吧' : '点击 "+" 按钮，开始规划你的一天',
                               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -282,7 +270,7 @@ class _TodosPageState extends State<TodosPage> {
               )
           );
         } else {
-          // 列表渲染逻辑... (保持不变)
+          // 进行中列表
           if (incomplete.isNotEmpty) {
             slivers.add(
               SliverPadding(
@@ -333,6 +321,7 @@ class _TodosPageState extends State<TodosPage> {
             animIndex += incomplete.length;
           }
 
+          // 已完成列表
           if (completed.isNotEmpty) {
             slivers.add(
               SliverPadding(
@@ -398,102 +387,129 @@ class _TodosPageState extends State<TodosPage> {
     );
   }
 
+  // 🌟 架构师重构：纯净的二元状态布局 + 真正的响应式折叠
   Widget _buildRightContent(BuildContext context, ThemeData theme, List<Todo> todos, int completedCount, double progress) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final height = constraints.maxHeight;
-        final isNarrowWidth = width < 750;
-        final double estimatedHeaderHeight = isNarrowWidth ? 180 : 350;
-        final double minEditorHeight = 400;
-        final bool needScroll = height < (estimatedHeaderHeight + minEditorHeight);
-
-        Widget header;
-        if (isNarrowWidth) {
-          header = Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-            child: TodoOverviewCard(
-              progress: progress,
-              completedCount: completedCount,
-              totalCount: todos.length,
-              isDesktop: true,
-            ),
-          );
-        } else {
-          header = Container(
-            padding: const EdgeInsets.all(24),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: CalendarCard(
-                      todos: todos,
-                      selectedTodoId: _selectedTodoId,
-                      focusedDay: _focusedDay,
-                      onDaySelected: (day) => setState(() => _focusedDay = day),
-                    ),
-                  ),
-                  const SizedBox(width: 24),
-                  Expanded(
-                    flex: 2,
-                    child: TodoOverviewCard(
-                      progress: progress,
-                      completedCount: completedCount,
-                      totalCount: todos.length,
-                      isDesktop: true,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        Widget detailView = _selectedTodoId == null
-            ? Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.touch_app_rounded, size: 48, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
-              const SizedBox(height: 16),
-              Text("点击左侧任务进行编辑", style: TextStyle(color: theme.colorScheme.outline)),
-            ],
-          ),
-        )
-            : TodoDetailView(
-          todoId: _selectedTodoId!,
-          onClose: () => setState(() => _selectedTodoId = null),
-        );
-
-        if (needScroll) {
-          return SingleChildScrollView(
+    // 状态 A：没有任何待办被选中时 -> 展示全局 Dashboard 大盘
+    if (_selectedTodoId == null) {
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 48),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000), // 防御性：超宽带鱼屏下限制最大宽度
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                header,
-                Container(
-                  height: minEditorHeight,
-                  decoration: BoxDecoration(border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)))),
-                  child: detailView,
+                Text(
+                    "数据概览",
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    )
+                ),
+                Text(
+                    "追踪今日进度与近期安排",
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    )
+                ),
+                const SizedBox(height: 40),
+
+                // 🌟 架构师终极防线：弹性折叠 LayoutBuilder
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final availableWidth = constraints.maxWidth;
+                    final isCompact = availableWidth < 650; // 当右侧宽度小于 650px 时，折叠为上下结构
+
+                    if (isCompact) {
+                      // ➡️ 降级形态：上下堆叠，防止 RenderFlex Overflow
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            height: 380,
+                            child: CalendarCard(
+                              todos: todos,
+                              selectedTodoId: _selectedTodoId,
+                              focusedDay: _focusedDay,
+                              onDaySelected: (day) => setState(() => _focusedDay = day),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            height: 220,
+                            child: TodoOverviewCard(
+                              progress: progress,
+                              completedCount: completedCount,
+                              totalCount: todos.length,
+                              isDesktop: true,
+                            ),
+                          ),
+                        ],
+                      );
+                    } else {
+                      // ➡️ 终极形态：左右并列大盘
+                      return SizedBox(
+                        height: 420,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // 左侧：日历视图
+                            Expanded(
+                              flex: 3,
+                              child: CalendarCard(
+                                todos: todos,
+                                selectedTodoId: _selectedTodoId,
+                                focusedDay: _focusedDay,
+                                onDaySelected: (day) => setState(() => _focusedDay = day),
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            // 右侧：数据概览卡片
+                            Expanded(
+                              flex: 2,
+                              child: TodoOverviewCard(
+                                progress: progress,
+                                completedCount: completedCount,
+                                totalCount: todos.length,
+                                isDesktop: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 48),
+                // 留白与空状态点缀
+                Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.mouse_rounded, size: 28, color: theme.colorScheme.outlineVariant),
+                      const SizedBox(height: 12),
+                      Text(
+                          "点击左侧列表查看任务详情",
+                          style: TextStyle(color: theme.colorScheme.outline, fontSize: 13)
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          );
-        } else {
-          return Column(
-            children: [
-              header,
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)))),
-                  child: detailView,
-                ),
-              ),
-            ],
-          );
-        }
-      },
+          ),
+        ),
+      );
+    }
+
+    // 状态 B：有待办被选中时 -> 右侧 100% 空间全部交给编辑器，沉浸式体验
+    return Container(
+      color: theme.colorScheme.surface, // 用纯色遮盖底色，提升层级感
+      child: TodoDetailView(
+        todoId: _selectedTodoId!,
+        onClose: () => setState(() => _selectedTodoId = null),
+      ),
     );
   }
 

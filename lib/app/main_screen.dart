@@ -117,13 +117,14 @@ class _MainScreenState extends State<MainScreen> {
       );
     } else if (_currentIndex == 1) {
       AppFeedback.selection();
-      final result = await showCreateTodoDialog(context: context);
+      final result = await showAppCreateTodoDialog(context);
 
       if (result != null && mounted) {
         await context.read<TodosProvider>().addTodo(
           title: result.title,
-          description: result.description,
+          description: '',
           dueDate: result.dueDate,
+          subTasks: result.subTasks,
         );
         AppFeedback.medium();
       }

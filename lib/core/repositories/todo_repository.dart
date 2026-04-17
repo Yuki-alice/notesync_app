@@ -64,7 +64,9 @@ class TodoRepository {
     if (query.trim().isNotEmpty) {
       q = q.group((q) => q.titleContains(query, caseSensitive: false)
           .or()
-          .descriptionContains(query, caseSensitive: false));
+          .descriptionContains(query, caseSensitive: false)
+          .or()
+          .subTasksElement((subQ) => subQ.titleContains(query, caseSensitive: false)));
     }
 
     return await q.sortByIsCompleted().thenByCreatedAtDesc().findAll();
