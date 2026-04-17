@@ -4,16 +4,18 @@ import 'package:isar/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
-import '../../core/repositories/note_repository.dart';
 
+import '../../core/repositories/note_repository.dart';
 import '../../models/note.dart';
 import '../../models/category.dart';
 import '../../models/tag.dart';
 import '../../core/services/image_storage_service.dart';
 import '../../core/services/supabase_sync_service.dart';
+import '../../core/services/webdav_sync_service.dart';
 import '../repositories/category_repository.dart';
 import '../repositories/tag_repository.dart';
-import '../../core/services/webdav_sync_service.dart';
+
+import '../../core/services/privacy_service.dart';
 
 enum SyncState { idle, syncing, success, error, unauthenticated }
 
@@ -53,6 +55,9 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   SyncState get syncState => _syncState;
   StreamSubscription<void>? _dbSubscription;
 
+  // 🌟 架构师特供：内存级私密笔记追踪器 (不污染数据库结构)
+  final Set<String> _secretNoteIds = {};
+
   void _setSyncState(SyncState state) {
     _syncState = state;
     notifyListeners();
@@ -83,7 +88,6 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     super.dispose();
   }
 
-  // 给 UI 提供数据时，坚决不给 isDeleted == true 的死数据！
   List<Category> get categories => _categories.where((c) => !c.isDeleted).toList();
   List<Tag> get tags => _tags.where((t) => !t.isDeleted).toList();
 
@@ -106,13 +110,32 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // =========================================================================
-  // 核心加载与同步
+  // 🌟 核心拦截 1：出库解密管线 (Read Pipeline)
   // =========================================================================
   Future<void> loadNotes() async {
     await _repository.searchNotes(_searchQuery, _selectedCategoryId);
     _categories = _categoryRepository.getAllCategories();
     _tags = _tagRepository.getAllTags();
-    _notes = _repository.getAllNotes();
+
+    // 获取底层真实数据 (包含乱码密文)
+    final rawNotes = _repository.getAllNotes();
+    final privacy = PrivacyService();
+
+    _secretNoteIds.clear();
+
+    // 内存级清洗：瞬间解密
+    _notes = rawNotes.map((n) {
+      final isEncrypted = n.title.startsWith('AES_V1::') || n.content.startsWith('AES_V1::');
+      if (isEncrypted) {
+        _secretNoteIds.add(n.id); // 登记为私密笔记
+        return n.copyWith(
+          title: privacy.decryptText(n.title),
+          content: privacy.decryptText(n.content),
+        );
+      }
+      return n;
+    }).toList();
+
     _applyFilters();
   }
 
@@ -142,7 +165,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
         await _syncService.syncNotes(onTextSyncComplete: () => loadNotes());
       }
       loadNotes();
-      _runTagGC(); // 🌟 同步完成后触发一波清理
+      _runTagGC();
       _setSyncState(SyncState.success);
     } catch (e) {
       _setSyncState(SyncState.error);
@@ -157,7 +180,6 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     });
   }
 
-  // Getters
   List<Note> get notes => _notes.where((n) => !n.isDeleted).toList();
   List<Note> get trashNotes => _notes.where((n) => n.isDeleted).toList();
   List<Note> get filteredNotes => _filteredNotes;
@@ -224,18 +246,25 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // =========================================================================
-  // 核心笔记数据写入
+  // 🌟 核心拦截 2：入库加密管线 (Write Pipeline)
   // =========================================================================
   Future<Note> addNote({
     required String title,
     required String content,
     List<String> tagIds = const [],
     String? categoryId,
+    bool isSecret = false, // 注入私密标记
   }) async {
+    final privacy = PrivacyService();
+
+    // 入库前瞬间拦截加密
+    final finalTitle = isSecret ? privacy.encryptText(title) : title;
+    final finalContent = isSecret ? privacy.encryptText(content) : content;
+
     final note = Note(
       id: _uuid.v4(),
-      title: title,
-      content: content,
+      title: finalTitle,
+      content: finalContent,
       tagIds: tagIds,
       categoryId: categoryId,
       version: 1,
@@ -244,22 +273,37 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       isPinned: false,
       isDeleted: false,
     );
+
     await _repository.addNote(note);
-    _plainTextCache[note.id] = note.plainText;
     loadNotes();
     _triggerBackgroundSync();
     return note;
   }
 
   Future<void> updateNote(Note note) async {
+    final privacy = PrivacyService();
+    final isSecret = _secretNoteIds.contains(note.id);
+
+    // 🌟 致命防线：如果引擎锁定，禁止保存私密笔记！
+    // 防止用户在未解锁状态下编辑笔记，将 "🔒 [私密内容...]" 提示语当成明文覆写进数据库
+    if (isSecret && !privacy.isUnlocked) {
+      debugPrint('🛡️ [安全拦截] 引擎处于锁定状态，拒绝覆写极密数据！');
+      return;
+    }
+
+    final finalTitle = isSecret ? privacy.encryptText(note.title) : note.title;
+    final finalContent = isSecret ? privacy.encryptText(note.content) : note.content;
+
     final updatedNote = note.copyWith(
+        title: finalTitle,
+        content: finalContent,
         version: note.version + 1,
         updatedAt: DateTime.now()
     );
+
     await _repository.updateNote(updatedNote);
-    _plainTextCache[updatedNote.id] = updatedNote.plainText;
     loadNotes();
-    _runTagGC(); // 🌟 保存笔记时触发垃圾回收
+    _runTagGC();
     _triggerBackgroundSync();
   }
 
@@ -290,7 +334,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     loadNotes();
     await _syncService.recordDeletedNoteId(id);
     _runImageGC();
-    _runTagGC(); // 🌟 彻底删除笔记时触发垃圾回收
+    _runTagGC();
     _triggerBackgroundSync();
   }
 
@@ -303,11 +347,13 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     }
     loadNotes();
     _runImageGC();
-    _runTagGC(); // 🌟 清空回收站时触发垃圾回收
+    _runTagGC();
     _triggerBackgroundSync();
   }
 
   Future<void> _cleanUpOldTrash() async {
+    if (Supabase.instance.client.auth.currentUser == null) return;
+
     final now = DateTime.now();
     bool hasDeletedAny = false;
     final currentTrash = List<Note>.from(trashNotes);
@@ -320,23 +366,24 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     }
     if (hasDeletedAny) {
       loadNotes();
-      _runImageGC();
+      await _runImageGC();
     }
-    _runTagGC(); // 🌟 启动 App 时执行全量体检扫除
+    await _runTagGC();
   }
 
   Future<void> _runImageGC() async {
+    if (_notes.isEmpty || Supabase.instance.client.auth.currentUser == null) return;
     await _imageService.cleanUpUnusedImages(_repository.getAllNotes());
   }
 
-  // =========================================================================
-  // 🌟 V2: 标签 Auto-GC 自动垃圾回收引擎
-  // =========================================================================
   Future<void> _runTagGC() async {
+    if (_notes.isEmpty || Supabase.instance.client.auth.currentUser == null) return;
+
     final allTags = _tagRepository.getAllTags();
+    if (allTags.isEmpty) return;
+
     final validTagIds = allTags.where((t) => !t.isDeleted).map((t) => t.id).toSet();
 
-    // 1. 自动剥离：遍历所有笔记，如果身上挂着被软删的幽灵标签，强行解绑！
     bool noteChanged = false;
     for (var note in _notes) {
       final cleanTagIds = note.tagIds.where((id) => validTagIds.contains(id)).toList();
@@ -351,24 +398,20 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     }
     if (noteChanged) loadNotes();
 
-    // 2. 收集正在使用的标签 (因为上一步解绑，这里收集的绝对是合法标签)
     final usedTagIds = <String>{};
     for (var note in _notes) {
       usedTagIds.addAll(note.tagIds);
     }
 
-    // 3. 找出真正的孤儿
     final now = DateTime.now();
     List<String> orphans = [];
     for (var tag in allTags) {
-      // 判定标准：已被软删的、或者 (没有被使用 且 存活超过1小时的新兵保护期)
       if (tag.isDeleted || (!usedTagIds.contains(tag.id) && now.difference(tag.createdAt).inMinutes > 60)) {
         orphans.add(tag.id);
-        await _tagRepository.deleteTag(tag.id); // 本地物理销毁
+        await _tagRepository.deleteTag(tag.id);
       }
     }
 
-    // 4. 云端核弹抹除
     if (orphans.isNotEmpty) {
       _tags = _tagRepository.getAllTags();
       notifyListeners();
@@ -377,7 +420,6 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
         final prefs = await SharedPreferences.getInstance();
         final syncMode = prefs.getString('sync_mode') ?? 'supabase';
         if (syncMode == 'supabase' && Supabase.instance.client.auth.currentUser != null) {
-          // 如果垃圾太多，分批次删除防报错
           for (var i = 0; i < orphans.length; i += 50) {
             final chunk = orphans.sublist(i, i + 50 > orphans.length ? orphans.length : i + 50);
             await Supabase.instance.client.from('tags').delete().inFilter('id', chunk);
@@ -402,9 +444,6 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     return tag;
   }
 
-  // =========================================================================
-  // 🌟 分类管理 (分类仍需要手动管理)
-  // =========================================================================
   Future<void> addCategory(String name) async {
     final newCat = Category(
       id: _uuid.v4(),
@@ -426,12 +465,10 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
-  // 🌟 强力解绑：删除分类时，将原本属于它的笔记释放为“无分类”
   Future<void> deleteCategory(String id) async {
     await _categoryRepository.deleteCategory(id);
     await _syncService.recordDeletedCategory(id);
 
-    // 释放笔记
     for (var note in _notes) {
       if (note.categoryId == id) {
         final updatedNote = note.copyWith(
@@ -465,6 +502,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     _debounceTimer?.cancel();
     _syncTimer?.cancel();
   }
+
   Note? getNoteById(String id) {
     try {
       return notes.firstWhere((note) => note.id == id);
