@@ -303,6 +303,16 @@ class SupabaseSyncService {
 
           if (isPrivate && privacy.isUnlocked) {
             // 🌟 隐私笔记图片：读取、加密、写入临时文件、上传
+            // 检查云端是否已有普通版本（笔记从普通变为私密时）
+            if (cloudFiles.contains(fileName)) {
+              _SyncLogger.info('IMAGE', '检测到云端有普通版本，删除后上传加密版本: $fileName');
+              try {
+                await storage.remove([fileName]);
+                _SyncLogger.info('IMAGE', '已删除云端普通版本: $fileName');
+              } catch (e) {
+                _SyncLogger.warn('IMAGE', '删除云端普通版本失败: $e');
+              }
+            }
             _SyncLogger.info('IMAGE', '正在加密上传隐私图片: $fileName');
             final bytes = await localFile.readAsBytes();
             final encryptedBytes = privacy.encryptFileBytes(bytes);
@@ -327,7 +337,18 @@ class SupabaseSyncService {
           } else if (isPrivate && !privacy.isUnlocked) {
             _SyncLogger.warn('IMAGE', '隐私图片 $fileName 跳过上传：PrivacyService 未解锁');
           } else {
-            // 普通笔记图片：直接上传
+            // 🌟 普通笔记图片：直接上传
+            // 检查云端是否已有加密版本（笔记从私密变为普通时）
+            final encryptedFileName = '$fileName.enc';
+            if (cloudFiles.contains(encryptedFileName)) {
+              _SyncLogger.info('IMAGE', '检测到云端有加密版本，删除后上传普通版本: $fileName');
+              try {
+                await storage.remove([encryptedFileName]);
+                _SyncLogger.info('IMAGE', '已删除云端加密版本: $encryptedFileName');
+              } catch (e) {
+                _SyncLogger.warn('IMAGE', '删除云端加密版本失败: $e');
+              }
+            }
             _SyncLogger.info('IMAGE', '正在上传普通图片: $fileName');
             await storage.upload(fileName, localFile, fileOptions: const FileOptions(upsert: true));
             uploadedCount++;

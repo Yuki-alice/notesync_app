@@ -162,6 +162,26 @@ class _NoteOptionsContent extends StatelessWidget {
 
         const SizedBox(height: 12),
 
+        // 🌟 添加设为私密功能
+        _OptionTile(
+          icon: Icons.lock_rounded,
+          title: '设为私密',
+          color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+          onColor: theme.colorScheme.error,
+          onTap: () async {
+            Navigator.pop(context);
+            final confirm = await _confirmSetPrivate(parentContext, note);
+            if (confirm == true) {
+              await provider.updateNote(note.copyWith(isPrivate: true));
+              if (parentContext.mounted) {
+                ToastUtils.showSuccess(parentContext, '已设为私密笔记 🔒');
+              }
+            }
+          },
+        ),
+
+        const SizedBox(height: 12),
+
         _OptionTile(
           icon: Icons.delete_rounded,
           title: '删除笔记',
@@ -239,6 +259,18 @@ class _NoteOptionsContent extends StatelessWidget {
       icon: Icons.delete_rounded,
       confirmText: '移至回收站',
       isDestructive: true,
+    );
+  }
+
+  /// 🌟 确认设为私密对话框
+  Future<bool?> _confirmSetPrivate(BuildContext parentContext, Note note) async {
+    return await AppDialog.showConfirm(
+      context: parentContext,
+      title: '设为私密?',
+      content: '设为私密后，笔记将被加密存储，\n需要密码才能查看。',
+      icon: Icons.lock_rounded,
+      confirmText: '设为私密',
+      isDestructive: false,
     );
   }
 }

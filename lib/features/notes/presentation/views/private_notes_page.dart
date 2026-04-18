@@ -17,6 +17,7 @@ import '../../../../widgets/common/dialogs/privacy_unlock_dialog.dart';
 import 'note_editor_page.dart';
 import '../widgets/note_card.dart';
 import '../widgets/dialogs/note_options_sheet.dart';
+import '../widgets/dialogs/private_note_options_sheet.dart';
 import '../widgets/note_search_bar.dart';
 
 /// 隐私笔记页面
@@ -470,8 +471,8 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
                                     note: note,
                                     searchQuery: provider.searchQuery,
                                     onTap: openContainer,
-                                    onLongPress: () => showNoteOptionsSheet(context, note),
-                                    onSecondaryTap: () => showNoteOptionsSheet(context, note),
+                                    onLongPress: () => showPrivateNoteOptionsSheet(context, note),
+                                    onSecondaryTap: () => showPrivateNoteOptionsSheet(context, note),
                                   );
                                 },
                               ),
