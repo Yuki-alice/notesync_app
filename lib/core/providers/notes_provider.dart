@@ -291,27 +291,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   Future<void> updateNote(Note note) async {
-    final privacy = PrivacyService();
-    final isSecret = _secretNoteIds.contains(note.id);
-
-    // 🌟 致命防线：如果引擎锁定，禁止保存私密笔记！
-    // 防止用户在未解锁状态下编辑笔记，将 "🔒 [私密内容...]" 提示语当成明文覆写进数据库
-    if (isSecret && !privacy.isUnlocked) {
-      debugPrint('🛡️ [安全拦截] 引擎处于锁定状态，拒绝覆写极密数据！');
-      return;
-    }
-
-    final finalTitle = isSecret ? privacy.encryptText(note.title) : note.title;
-    final finalContent = isSecret ? privacy.encryptText(note.content) : note.content;
-
-    final updatedNote = note.copyWith(
-        title: finalTitle,
-        content: finalContent,
-        version: note.version + 1,
-        updatedAt: DateTime.now()
-    );
-
-    await _repository.updateNote(updatedNote);
+    await _repository.updateNote(note);
     loadNotes();
     _runTagGC();
     _triggerBackgroundSync();

@@ -119,10 +119,11 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
   }
 
   int _calculateCrossAxisCount(double width) {
-    if (width > 1600) return 5;
-    if (width > 1200) return 4;
-    if (width > 800) return 3;
-    return 2;
+    if (width > 1500) return 6;  // 16:9 全屏 (~1920px)
+    if (width > 1200) return 5;
+    if (width > 1000) return 4;
+    if (width > 750) return 3;
+    return 2;  // 最少2列
   }
 
   void _onSearchChanged(String query) {

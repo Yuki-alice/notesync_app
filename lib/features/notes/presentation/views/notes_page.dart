@@ -57,10 +57,11 @@ class _NotesPageState extends State<NotesPage> with WidgetsBindingObserver, Rout
   }
   
   int _calculateCrossAxisCount(double width) {
-    if (width > 1600) return 5;
-    if (width > 1200) return 4;
-    if (width > 800) return 3;
-    return 2;
+    if (width > 1500) return 6;  // 16:9 全屏 (~1920px)
+    if (width > 1200) return 5;
+    if (width > 1000) return 4;
+    if (width > 750) return 3;
+    return 2;  // 最少2列
   }
 
   void _onSearchChanged(String query) {
@@ -630,19 +631,22 @@ class _NotesViewModel {
     required this.searchQuery,
   });
 
+  int get notesHash => Object.hashAll(notes.map((n) => n.updatedAt));
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is _NotesViewModel &&
           runtimeType == other.runtimeType &&
           notes.length == other.notes.length &&
+          notesHash == other.notesHash &&
           selectedCategoryId == other.selectedCategoryId &&
           categories.length == other.categories.length &&
           searchQuery == other.searchQuery;
 
   @override
   int get hashCode =>
-      notes.length.hashCode ^
+      notesHash.hashCode ^
       selectedCategoryId.hashCode ^
       categories.length.hashCode ^
       searchQuery.hashCode;

@@ -48,6 +48,13 @@ class NoteRepository {
     });
   }
 
+  /// 🌟 同步专用：保存笔记但不修改 updatedAt（保留云端时间戳）
+  Future<void> saveNoteFromSync(Note note) async {
+    await _isar.writeTxn(() async {
+      await _isar.notes.put(note);
+    });
+  }
+
   Future<void> deleteNote(String id) async {
     await _isar.writeTxn(() async {
       await _isar.notes.where().idEqualTo(id).deleteAll();

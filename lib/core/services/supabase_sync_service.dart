@@ -695,11 +695,8 @@ class SupabaseSyncService {
             isPrivate: map['is_private'] == true,
           );
 
-          if (existingLocalIds.contains(updatedNote.id)) {
-            await _noteRepo!.updateNote(updatedNote);
-          } else {
-            await _noteRepo!.addNote(updatedNote);
-          }
+          // 🌟 使用 saveNoteFromSync 保留云端 updatedAt 时间戳
+          await _noteRepo!.saveNoteFromSync(updatedNote);
           pulled.add(updatedNote);
         } catch (e) {
           _SyncLogger.error('PULL', '解析单条笔记失败 [id: ${map['id']}]', e);
