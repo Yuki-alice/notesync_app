@@ -122,15 +122,22 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     final privacy = PrivacyService();
 
     _secretNoteIds.clear();
+    _plainTextCache.clear(); // 🌟 清除缓存，确保获取最新内容
 
     // 内存级清洗：瞬间解密
     _notes = rawNotes.map((n) {
       final isEncrypted = n.title.startsWith('AES_V1::') || n.content.startsWith('AES_V1::');
       if (isEncrypted) {
         _secretNoteIds.add(n.id); // 登记为私密笔记
+        // 🌟 如果隐私服务已锁定，不解密，但设置 isPrivate 为 true
+        if (!privacy.isUnlocked) {
+          return n.copyWith(isPrivate: true); // 返回加密笔记，但标记为隐私
+        }
+        // 解密并设置 isPrivate 为 true
         return n.copyWith(
           title: privacy.decryptText(n.title),
           content: privacy.decryptText(n.content),
+          isPrivate: true,
         );
       }
       return n;
@@ -253,18 +260,12 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     required String content,
     List<String> tagIds = const [],
     String? categoryId,
-    bool isSecret = false, // 注入私密标记
+    bool isPrivate = false,
   }) async {
-    final privacy = PrivacyService();
-
-    // 入库前瞬间拦截加密
-    final finalTitle = isSecret ? privacy.encryptText(title) : title;
-    final finalContent = isSecret ? privacy.encryptText(content) : content;
-
     final note = Note(
       id: _uuid.v4(),
-      title: finalTitle,
-      content: finalContent,
+      title: title,
+      content: content,
       tagIds: tagIds,
       categoryId: categoryId,
       version: 1,
@@ -272,9 +273,16 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       updatedAt: DateTime.now(),
       isPinned: false,
       isDeleted: false,
+      isPrivate: isPrivate,
     );
 
     await _repository.addNote(note);
+    
+    // 🌟 如果是隐私笔记，登记到私密笔记集合
+    if (isPrivate) {
+      _secretNoteIds.add(note.id);
+    }
+    
     loadNotes();
     _triggerBackgroundSync();
     return note;

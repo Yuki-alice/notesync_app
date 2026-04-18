@@ -7,6 +7,8 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/services/image_storage_service.dart';
+import '../../../../core/services/privacy_service.dart';
+import '../../../../core/utils/privacy_note_utils.dart';
 import '../../../../models/note.dart';
 
 import '../../utils/markdown_export_service.dart';
@@ -19,6 +21,7 @@ String _encodeDeltaInBackground(List<dynamic> deltaJson) {
 class NoteEditorViewModel extends ChangeNotifier {
   final NotesProvider notesProvider;
   final bool isProMode;
+  final bool isPrivate;
 
   late quill.QuillController quillController;
   late TextEditingController titleController;
@@ -42,27 +45,47 @@ class NoteEditorViewModel extends ChangeNotifier {
     Note? note,
     required this.notesProvider,
     this.isProMode = false,
+    this.isPrivate = false,
   }) {
     _editingNote = note;
     _initControllers();
   }
 
   void _initControllers() {
-    titleController = TextEditingController(text: _editingNote?.title ?? '');
+    // 🌟 如果是隐私笔记，解密标题显示
+    String title = _editingNote?.title ?? '';
+    if (title.startsWith('AES_V1::')) {
+      title = PrivacyService().decryptText(title);
+      // 如果解密失败（包含 🔒 或 ❌ 标记），显示占位符
+      if (title.contains('🔒') || title.contains('❌')) {
+        title = '🔒 私密笔记';
+      }
+    }
+    titleController = TextEditingController(text: title);
     // 🌟 修正为 ID
     tagIds = _editingNote?.tagIds.toList() ?? [];
     categoryId = _editingNote?.categoryId;
 
     try {
       if (_editingNote != null && _editingNote!.content.isNotEmpty) {
+        // 🌟 如果是隐私笔记，解密内容
+        String content = _editingNote!.content;
+        if (content.startsWith('AES_V1::')) {
+          content = PrivacyService().decryptText(content);
+          // 如果解密失败（包含 🔒 或 ❌ 标记），显示占位文档
+          if (content.contains('🔒') || content.contains('❌')) {
+            content = '[{"insert":"🔒 私密内容，请解锁后查看\\n"}]';
+          }
+        }
+        
         if (_editingNote!.isRichText) {
-          final jsonContent = jsonDecode(_editingNote!.content);
+          final jsonContent = jsonDecode(content);
           quillController = quill.QuillController(
             document: quill.Document.fromJson(jsonContent),
             selection: const TextSelection.collapsed(offset: 0),
           );
         } else {
-          final doc = quill.Document()..insert(0, _editingNote!.content);
+          final doc = quill.Document()..insert(0, content);
           quillController = quill.QuillController(
             document: doc,
             selection: const TextSelection.collapsed(offset: 0),
@@ -155,21 +178,41 @@ class NoteEditorViewModel extends ChangeNotifier {
     final deltaJsonList = quillController.document.toDelta().toJson();
     final contentJson = await compute(_encodeDeltaInBackground, deltaJsonList);
 
+    // 处理隐私笔记加密
+    String finalTitle = title.isEmpty ? '未命名笔记' : title;
+    String finalContent = contentJson;
+    bool finalIsPrivate = isPrivate;
+
+    if (isPrivate && PrivacyService().isUnlocked) {
+      // 加密标题和内容
+      finalTitle = PrivacyService().encryptText(finalTitle);
+      finalContent = PrivacyService().encryptText(finalContent);
+    }
+
     if (_editingNote == null) {
       final newNote = await notesProvider.addNote(
-          title: title.isEmpty ? '未命名笔记' : title,
-          content: contentJson,
-          tagIds: tagIds,        // 🌟 修正为 ID
-          categoryId: categoryId // 🌟 修正为 ID
+          title: finalTitle,
+          content: finalContent,
+          tagIds: tagIds,
+          categoryId: categoryId,
+          isPrivate: finalIsPrivate
       );
       _editingNote = newNote;
     } else {
+      // 如果原笔记是隐私笔记，保持隐私状态
+      final shouldEncrypt = _editingNote!.isPrivate || isPrivate;
+      
       final updatedNote = _editingNote!.copyWith(
-          title: title,
-          content: contentJson,
-          tagIds: tagIds,        // 🌟 修正为 ID
-          categoryId: categoryId,// 🌟 修正为 ID
-          version: _editingNote!.version + 1, // 🌟 V2: 版本号递增
+          title: shouldEncrypt && PrivacyService().isUnlocked 
+              ? PrivacyService().encryptText(title.isEmpty ? '未命名笔记' : title)
+              : title.isEmpty ? '未命名笔记' : title,
+          content: shouldEncrypt && PrivacyService().isUnlocked
+              ? PrivacyService().encryptText(contentJson)
+              : contentJson,
+          tagIds: tagIds,
+          categoryId: categoryId,
+          isPrivate: shouldEncrypt,
+          version: _editingNote!.version + 1,
           updatedAt: DateTime.now());
       await notesProvider.updateNote(updatedNote);
       _editingNote = updatedNote;

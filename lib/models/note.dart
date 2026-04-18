@@ -25,6 +25,7 @@ class Note {
 
   bool isPinned;
   bool isDeleted;
+  bool isPrivate;
 
   Note({
     required this.id,
@@ -38,6 +39,7 @@ class Note {
     this.lastModifiedBy,
     this.isPinned = false,
     this.isDeleted = false,
+    this.isPrivate = false,
   });
 
   bool get isRichText {
@@ -88,6 +90,7 @@ class Note {
     String? lastModifiedBy,
     bool? isPinned,
     bool? isDeleted,
+    bool? isPrivate,
   }) {
     return Note(
       id: id ?? this.id,
@@ -101,6 +104,7 @@ class Note {
       lastModifiedBy: lastModifiedBy ?? this.lastModifiedBy,
       isPinned: isPinned ?? this.isPinned,
       isDeleted: isDeleted ?? this.isDeleted,
+      isPrivate: isPrivate ?? this.isPrivate,
     );
   }
 
@@ -138,6 +142,7 @@ class Note {
       'lastModifiedBy': lastModifiedBy,
       'isPinned': isPinned,
       'isDeleted': isDeleted,
+      'isPrivate': isPrivate,
     };
   }
 
@@ -154,6 +159,7 @@ class Note {
       lastModifiedBy: json['lastModifiedBy'] as String?,
       isPinned: json['isPinned'] as bool? ?? false,
       isDeleted: json['isDeleted'] as bool? ?? false,
+      isPrivate: json['isPrivate'] as bool? ?? false,
     );
   }
 }

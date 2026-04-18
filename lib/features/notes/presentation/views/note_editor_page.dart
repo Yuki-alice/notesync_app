@@ -30,7 +30,8 @@ class EditorFocusNode extends FocusNode {
 
 class NoteEditorPage extends StatelessWidget {
   final Note? note;
-  const NoteEditorPage({super.key, this.note});
+  final bool isPrivate;
+  const NoteEditorPage({super.key, this.note, this.isPrivate = false});
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +43,7 @@ class NoteEditorPage extends StatelessWidget {
         note: note,
         notesProvider: notesProvider,
         isProMode: isProMode,
+        isPrivate: isPrivate,
       ),
       child: const _NoteEditorShell(),
     );

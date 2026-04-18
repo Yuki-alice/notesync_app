@@ -62,38 +62,43 @@ const NoteSchema = CollectionSchema(
       name: r'isPinned',
       type: IsarType.bool,
     ),
-    r'isRichText': PropertySchema(
+    r'isPrivate': PropertySchema(
       id: 9,
+      name: r'isPrivate',
+      type: IsarType.bool,
+    ),
+    r'isRichText': PropertySchema(
+      id: 10,
       name: r'isRichText',
       type: IsarType.bool,
     ),
     r'lastModifiedBy': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'lastModifiedBy',
       type: IsarType.string,
     ),
     r'plainText': PropertySchema(
-      id: 11,
+      id: 12,
       name: r'plainText',
       type: IsarType.string,
     ),
     r'tagIds': PropertySchema(
-      id: 12,
+      id: 13,
       name: r'tagIds',
       type: IsarType.stringList,
     ),
     r'title': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'title',
       type: IsarType.string,
     ),
     r'updatedAt': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'updatedAt',
       type: IsarType.dateTime,
     ),
     r'version': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'version',
       type: IsarType.long,
     )
@@ -194,13 +199,14 @@ void _noteSerialize(
   writer.writeString(offsets[6], object.id);
   writer.writeBool(offsets[7], object.isDeleted);
   writer.writeBool(offsets[8], object.isPinned);
-  writer.writeBool(offsets[9], object.isRichText);
-  writer.writeString(offsets[10], object.lastModifiedBy);
-  writer.writeString(offsets[11], object.plainText);
-  writer.writeStringList(offsets[12], object.tagIds);
-  writer.writeString(offsets[13], object.title);
-  writer.writeDateTime(offsets[14], object.updatedAt);
-  writer.writeLong(offsets[15], object.version);
+  writer.writeBool(offsets[9], object.isPrivate);
+  writer.writeBool(offsets[10], object.isRichText);
+  writer.writeString(offsets[11], object.lastModifiedBy);
+  writer.writeString(offsets[12], object.plainText);
+  writer.writeStringList(offsets[13], object.tagIds);
+  writer.writeString(offsets[14], object.title);
+  writer.writeDateTime(offsets[15], object.updatedAt);
+  writer.writeLong(offsets[16], object.version);
 }
 
 Note _noteDeserialize(
@@ -216,11 +222,12 @@ Note _noteDeserialize(
     id: reader.readString(offsets[6]),
     isDeleted: reader.readBoolOrNull(offsets[7]) ?? false,
     isPinned: reader.readBoolOrNull(offsets[8]) ?? false,
-    lastModifiedBy: reader.readStringOrNull(offsets[10]),
-    tagIds: reader.readStringList(offsets[12]) ?? const [],
-    title: reader.readString(offsets[13]),
-    updatedAt: reader.readDateTime(offsets[14]),
-    version: reader.readLongOrNull(offsets[15]) ?? 1,
+    isPrivate: reader.readBoolOrNull(offsets[9]) ?? false,
+    lastModifiedBy: reader.readStringOrNull(offsets[11]),
+    tagIds: reader.readStringList(offsets[13]) ?? const [],
+    title: reader.readString(offsets[14]),
+    updatedAt: reader.readDateTime(offsets[15]),
+    version: reader.readLongOrNull(offsets[16]) ?? 1,
   );
   object.isarId = id;
   return object;
@@ -252,18 +259,20 @@ P _noteDeserializeProp<P>(
     case 8:
       return (reader.readBoolOrNull(offset) ?? false) as P;
     case 9:
-      return (reader.readBool(offset)) as P;
+      return (reader.readBoolOrNull(offset) ?? false) as P;
     case 10:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 11:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 12:
-      return (reader.readStringList(offset) ?? const []) as P;
-    case 13:
       return (reader.readString(offset)) as P;
+    case 13:
+      return (reader.readStringList(offset) ?? const []) as P;
     case 14:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 15:
+      return (reader.readDateTime(offset)) as P;
+    case 16:
       return (reader.readLongOrNull(offset) ?? 1) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1401,6 +1410,15 @@ extension NoteQueryFilter on QueryBuilder<Note, Note, QFilterCondition> {
     });
   }
 
+  QueryBuilder<Note, Note, QAfterFilterCondition> isPrivateEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isPrivate',
+        value: value,
+      ));
+    });
+  }
+
   QueryBuilder<Note, Note, QAfterFilterCondition> isRichTextEqualTo(
       bool value) {
     return QueryBuilder.apply(this, (query) {
@@ -2300,6 +2318,18 @@ extension NoteQuerySortBy on QueryBuilder<Note, Note, QSortBy> {
     });
   }
 
+  QueryBuilder<Note, Note, QAfterSortBy> sortByIsPrivate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isPrivate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterSortBy> sortByIsPrivateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isPrivate', Sort.desc);
+    });
+  }
+
   QueryBuilder<Note, Note, QAfterSortBy> sortByIsRichText() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isRichText', Sort.asc);
@@ -2482,6 +2512,18 @@ extension NoteQuerySortThenBy on QueryBuilder<Note, Note, QSortThenBy> {
     });
   }
 
+  QueryBuilder<Note, Note, QAfterSortBy> thenByIsPrivate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isPrivate', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterSortBy> thenByIsPrivateDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isPrivate', Sort.desc);
+    });
+  }
+
   QueryBuilder<Note, Note, QAfterSortBy> thenByIsRichText() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isRichText', Sort.asc);
@@ -2631,6 +2673,12 @@ extension NoteQueryWhereDistinct on QueryBuilder<Note, Note, QDistinct> {
     });
   }
 
+  QueryBuilder<Note, Note, QDistinct> distinctByIsPrivate() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isPrivate');
+    });
+  }
+
   QueryBuilder<Note, Note, QDistinct> distinctByIsRichText() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'isRichText');
@@ -2736,6 +2784,12 @@ extension NoteQueryProperty on QueryBuilder<Note, Note, QQueryProperty> {
   QueryBuilder<Note, bool, QQueryOperations> isPinnedProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'isPinned');
+    });
+  }
+
+  QueryBuilder<Note, bool, QQueryOperations> isPrivateProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isPrivate');
     });
   }
 

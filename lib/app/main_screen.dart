@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/providers/auth_provider.dart';
 import '../core/providers/notes_provider.dart';
 import '../core/providers/theme_provider.dart';
+import '../core/providers/privacy_mode_provider.dart';
 import '../features/notes/presentation/views/notes_page.dart';
 import '../features/todos/presentation/views/todos_page.dart';
 import '../features/notes/presentation/views/note_editor_page.dart';
@@ -119,9 +120,13 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onFabPressed() async {
     if (_currentIndex == 0) {
+      // 根据隐私模式创建不同类型的笔记
+      final privacyModeProvider = context.read<PrivacyModeProvider>();
+      final isPrivate = privacyModeProvider.isPrivateMode;
+      
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const NoteEditorPage()),
+        MaterialPageRoute(builder: (context) => NoteEditorPage(isPrivate: isPrivate)),
       );
     } else if (_currentIndex == 1) {
       AppFeedback.selection();

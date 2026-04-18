@@ -5,8 +5,10 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   file_selector_windows
+  flutter_secure_storage_windows
   gal
   isar_flutter_libs
+  local_auth_windows
   nsd_windows
   screen_retriever
   share_plus

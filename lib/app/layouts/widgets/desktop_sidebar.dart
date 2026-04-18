@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/privacy_mode_provider.dart';
 
 class DesktopSidebar extends StatelessWidget {
   final int selectedIndex;
@@ -51,22 +52,37 @@ class DesktopSidebar extends StatelessWidget {
         children: [
           const SizedBox(height: 16),
           if (onFabPressed != null)
-            Tooltip(
-              message: '新建 (Ctrl+N)',
-              waitDuration: const Duration(milliseconds: 300),
-              child: Material(
-                color: theme.colorScheme.primaryContainer,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: onFabPressed,
-                  hoverColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-                  child: SizedBox(
-                    width: 40, height: 40,
-                    child: Icon(Icons.add_rounded, size: 24, color: theme.colorScheme.onPrimaryContainer),
+            Consumer<PrivacyModeProvider>(
+              builder: (context, privacyModeProvider, _) {
+                final isPrivate = privacyModeProvider.isPrivateMode;
+                return Tooltip(
+                  message: isPrivate ? '新建私密笔记 (Ctrl+N)' : '新建笔记 (Ctrl+N)',
+                  waitDuration: const Duration(milliseconds: 300),
+                  child: Material(
+                    color: isPrivate
+                        ? theme.colorScheme.errorContainer
+                        : theme.colorScheme.primaryContainer,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: onFabPressed,
+                      hoverColor: isPrivate
+                          ? theme.colorScheme.error.withValues(alpha: 0.1)
+                          : theme.colorScheme.primary.withValues(alpha: 0.1),
+                      child: SizedBox(
+                        width: 40, height: 40,
+                        child: Icon(
+                          isPrivate ? Icons.lock : Icons.add_rounded,
+                          size: 24,
+                          color: isPrivate
+                              ? theme.colorScheme.onErrorContainer
+                              : theme.colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           const SizedBox(height: 24),
         ],

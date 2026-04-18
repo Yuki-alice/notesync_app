@@ -11,6 +11,7 @@ import '../repositories/category_repository.dart';
 import '../repositories/note_repository.dart';
 import '../repositories/tag_repository.dart';
 import '../repositories/todo_repository.dart';
+import '../services/privacy_service.dart';
 
 import '../../models/note.dart';
 import '../../models/todo.dart';
@@ -176,7 +177,17 @@ class SupabaseSyncService {
 
     Set<String> fileNames = {};
     for (var note in pushedNotes) {
-      final paths = Note.extractAllImagePaths(note.content);
+      // 🌟 隐私笔记需要解密后才能提取图片路径
+      String content = note.content;
+      if (note.isPrivate && content.startsWith('AES_V1::')) {
+        content = PrivacyService().decryptText(content);
+        // 如果解密失败，跳过此笔记的图片上传
+        if (content.contains('🔒') || content.contains('❌')) {
+          _SyncLogger.warn('IMAGE', '隐私笔记 ${note.id} 解密失败，跳过图片上传');
+          continue;
+        }
+      }
+      final paths = Note.extractAllImagePaths(content);
       for(var path in paths) {
         fileNames.add(path.replaceAll('\\', '/').split('/').last); // 免疫反斜杠
       }
@@ -206,7 +217,16 @@ class SupabaseSyncService {
     Set<String> fileNames = {};
     for (var note in allNotes) {
       if (note.isDeleted) continue;
-      final paths = Note.extractAllImagePaths(note.content);
+      // 🌟 隐私笔记需要解密后才能提取图片路径
+      String content = note.content;
+      if (note.isPrivate && content.startsWith('AES_V1::')) {
+        content = PrivacyService().decryptText(content);
+        // 如果解密失败，跳过此笔记的图片下载
+        if (content.contains('🔒') || content.contains('❌')) {
+          continue;
+        }
+      }
+      final paths = Note.extractAllImagePaths(content);
       for(var path in paths) {
         fileNames.add(path.replaceAll('\\', '/').split('/').last); // 免疫反斜杠
       }
@@ -247,7 +267,16 @@ class SupabaseSyncService {
       final Set<String> usedImageNames = {};
       for (var note in allNotes) {
         if (note.isDeleted) continue;
-        final paths = Note.extractAllImagePaths(note.content);
+        // 🌟 隐私笔记需要解密后才能提取图片路径
+        String content = note.content;
+        if (note.isPrivate && content.startsWith('AES_V1::')) {
+          content = PrivacyService().decryptText(content);
+          // 如果解密失败，跳过此笔记
+          if (content.contains('🔒') || content.contains('❌')) {
+            continue;
+          }
+        }
+        final paths = Note.extractAllImagePaths(content);
         for (var path in paths) {
           usedImageNames.add(path.replaceAll('\\', '/').split('/').last); // 免疫反斜杠
         }

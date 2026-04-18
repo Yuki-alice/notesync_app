@@ -301,7 +301,7 @@ class _DesktopCraftReaderLayoutState extends State<DesktopCraftReaderLayout> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.viewModel.currentNote?.title.isEmpty ?? true ? '无标题文档' : widget.viewModel.currentNote!.title,
+                        widget.viewModel.titleController.text.isEmpty ? '无标题文档' : widget.viewModel.titleController.text,
                         style: TextStyle(fontSize: 44, fontWeight: FontWeight.w900, color: colorScheme.onSurface, letterSpacing: -0.5, height: 1.2),
                       ),
                       const SizedBox(height: 24),

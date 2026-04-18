@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class NoteSearchBar extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode? focusNode;
   final ValueChanged<String> onChanged;
   final VoidCallback? onClear;
+  final VoidCallback? onLongPress;
   final String? hintText;
   final Color? backgroundColor;
   final double? maxWidth;
@@ -15,6 +18,7 @@ class NoteSearchBar extends StatefulWidget {
     required this.onChanged,
     this.focusNode,
     this.onClear,
+    this.onLongPress,
     this.hintText,
     this.backgroundColor,
     this.maxWidth,
@@ -25,101 +29,77 @@ class NoteSearchBar extends StatefulWidget {
 }
 
 class _NoteSearchBarState extends State<NoteSearchBar> {
-  // 不使用 late，避免初始化时序问题
-  ValueNotifier<bool>? _showClearNotifier;
+  Timer? _longPressTimer;
 
-  @override
-  void initState() {
-    super.initState();
-    _showClearNotifier = ValueNotifier(widget.controller.text.isNotEmpty);
-    widget.controller.addListener(_onTextChanged);
+  // 🌟 核心突破：绕过 TextField 原生手势拦截，监听底层物理点击
+  void _startLongPressTimer() {
+    _longPressTimer?.cancel();
+    _longPressTimer = Timer(const Duration(milliseconds: 600), () {
+      if (widget.onLongPress != null) {
+        HapticFeedback.heavyImpact(); // 加入强烈的物理震动反馈
+        widget.onLongPress!();
+      }
+    });
+  }
+
+  void _cancelLongPressTimer() {
+    _longPressTimer?.cancel();
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_onTextChanged);
-    _showClearNotifier?.dispose();
+    _longPressTimer?.cancel();
     super.dispose();
-  }
-
-  void _onTextChanged() {
-    final show = widget.controller.text.isNotEmpty;
-    if (_showClearNotifier != null && _showClearNotifier!.value != show) {
-      _showClearNotifier!.value = show;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // 防御性补救：如果热重载导致 initState 没走，手动初始化
-    if (_showClearNotifier == null) {
-      _showClearNotifier = ValueNotifier(widget.controller.text.isNotEmpty);
-      widget.controller.addListener(_onTextChanged);
-    }
-
     final theme = Theme.of(context);
-    final bgColor = widget.backgroundColor ?? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+    final bgColor = widget.backgroundColor ??
+        theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
 
-    Widget searchBar = Stack(
-      alignment: Alignment.centerRight,
-      children: [
-        // 1. 输入框
-        TextField(
-          key: const ValueKey('NoteSearchTextField'),
-          controller: widget.controller,
-          focusNode: widget.focusNode,
-          onChanged: widget.onChanged,
-          textAlignVertical: TextAlignVertical.center,
-          style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurface),
-          cursorColor: theme.colorScheme.primary,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: widget.hintText ?? '搜索笔记...',
-            hintStyle: TextStyle(color: theme.colorScheme.outline, fontSize: 16),
-            prefixIcon: Icon(Icons.search_rounded, color: theme.colorScheme.outline, size: 24),
-            filled: true,
-            fillColor: bgColor,
-            suffixIcon: null, // 禁用自带 suffix
-            contentPadding: const EdgeInsets.only(left: 16, right: 48, top: 12, bottom: 12),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.5), width: 1.5)),
-          ),
-        ),
-
-        // 2. 清除按钮
-        // 🟢 修复：Positioned 必须是 Stack 的直接子级
-        Positioned(
-          right: 4,
-          child: ValueListenableBuilder<bool>(
-            valueListenable: _showClearNotifier!,
-            builder: (context, show, child) {
-              return IgnorePointer(
-                ignoring: !show, // 不显示时不可点击
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 150),
-                  opacity: show ? 1.0 : 0.0,
-                  child: child,
-                ),
+    // 使用 Listener 捕获全局长按事件，包裹原生的 SearchBar
+    Widget searchBar = Listener(
+      onPointerDown: (_) => _startLongPressTimer(), // 手指按下开始倒计时
+      onPointerUp: (_) => _cancelLongPressTimer(),  // 抬起取消
+      onPointerCancel: (_) => _cancelLongPressTimer(),
+      onPointerMove: (event) {
+        if (event.delta.distance > 2) {
+          _cancelLongPressTimer(); // 只要手指产生了滑动，就取消长按判定
+        }
+      },
+      child: SearchBar(
+        controller: widget.controller,
+        focusNode: widget.focusNode,
+        hintText: widget.hintText ?? '搜索笔记...',
+        leading: Icon(Icons.search, size: 20, color: theme.colorScheme.outline),
+        elevation: WidgetStateProperty.all(0),
+        backgroundColor: WidgetStateProperty.all(bgColor),
+        constraints: const BoxConstraints(minHeight: 48, maxHeight: 48),
+        onChanged: widget.onChanged,
+        trailing: [
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: widget.controller,
+            builder: (context, value, child) {
+              return AnimatedOpacity(
+                duration: const Duration(milliseconds: 150),
+                opacity: value.text.isNotEmpty ? 1.0 : 0.0,
+                child: value.text.isNotEmpty
+                    ? IconButton(
+                  icon: const Icon(Icons.clear, size: 20),
+                  color: theme.colorScheme.onSurfaceVariant,
+                  onPressed: () {
+                    widget.controller.clear();
+                    widget.onChanged('');
+                    widget.onClear?.call();
+                  },
+                )
+                    : const SizedBox.shrink(),
               );
             },
-            child: IconButton(
-              icon: const Icon(Icons.clear_rounded, size: 18),
-              color: theme.colorScheme.onSurfaceVariant,
-              style: IconButton.styleFrom(
-                hoverColor: theme.colorScheme.onSurface.withValues(alpha: 0.08),
-                padding: const EdgeInsets.all(8),
-                minimumSize: const Size(32, 32),
-              ),
-              onPressed: () {
-                widget.controller.clear();
-                widget.onChanged('');
-                widget.onClear?.call();
-              },
-            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
 
     if (widget.maxWidth != null) {

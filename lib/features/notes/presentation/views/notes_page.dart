@@ -8,13 +8,18 @@ import 'package:animations/animations.dart';
 
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/routes/app_routes.dart';
+import '../../../../models/note.dart';
+import '../../../../models/category.dart';
+
 import '../../../../utils/app_feedback.dart';
 import '../../../../utils/toast_utils.dart';
 import '../../../../widgets/common/dialogs/add_category_dialog.dart';
 import 'note_editor_page.dart';
+import 'private_notes_page.dart';
 import '../widgets/note_card.dart';
 import '../widgets/dialogs/note_options_sheet.dart';
 import '../widgets/note_search_bar.dart';
+
 
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
@@ -23,19 +28,34 @@ class NotesPage extends StatefulWidget {
   State<NotesPage> createState() => _NotesPageState();
 }
 
-class _NotesPageState extends State<NotesPage> {
+class _NotesPageState extends State<NotesPage> with WidgetsBindingObserver, RouteAware {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounce;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _debounce?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 当应用从后台回到前台时刷新笔记
+    if (state == AppLifecycleState.resumed) {
+      context.read<NotesProvider>().loadNotes();
+    }
+  }
+  
   int _calculateCrossAxisCount(double width) {
     if (width > 1600) return 5;
     if (width > 1200) return 4;
@@ -44,10 +64,28 @@ class _NotesPageState extends State<NotesPage> {
   }
 
   void _onSearchChanged(String query) {
+    // 检测隐私模式关键词（桌面端）
+    if (query.trim() == '#private') {
+      _searchController.clear();
+      context.read<NotesProvider>().setSearchQuery('');
+      _enterPrivacyMode(context);
+      return;
+    }
+    
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       if (mounted) context.read<NotesProvider>().setSearchQuery(query);
     });
+  }
+
+  /// 进入隐私模式 - 跳转到独立页面
+  void _enterPrivacyMode(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PrivateNotesPage(),
+      ),
+    );
   }
 
   void _showSortMenu(BuildContext context) {
@@ -133,45 +171,61 @@ class _NotesPageState extends State<NotesPage> {
         ),
         floatingActionButton: isDesktop
             ? null
-            : Padding(
-          padding: const EdgeInsets.only(right: 16, bottom: 100),
-          child: OpenContainer(
-            transitionType: ContainerTransitionType.fadeThrough,
-            openBuilder: (BuildContext context, VoidCallback _) =>
-            const NoteEditorPage(),
-            closedElevation: 4.0,
-            closedShape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.all(Radius.circular(16))),
-            closedColor: theme.colorScheme.primaryContainer,
-            transitionDuration: const Duration(milliseconds: 500),
-            closedBuilder: (BuildContext context, VoidCallback openContainer) {
-              return SizedBox(
-                width: 56,
-                height: 56,
-                child: FloatingActionButton(
-                  elevation: 0,
-                  onPressed: openContainer,
-                  backgroundColor: Colors.transparent,
-                  foregroundColor: theme.colorScheme.onPrimaryContainer,
-                  child: const Icon(Icons.edit_rounded, size: 28),
-                ),
-              );
-            },
-          ),
-        ),
+            : _buildMobileFAB(),
+      ),
+    );
+  }
+
+  /// 构建手机端 FAB
+  Widget _buildMobileFAB() {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 16, bottom: 100),
+      child: OpenContainer(
+        transitionType: ContainerTransitionType.fadeThrough,
+        openBuilder: (BuildContext context, VoidCallback _) =>
+            const NoteEditorPage(isPrivate: false),
+        closedElevation: 4.0,
+        closedShape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(16))),
+        closedColor: theme.colorScheme.primaryContainer,
+        transitionDuration: const Duration(milliseconds: 500),
+        closedBuilder: (BuildContext context, VoidCallback openContainer) {
+          return SizedBox(
+            width: 56,
+            height: 56,
+            child: FloatingActionButton(
+              elevation: 0,
+              onPressed: openContainer,
+              backgroundColor: Colors.transparent,
+              foregroundColor: theme.colorScheme.onPrimaryContainer,
+              child: const Icon(
+                Icons.edit_rounded,
+                size: 28,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 
   Widget _buildMainContent(BuildContext context, ThemeData theme, bool isDesktop) {
-    return Consumer<NotesProvider>(
-      builder: (context, provider, _) {
-        final notes = provider.filteredNotes;
-        final currentKey = '${provider.selectedCategoryId}_${provider.searchQuery}'; // 🌟 改为 ID
+    // 🌟 使用 Selector 只监听需要的数据，避免搜索框重建
+    return Selector<NotesProvider, _NotesViewModel>(
+      selector: (context, provider) => _NotesViewModel(
+        notes: provider.filteredNotes.where((n) => !n.isPrivate).toList(),
+        selectedCategoryId: provider.selectedCategoryId,
+        categories: provider.categories,
+        searchQuery: provider.searchQuery,
+      ),
+      builder: (context, viewModel, _) {
+        final notes = viewModel.notes;
 
         List<Widget> slivers = [];
 
         if (!isDesktop) {
+          // 1. 顶部标题栏
           slivers.add(
               SliverAppBar(
                 title: Row(
@@ -184,72 +238,73 @@ class _NotesPageState extends State<NotesPage> {
                 ),
                 backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.95),
                 surfaceTintColor: Colors.transparent,
-                pinned: false,
-                floating: true,
-                snap: true,
-                shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.1),
+                pinned: true, // 🌟 保持顶部标题固定
+                elevation: 0,
                 actions: [
                   IconButton(onPressed: () => _showSortMenu(context), icon: const Icon(Icons.sort_rounded)),
                   IconButton(onPressed: () => Navigator.pushNamed(context, AppRoutes.trash), icon: const Icon(Icons.auto_delete_outlined)),
                   IconButton(onPressed: () => Navigator.pushNamed(context, AppRoutes.settings), icon: const Icon(Icons.settings_outlined)),
                   const SizedBox(width: 8),
                 ],
-                bottom: PreferredSize(
-                  preferredSize: const Size.fromHeight(104),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        child: NoteSearchBar(
-                          controller: _searchController,
-                          focusNode: _searchFocusNode,
-                          onChanged: _onSearchChanged,
-                          onClear: () {
-                            AppFeedback.light();
-                            context.read<NotesProvider>().setSearchQuery('');
-                            _searchFocusNode.unfocus();
-                          },
-                        ),
-                      ),
-                      Container(
-                        height: 36,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 16),
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          padding: EdgeInsets.zero,
-                          physics: const BouncingScrollPhysics(),
-                          children: [
-                            _buildCategoryChip(theme, '全部', provider.selectedCategoryId == null, () => provider.selectCategory(null)),
-                            // 🌟 V2: 遍历 Category 对象
-                            ...provider.categories.map((c) => _buildCategoryChip(
-                                theme,
-                                c.name, // 界面显示 name
-                                provider.selectedCategoryId == c.id,
-                                    () => provider.selectCategory(provider.selectedCategoryId == c.id ? null : c.id) // 逻辑交互使用 id
-                            )),
-                            Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: ActionChip(
-                                onPressed: () => _handleAddCategory(context),
-                                tooltip: "添加分类",
-                                label: const Icon(Icons.add_rounded, size: 16),
-                                padding: EdgeInsets.zero,
-                                visualDensity: VisualDensity.compact,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                side: BorderSide.none,
-                                backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                                labelStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               )
+          );
+
+          // 2. 🌟 搜索栏与分类栏放入独立的 Adapter，彻底断绝刷新导致的键盘回弹问题
+          slivers.add(
+            SliverToBoxAdapter(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: NoteSearchBar(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      onChanged: _onSearchChanged,
+                      onClear: () {
+                        AppFeedback.light();
+                        context.read<NotesProvider>().setSearchQuery('');
+                        _searchFocusNode.unfocus();
+                      },
+                      onLongPress: () => _enterPrivacyMode(context), // 长按进入隐私模式
+                    ),
+                  ),
+                  Container(
+                    height: 36,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.zero,
+                      physics: const BouncingScrollPhysics(),
+                      children: [
+                        _buildCategoryChip(theme, '全部', viewModel.selectedCategoryId == null, () => context.read<NotesProvider>().selectCategory(null)),
+                        ...viewModel.categories.map((c) => _buildCategoryChip(
+                            theme,
+                            c.name,
+                            viewModel.selectedCategoryId == c.id,
+                                () => context.read<NotesProvider>().selectCategory(viewModel.selectedCategoryId == c.id ? null : c.id)
+                        )),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: ActionChip(
+                            onPressed: () => _handleAddCategory(context),
+                            tooltip: "添加分类",
+                            label: const Icon(Icons.add_rounded, size: 16),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            side: BorderSide.none,
+                            backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                            labelStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           );
         }
 
@@ -257,7 +312,11 @@ class _NotesPageState extends State<NotesPage> {
           slivers.add(
               SliverFillRemaining(
                   hasScrollBody: false,
-                  child: _buildEmptyState(theme, provider.searchQuery.isNotEmpty, provider.selectedCategoryId)
+                  child: _buildEmptyState(
+                    theme, 
+                    viewModel.searchQuery.isNotEmpty, 
+                    viewModel.selectedCategoryId,
+                  )
               )
           );
         } else {
@@ -310,7 +369,7 @@ class _NotesPageState extends State<NotesPage> {
                                 closedBuilder: (context, openContainer) {
                                   return NoteCard(
                                     note: note,
-                                    searchQuery: provider.searchQuery,
+                                    searchQuery: viewModel.searchQuery,
                                     onTap: openContainer,
                                     onLongPress: () => showNoteOptionsSheet(context, note),
                                     onSecondaryTap: () => showNoteOptionsSheet(context, note),
@@ -329,6 +388,7 @@ class _NotesPageState extends State<NotesPage> {
           );
         }
 
+        final currentKey = '${viewModel.selectedCategoryId}_public';
         Widget scrollView = AnimationLimiter(
           key: ValueKey('limiter_$currentKey'),
           child: CustomScrollView(
@@ -384,6 +444,7 @@ class _NotesPageState extends State<NotesPage> {
                     context.read<NotesProvider>().setSearchQuery('');
                     _searchFocusNode.unfocus();
                   },
+                  onLongPress: () => _enterPrivacyMode(context),
                 ),
               ),
 
@@ -473,16 +534,21 @@ class _NotesPageState extends State<NotesPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.dashboard_customize_outlined,
-              size: 64, color: theme.colorScheme.outline.withValues(alpha: 0.5)),
+          Icon(
+            Icons.dashboard_customize_outlined,
+            size: 64, 
+            color: theme.colorScheme.outline.withValues(alpha: 0.5)
+          ),
           const SizedBox(height: 16),
           Text(
             isSearching
                 ? '未找到相关笔记'
                 : (selectedCategoryId == null
-                ? '暂无笔记'
-                : '该分类下暂无笔记'),
-            style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
+                    ? '暂无笔记'
+                    : '该分类下暂无笔记'),
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
           ),
         ],
       ),
@@ -545,4 +611,36 @@ class SyncStatusIndicator extends StatelessWidget {
       },
     );
   }
+}
+
+// 🌟 用于 Selector 的 ViewModel，避免不必要的重建
+class _NotesViewModel {
+  final List<Note> notes;
+  final String? selectedCategoryId;
+  final List<Category> categories;
+  final String searchQuery;
+
+  _NotesViewModel({
+    required this.notes,
+    required this.selectedCategoryId,
+    required this.categories,
+    required this.searchQuery,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _NotesViewModel &&
+          runtimeType == other.runtimeType &&
+          notes.length == other.notes.length &&
+          selectedCategoryId == other.selectedCategoryId &&
+          categories.length == other.categories.length &&
+          searchQuery == other.searchQuery;
+
+  @override
+  int get hashCode =>
+      notes.length.hashCode ^
+      selectedCategoryId.hashCode ^
+      categories.length.hashCode ^
+      searchQuery.hashCode;
 }

@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/services/image_storage_service.dart';
+import '../../../../core/services/privacy_service.dart';
 import '../../../../models/note.dart';
 import '../../../../models/tag.dart';
 import '../../../../widgets/common/search_highlight_text.dart';
+import 'privacy_toggle_button.dart';
 
 class NoteCard extends StatelessWidget {
   final Note note;
@@ -35,11 +37,15 @@ class NoteCard extends StatelessWidget {
         .toList();
 
     final coverImage = note.firstImagePath;
-    final hasTitle = note.title.isNotEmpty;
-
-    final cleanContent = note.plainText.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final hasContent = cleanContent.isNotEmpty;
-    final hasMetadata = note.isPinned || note.categoryId != null || realTags.isNotEmpty;
+    final isPrivate = note.isPrivate;
+    final isLocked = isPrivate && !PrivacyService().isUnlocked;
+    
+    // 隐私笔记处理
+    final displayTitle = isLocked ? '🔒 私密笔记' : note.title;
+    final displayContent = isLocked ? '' : note.plainText.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final hasTitle = displayTitle.isNotEmpty;
+    final hasContent = displayContent.isNotEmpty;
+    final hasMetadata = note.isPinned || note.categoryId != null || realTags.isNotEmpty || isPrivate;
 
     return Hero(
       tag: 'note_card_${note.id}',
@@ -102,14 +108,16 @@ class NoteCard extends StatelessWidget {
                     children: [
                       if (hasTitle) ...[
                         SearchHighlightText(
-                            note.title,
-                            query: searchQuery,
+                            displayTitle,
+                            query: isLocked ? '' : searchQuery,
                             style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800, // 极重标题
+                                fontWeight: FontWeight.w800,
                                 fontSize: 18,
                                 height: 1.3,
                                 letterSpacing: 0.2,
-                                color: theme.colorScheme.onSurface
+                                color: isLocked 
+                                    ? theme.colorScheme.error 
+                                    : theme.colorScheme.onSurface
                             ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis
@@ -119,9 +127,9 @@ class NoteCard extends StatelessWidget {
 
                       if (hasContent) ...[
                         SearchHighlightText(
-                            cleanContent,
+                            displayContent,
                             query: searchQuery,
-                            maxLines: coverImage != null ? 1 : 4, // 无图时多显示两行正文
+                            maxLines: coverImage != null ? 1 : 4,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
@@ -137,13 +145,15 @@ class NoteCard extends StatelessWidget {
                         Wrap(
                           spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
+                            if (isPrivate)
+                              PrivacyNoteIndicator(isLocked: isLocked),
                             if (note.isPinned)
                               Container(
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(color: theme.colorScheme.errorContainer.withValues(alpha: 0.5), shape: BoxShape.circle),
                                 child: Icon(Icons.push_pin_rounded, size: 12, color: theme.colorScheme.error),
                               ),
-                            if (realCategoryName != null)
+                            if (realCategoryName != null && !isLocked)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
@@ -152,7 +162,7 @@ class NoteCard extends StatelessWidget {
                                 ),
                                 child: Text(realCategoryName, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onPrimaryContainer, fontWeight: FontWeight.w800, fontSize: 11)),
                               ),
-                            ...realTags.take(3).map((tag) {
+                            ...realTags.take(isLocked ? 0 : 3).map((tag) {
                               final isMatch = searchQuery.isNotEmpty && tag.name.toLowerCase().contains(searchQuery.toLowerCase());
                               return Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
