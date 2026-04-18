@@ -52,53 +52,58 @@ const NoteSchema = CollectionSchema(
       name: r'id',
       type: IsarType.string,
     ),
-    r'isDeleted': PropertySchema(
+    r'imagePaths': PropertySchema(
       id: 7,
+      name: r'imagePaths',
+      type: IsarType.stringList,
+    ),
+    r'isDeleted': PropertySchema(
+      id: 8,
       name: r'isDeleted',
       type: IsarType.bool,
     ),
     r'isPinned': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'isPinned',
       type: IsarType.bool,
     ),
     r'isPrivate': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'isPrivate',
       type: IsarType.bool,
     ),
     r'isRichText': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'isRichText',
       type: IsarType.bool,
     ),
     r'lastModifiedBy': PropertySchema(
-      id: 11,
+      id: 12,
       name: r'lastModifiedBy',
       type: IsarType.string,
     ),
     r'plainText': PropertySchema(
-      id: 12,
+      id: 13,
       name: r'plainText',
       type: IsarType.string,
     ),
     r'tagIds': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'tagIds',
       type: IsarType.stringList,
     ),
     r'title': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'title',
       type: IsarType.string,
     ),
     r'updatedAt': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'updatedAt',
       type: IsarType.dateTime,
     ),
     r'version': PropertySchema(
-      id: 16,
+      id: 17,
       name: r'version',
       type: IsarType.long,
     )
@@ -166,6 +171,13 @@ int _noteEstimateSize(
   bytesCount += 3 + object.formattedCreatedAt.length * 3;
   bytesCount += 3 + object.formattedUpdatedAt.length * 3;
   bytesCount += 3 + object.id.length * 3;
+  bytesCount += 3 + object.imagePaths.length * 3;
+  {
+    for (var i = 0; i < object.imagePaths.length; i++) {
+      final value = object.imagePaths[i];
+      bytesCount += value.length * 3;
+    }
+  }
   {
     final value = object.lastModifiedBy;
     if (value != null) {
@@ -197,16 +209,17 @@ void _noteSerialize(
   writer.writeString(offsets[4], object.formattedCreatedAt);
   writer.writeString(offsets[5], object.formattedUpdatedAt);
   writer.writeString(offsets[6], object.id);
-  writer.writeBool(offsets[7], object.isDeleted);
-  writer.writeBool(offsets[8], object.isPinned);
-  writer.writeBool(offsets[9], object.isPrivate);
-  writer.writeBool(offsets[10], object.isRichText);
-  writer.writeString(offsets[11], object.lastModifiedBy);
-  writer.writeString(offsets[12], object.plainText);
-  writer.writeStringList(offsets[13], object.tagIds);
-  writer.writeString(offsets[14], object.title);
-  writer.writeDateTime(offsets[15], object.updatedAt);
-  writer.writeLong(offsets[16], object.version);
+  writer.writeStringList(offsets[7], object.imagePaths);
+  writer.writeBool(offsets[8], object.isDeleted);
+  writer.writeBool(offsets[9], object.isPinned);
+  writer.writeBool(offsets[10], object.isPrivate);
+  writer.writeBool(offsets[11], object.isRichText);
+  writer.writeString(offsets[12], object.lastModifiedBy);
+  writer.writeString(offsets[13], object.plainText);
+  writer.writeStringList(offsets[14], object.tagIds);
+  writer.writeString(offsets[15], object.title);
+  writer.writeDateTime(offsets[16], object.updatedAt);
+  writer.writeLong(offsets[17], object.version);
 }
 
 Note _noteDeserialize(
@@ -220,14 +233,15 @@ Note _noteDeserialize(
     content: reader.readString(offsets[1]),
     createdAt: reader.readDateTime(offsets[2]),
     id: reader.readString(offsets[6]),
-    isDeleted: reader.readBoolOrNull(offsets[7]) ?? false,
-    isPinned: reader.readBoolOrNull(offsets[8]) ?? false,
-    isPrivate: reader.readBoolOrNull(offsets[9]) ?? false,
-    lastModifiedBy: reader.readStringOrNull(offsets[11]),
-    tagIds: reader.readStringList(offsets[13]) ?? const [],
-    title: reader.readString(offsets[14]),
-    updatedAt: reader.readDateTime(offsets[15]),
-    version: reader.readLongOrNull(offsets[16]) ?? 1,
+    imagePaths: reader.readStringList(offsets[7]) ?? const [],
+    isDeleted: reader.readBoolOrNull(offsets[8]) ?? false,
+    isPinned: reader.readBoolOrNull(offsets[9]) ?? false,
+    isPrivate: reader.readBoolOrNull(offsets[10]) ?? false,
+    lastModifiedBy: reader.readStringOrNull(offsets[12]),
+    tagIds: reader.readStringList(offsets[14]) ?? const [],
+    title: reader.readString(offsets[15]),
+    updatedAt: reader.readDateTime(offsets[16]),
+    version: reader.readLongOrNull(offsets[17]) ?? 1,
   );
   object.isarId = id;
   return object;
@@ -255,24 +269,26 @@ P _noteDeserializeProp<P>(
     case 6:
       return (reader.readString(offset)) as P;
     case 7:
-      return (reader.readBoolOrNull(offset) ?? false) as P;
+      return (reader.readStringList(offset) ?? const []) as P;
     case 8:
       return (reader.readBoolOrNull(offset) ?? false) as P;
     case 9:
       return (reader.readBoolOrNull(offset) ?? false) as P;
     case 10:
-      return (reader.readBool(offset)) as P;
+      return (reader.readBoolOrNull(offset) ?? false) as P;
     case 11:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 12:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 13:
-      return (reader.readStringList(offset) ?? const []) as P;
-    case 14:
       return (reader.readString(offset)) as P;
+    case 14:
+      return (reader.readStringList(offset) ?? const []) as P;
     case 15:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 16:
+      return (reader.readDateTime(offset)) as P;
+    case 17:
       return (reader.readLongOrNull(offset) ?? 1) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1389,6 +1405,221 @@ extension NoteQueryFilter on QueryBuilder<Note, Note, QFilterCondition> {
         property: r'id',
         value: '',
       ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsElementEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'imagePaths',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsElementGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'imagePaths',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsElementLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'imagePaths',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsElementBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'imagePaths',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsElementStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'imagePaths',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsElementEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'imagePaths',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsElementContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'imagePaths',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsElementMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'imagePaths',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsElementIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'imagePaths',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition>
+      imagePathsElementIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'imagePaths',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsLengthEqualTo(
+      int length) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'imagePaths',
+        length,
+        true,
+        length,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'imagePaths',
+        0,
+        true,
+        0,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'imagePaths',
+        0,
+        false,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsLengthLessThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'imagePaths',
+        0,
+        true,
+        length,
+        include,
+      );
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsLengthGreaterThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'imagePaths',
+        length,
+        include,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Note, Note, QAfterFilterCondition> imagePathsLengthBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'imagePaths',
+        lower,
+        includeLower,
+        upper,
+        includeUpper,
+      );
     });
   }
 
@@ -2661,6 +2892,12 @@ extension NoteQueryWhereDistinct on QueryBuilder<Note, Note, QDistinct> {
     });
   }
 
+  QueryBuilder<Note, Note, QDistinct> distinctByImagePaths() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'imagePaths');
+    });
+  }
+
   QueryBuilder<Note, Note, QDistinct> distinctByIsDeleted() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'isDeleted');
@@ -2772,6 +3009,12 @@ extension NoteQueryProperty on QueryBuilder<Note, Note, QQueryProperty> {
   QueryBuilder<Note, String, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<Note, List<String>, QQueryOperations> imagePathsProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'imagePaths');
     });
   }
 

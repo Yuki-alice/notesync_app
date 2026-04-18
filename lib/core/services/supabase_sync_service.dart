@@ -60,6 +60,11 @@ class SupabaseSyncService {
 
   static const Duration _timeBuffer = Duration(seconds: 2);
 
+  // 🌟 优化：防止短时间内重复同步的锁机制
+  static bool _isPrivateImageSyncing = false;
+  static DateTime? _lastPrivateImageSyncTime;
+  static const Duration _minSyncInterval = Duration(seconds: 10);
+
   // =========================================================================
   // 🌟 1. 本地删除动作记录 (废纸篓同步机制)
   // =========================================================================
@@ -150,7 +155,8 @@ class SupabaseSyncService {
       try {
         final allNotes = _noteRepo.getAllNotes();
 
-        if (pushedNotes.isNotEmpty) await _uploadImages(pushedNotes);
+        // 🌟 上传所有笔记的图片（不只是被推送的），确保隐私笔记图片也能上传
+        await _uploadImages(allNotes);
 
         // 🌟 核弹级更新：无论有没有拉取新笔记，强行扫描所有本地存活笔记，缺失的图片全部从云端下回来！
         await _downloadImages(allNotes);
@@ -169,37 +175,166 @@ class SupabaseSyncService {
   }
 
   // =========================================================================
+  // 🌟 隐私图片专用同步 - 在解锁隐私空间时调用
+  // =========================================================================
+  Future<void> syncPrivateImagesOnly() async {
+    if (_noteRepo == null) return;
+    if (_supabase.auth.currentUser == null) {
+      _SyncLogger.warn('IMAGE', '未登录，中止隐私图片同步');
+      return;
+    }
+
+    // 🌟 优化：防止重复同步
+    if (_isPrivateImageSyncing) {
+      _SyncLogger.info('IMAGE', '隐私图片同步正在进行中，跳过重复调用');
+      return;
+    }
+
+    // 🌟 优化：检查同步间隔
+    if (_lastPrivateImageSyncTime != null) {
+      final timeSinceLastSync = DateTime.now().difference(_lastPrivateImageSyncTime!);
+      if (timeSinceLastSync < _minSyncInterval) {
+        _SyncLogger.info('IMAGE', '距离上次同步仅 ${timeSinceLastSync.inSeconds} 秒，跳过本次同步');
+        return;
+      }
+    }
+
+    final privacy = PrivacyService();
+    if (!privacy.isUnlocked) {
+      _SyncLogger.warn('IMAGE', '隐私空间未解锁，跳过隐私图片同步');
+      return;
+    }
+
+    _isPrivateImageSyncing = true;
+    _lastPrivateImageSyncTime = DateTime.now();
+
+    _SyncLogger.info('IMAGE', '====== 🔐 启动隐私图片专用同步 ======');
+    try {
+      // 只获取隐私笔记
+      final allNotes = _noteRepo.getAllNotes();
+      final privateNotes = allNotes.where((n) => n.isPrivate && !n.isDeleted).toList();
+
+      if (privateNotes.isEmpty) {
+        _SyncLogger.info('IMAGE', '没有隐私笔记需要同步图片');
+        return;
+      }
+
+      _SyncLogger.info('IMAGE', '发现 ${privateNotes.length} 条隐私笔记，开始同步图片');
+
+      // 1. 先下载缺失的隐私图片（从云端拉取）
+      await _downloadImages(privateNotes);
+
+      // 2. 再上传本地隐私图片到云端
+      await _uploadImages(privateNotes);
+
+      _SyncLogger.info('IMAGE', '====== ✅ 隐私图片同步完成 ======');
+    } catch (e) {
+      _SyncLogger.error('IMAGE', '隐私图片同步失败', e);
+    } finally {
+      // 🌟 优化：释放同步锁
+      _isPrivateImageSyncing = false;
+    }
+  }
+
+  // =========================================================================
   // 🌟 Auto-Heal 附件处理引擎与云端 GC
   // =========================================================================
   Future<void> _uploadImages(List<Note> pushedNotes) async {
     final storage = _supabase.storage.from(_imageBucket);
     final appDir = await getApplicationDocumentsDirectory();
 
-    Set<String> fileNames = {};
+    // 🌟 收集需要上传的图片，标记是否属于隐私笔记
+    final Map<String, bool> fileNameToIsPrivate = {};
     for (var note in pushedNotes) {
-      // 🌟 隐私笔记需要解密后才能提取图片路径
-      String content = note.content;
-      if (note.isPrivate && content.startsWith('AES_V1::')) {
-        content = PrivacyService().decryptText(content);
-        // 如果解密失败，跳过此笔记的图片上传
-        if (content.contains('🔒') || content.contains('❌')) {
-          _SyncLogger.warn('IMAGE', '隐私笔记 ${note.id} 解密失败，跳过图片上传');
-          continue;
+      // 优先使用 imagePaths 字段（如果存在）
+      if (note.imagePaths.isNotEmpty) {
+        for (var path in note.imagePaths) {
+          fileNameToIsPrivate[path.replaceAll('\\', '/').split('/').last] = note.isPrivate;
         }
-      }
-      final paths = Note.extractAllImagePaths(content);
-      for(var path in paths) {
-        fileNames.add(path.replaceAll('\\', '/').split('/').last); // 免疫反斜杠
+      } else {
+        // 从内容中提取图片路径（兼容旧数据）
+        // 🌟 隐私笔记需要解密后才能提取图片路径
+        String content = note.content;
+        if (note.isPrivate && content.startsWith('AES_V1::')) {
+          content = PrivacyService().decryptText(content);
+          // 如果解密失败，跳过此笔记的图片上传
+          if (content.contains('🔒') || content.contains('❌')) {
+            _SyncLogger.warn('IMAGE', '隐私笔记 ${note.id} 解密失败，跳过图片上传');
+            continue;
+          }
+        }
+        final paths = Note.extractAllImagePaths(content);
+        for (var path in paths) {
+          fileNameToIsPrivate[path.replaceAll('\\', '/').split('/').last] = note.isPrivate;
+        }
       }
     }
 
-    if (fileNames.isEmpty) return;
+    if (fileNameToIsPrivate.isEmpty) {
+      _SyncLogger.info('IMAGE', '没有需要上传的图片');
+      return;
+    }
 
-    List<Future<void>> uploadTasks = fileNames.map((fileName) async {
+    _SyncLogger.info('IMAGE', '准备上传 ${fileNameToIsPrivate.length} 张图片，其中隐私图片: ${fileNameToIsPrivate.values.where((v) => v).length} 张');
+
+    final privacy = PrivacyService();
+    _SyncLogger.info('IMAGE', 'PrivacyService 状态: isUnlocked=${privacy.isUnlocked}');
+
+    // 🌟 优化：先获取云端已有文件列表，避免重复上传
+    final cloudFiles = await _getCloudFileList();
+    _SyncLogger.info('IMAGE', '云端已有 ${cloudFiles.length} 个文件');
+
+    int skippedCount = 0;
+    int uploadedCount = 0;
+
+    List<Future<void>> uploadTasks = fileNameToIsPrivate.entries.map((entry) async {
+      final fileName = entry.key;
+      final isPrivate = entry.value;
+      final cloudFileName = isPrivate ? '$fileName.enc' : fileName;
+
       try {
         final localFile = File(p.join(appDir.path, 'note_images', fileName));
         if (await localFile.exists()) {
-          await storage.upload(fileName, localFile, fileOptions: const FileOptions(upsert: true));
+          // 🌟 优化：检查云端是否已有该文件
+          if (cloudFiles.contains(cloudFileName)) {
+            skippedCount++;
+            return; // 跳过已存在的文件
+          }
+
+          if (isPrivate && privacy.isUnlocked) {
+            // 🌟 隐私笔记图片：读取、加密、写入临时文件、上传
+            _SyncLogger.info('IMAGE', '正在加密上传隐私图片: $fileName');
+            final bytes = await localFile.readAsBytes();
+            final encryptedBytes = privacy.encryptFileBytes(bytes);
+            // 加密后的文件名添加 .enc 后缀
+            final encryptedFileName = '$fileName.enc';
+            // 写入临时文件（使用临时目录避免污染主目录）
+            final tempDir = Directory(p.join(appDir.path, 'note_images', '.temp'));
+            if (!await tempDir.exists()) {
+              await tempDir.create(recursive: true);
+            }
+            final tempFile = File(p.join(tempDir.path, encryptedFileName));
+            await tempFile.writeAsBytes(encryptedBytes, flush: true);
+            await storage.upload(
+              encryptedFileName,
+              tempFile,
+              fileOptions: const FileOptions(upsert: true, contentType: 'application/octet-stream'),
+            );
+            // 删除临时文件
+            await tempFile.delete();
+            uploadedCount++;
+            _SyncLogger.info('IMAGE', '隐私图片上传成功: $encryptedFileName');
+          } else if (isPrivate && !privacy.isUnlocked) {
+            _SyncLogger.warn('IMAGE', '隐私图片 $fileName 跳过上传：PrivacyService 未解锁');
+          } else {
+            // 普通笔记图片：直接上传
+            _SyncLogger.info('IMAGE', '正在上传普通图片: $fileName');
+            await storage.upload(fileName, localFile, fileOptions: const FileOptions(upsert: true));
+            uploadedCount++;
+            _SyncLogger.info('IMAGE', '普通图片上传成功: $fileName');
+          }
+        } else {
+          _SyncLogger.warn('IMAGE', '本地图片不存在: ${localFile.path}');
         }
       } catch (e) {
         _SyncLogger.warn('IMAGE', '上传图片跳过 $fileName: $e');
@@ -207,36 +342,61 @@ class SupabaseSyncService {
     }).toList();
 
     await Future.wait(uploadTasks);
-    _SyncLogger.info('IMAGE', '图片附件上传完成');
+    _SyncLogger.info('IMAGE', '图片附件上传完成: 上传 $uploadedCount 张, 跳过 $skippedCount 张');
+  }
+
+  // 🌟 优化：获取云端文件列表
+  Future<Set<String>> _getCloudFileList() async {
+    try {
+      final storage = _supabase.storage.from(_imageBucket);
+      final files = await storage.list(searchOptions: const SearchOptions(limit: 5000));
+      return files.map((f) => f.name).toSet();
+    } catch (e) {
+      _SyncLogger.warn('IMAGE', '获取云端文件列表失败: $e');
+      return {};
+    }
   }
 
   Future<void> _downloadImages(List<Note> allNotes) async {
     final storage = _supabase.storage.from(_imageBucket);
     final appDir = await getApplicationDocumentsDirectory();
 
-    Set<String> fileNames = {};
+    // 🌟 收集需要下载的图片，标记是否属于隐私笔记
+    final Map<String, bool> fileNameToIsPrivate = {};
     for (var note in allNotes) {
       if (note.isDeleted) continue;
-      // 🌟 隐私笔记需要解密后才能提取图片路径
-      String content = note.content;
-      if (note.isPrivate && content.startsWith('AES_V1::')) {
-        content = PrivacyService().decryptText(content);
-        // 如果解密失败，跳过此笔记的图片下载
-        if (content.contains('🔒') || content.contains('❌')) {
-          continue;
+      // 🌟 优先使用 imagePaths 字段（如果存在）
+      if (note.imagePaths.isNotEmpty) {
+        for (var path in note.imagePaths) {
+          fileNameToIsPrivate[path.replaceAll('\\', '/').split('/').last] = note.isPrivate;
         }
-      }
-      final paths = Note.extractAllImagePaths(content);
-      for(var path in paths) {
-        fileNames.add(path.replaceAll('\\', '/').split('/').last); // 免疫反斜杠
+      } else {
+        // 从内容中提取图片路径（兼容旧数据）
+        // 🌟 隐私笔记需要解密后才能提取图片路径
+        String content = note.content;
+        if (note.isPrivate && content.startsWith('AES_V1::')) {
+          content = PrivacyService().decryptText(content);
+          // 如果解密失败，跳过此笔记的图片下载
+          if (content.contains('🔒') || content.contains('❌')) {
+            continue;
+          }
+        }
+        final paths = Note.extractAllImagePaths(content);
+        for (var path in paths) {
+          fileNameToIsPrivate[path.replaceAll('\\', '/').split('/').last] = note.isPrivate;
+        }
       }
     }
 
-    if (fileNames.isEmpty) return;
+    if (fileNameToIsPrivate.isEmpty) return;
 
     int recoveredCount = 0;
-    const int maxConcurrent = 5;
-    final fileList = fileNames.toList();
+    // 🌟 优化：加密/解密是CPU密集型操作，减少并发数避免卡顿
+    // 普通图片用 5 个并发，隐私图片用 2 个并发
+    final hasPrivateImages = fileNameToIsPrivate.values.any((v) => v);
+    final int maxConcurrent = hasPrivateImages ? 2 : 5;
+    final fileList = fileNameToIsPrivate.keys.toList();
+    final privacy = PrivacyService();
 
     for (int i = 0; i < fileList.length; i += maxConcurrent) {
       final end = (i + maxConcurrent < fileList.length) ? i + maxConcurrent : fileList.length;
@@ -247,12 +407,33 @@ class SupabaseSyncService {
           final localFile = File(p.join(appDir.path, 'note_images', fileName));
           // 🌟 Auto-Heal: 如果本地文件被误删了，立刻强行从云端拉取！
           if (!await localFile.exists()) {
-            final bytes = await storage.download(fileName);
-            await localFile.parent.create(recursive: true);
-            await localFile.writeAsBytes(bytes);
-            recoveredCount++;
+            final isPrivate = fileNameToIsPrivate[fileName] ?? false;
+            
+            if (isPrivate && privacy.isUnlocked) {
+              // 🌟 隐私笔记图片：下载加密版本，解密后保存
+              final encryptedFileName = '$fileName.enc';
+              _SyncLogger.info('IMAGE', '正在下载隐私图片: $encryptedFileName');
+              final encryptedBytes = await storage.download(encryptedFileName);
+              final decryptedBytes = privacy.decryptFileBytes(encryptedBytes);
+              await localFile.parent.create(recursive: true);
+              await localFile.writeAsBytes(decryptedBytes);
+              _SyncLogger.info('IMAGE', '隐私图片下载成功: $fileName');
+              recoveredCount++;
+            } else if (isPrivate && !privacy.isUnlocked) {
+              _SyncLogger.warn('IMAGE', '隐私图片 $fileName 跳过下载：PrivacyService 未解锁');
+            } else {
+              // 普通笔记图片：直接下载
+              _SyncLogger.info('IMAGE', '正在下载普通图片: $fileName');
+              final bytes = await storage.download(fileName);
+              await localFile.parent.create(recursive: true);
+              await localFile.writeAsBytes(bytes);
+              _SyncLogger.info('IMAGE', '普通图片下载成功: $fileName');
+              recoveredCount++;
+            }
           }
-        } catch (e) {}
+        } catch (e) {
+          _SyncLogger.warn('IMAGE', '下载图片失败 $fileName: $e');
+        }
       });
       await Future.wait(tasks);
     }
@@ -267,18 +448,26 @@ class SupabaseSyncService {
       final Set<String> usedImageNames = {};
       for (var note in allNotes) {
         if (note.isDeleted) continue;
-        // 🌟 隐私笔记需要解密后才能提取图片路径
-        String content = note.content;
-        if (note.isPrivate && content.startsWith('AES_V1::')) {
-          content = PrivacyService().decryptText(content);
-          // 如果解密失败，跳过此笔记
-          if (content.contains('🔒') || content.contains('❌')) {
-            continue;
+        // 🌟 优先使用 imagePaths 字段（如果存在）
+        if (note.imagePaths.isNotEmpty) {
+          for (var path in note.imagePaths) {
+            usedImageNames.add(path.replaceAll('\\', '/').split('/').last); // 免疫反斜杠
           }
-        }
-        final paths = Note.extractAllImagePaths(content);
-        for (var path in paths) {
-          usedImageNames.add(path.replaceAll('\\', '/').split('/').last); // 免疫反斜杠
+        } else {
+          // 从内容中提取图片路径（兼容旧数据）
+          // 🌟 隐私笔记需要解密后才能提取图片路径
+          String content = note.content;
+          if (note.isPrivate && content.startsWith('AES_V1::')) {
+            content = PrivacyService().decryptText(content);
+            // 如果解密失败，跳过此笔记
+            if (content.contains('🔒') || content.contains('❌')) {
+              continue;
+            }
+          }
+          final paths = Note.extractAllImagePaths(content);
+          for (var path in paths) {
+            usedImageNames.add(path.replaceAll('\\', '/').split('/').last);
+          }
         }
       }
 
@@ -289,7 +478,10 @@ class SupabaseSyncService {
       for (var file in cloudFiles) {
         if (file.name == '.emptyFolderPlaceholder' || file.name.startsWith('.')) continue;
 
-        if (!usedImageNames.contains(file.name)) {
+        // 🌟 检查原始文件名和加密后的文件名
+        final isUsed = usedImageNames.contains(file.name) ||
+                       usedImageNames.any((name) => file.name == '$name.enc');
+        if (!isUsed) {
           orphanedFiles.add(file.name);
         }
       }
@@ -479,6 +671,7 @@ class SupabaseSyncService {
             version: (map['version'] as int?) ?? 1,
             isPinned: map['is_pinned'] == true,
             isDeleted: map['is_deleted'] == true,
+            isPrivate: map['is_private'] == true,
           );
 
           if (existingLocalIds.contains(updatedNote.id)) {
@@ -517,6 +710,7 @@ class SupabaseSyncService {
           'version': note.version,
           'is_pinned': note.isPinned,
           'is_deleted': note.isDeleted,
+          'is_private': note.isPrivate,
           'user_id': userId,
         });
         pushedNotes.add(note);
@@ -527,8 +721,27 @@ class SupabaseSyncService {
       try {
         await _supabase.from('notes').upsert(payloads).timeout(const Duration(seconds: 15));
       } catch (e) {
-        _SyncLogger.error('PUSH', '笔记主表推送失败，已中止', e);
-        return [];
+        // 🌟 降级策略：如果包含 is_private 字段失败，尝试不包含
+        _SyncLogger.warn('PUSH', '包含 is_private 推送失败，尝试降级推送: $e');
+        try {
+          final legacyPayloads = payloads.map((p) => {
+            'id': p['id'],
+            'title': p['title'],
+            'content': p['content'],
+            'created_at': p['created_at'],
+            'updated_at': p['updated_at'],
+            'category_id': p['category_id'],
+            'version': p['version'],
+            'is_pinned': p['is_pinned'],
+            'is_deleted': p['is_deleted'],
+            'user_id': p['user_id'],
+          }).toList();
+          await _supabase.from('notes').upsert(legacyPayloads).timeout(const Duration(seconds: 15));
+          _SyncLogger.info('PUSH', '降级推送成功（不含 is_private）');
+        } catch (legacyError) {
+          _SyncLogger.error('PUSH', '笔记主表推送失败（降级也失败），已中止', legacyError);
+          return [];
+        }
       }
 
       // 隔离标签关系的推送，避免拖累笔记主表

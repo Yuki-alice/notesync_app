@@ -80,6 +80,9 @@ class _NotesPageState extends State<NotesPage> with WidgetsBindingObserver, Rout
 
   /// 进入隐私模式 - 跳转到独立页面
   void _enterPrivacyMode(BuildContext context) {
+    // 🌟 先取消焦点并关闭软键盘，避免卡顿和弹窗冲突
+    _searchFocusNode.unfocus();
+    
     Navigator.push(
       context,
       MaterialPageRoute(

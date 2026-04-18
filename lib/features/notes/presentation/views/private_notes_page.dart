@@ -40,7 +40,22 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _checkUnlockStatus();
+    // 🌟 页面加载时只检查是否已解锁，不自动弹窗
+    _checkInitialUnlockStatus();
+  }
+
+  /// 🌟 初始状态检查 - 只检查是否已解锁，不自动弹窗
+  Future<void> _checkInitialUnlockStatus() async {
+    final privacy = PrivacyService();
+    
+    // 如果已经解锁，刷新笔记并显示
+    if (privacy.isUnlocked) {
+      await context.read<NotesProvider>().loadNotes();
+      if (mounted) {
+        setState(() => _isUnlocked = true);
+      }
+    }
+    // 如果未解锁，保持锁定状态显示，等待用户点击"解锁"按钮
   }
 
   @override
@@ -60,10 +75,10 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
     }
   }
 
-  /// 检查解锁状态
+  /// 检查解锁状态 - 与电脑端逻辑保持一致
   Future<void> _checkUnlockStatus() async {
     final privacy = PrivacyService();
-    
+
     // 如果已经解锁，刷新笔记并显示
     if (privacy.isUnlocked) {
       await context.read<NotesProvider>().loadNotes();
@@ -71,21 +86,19 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
       return;
     }
 
-    // 如果未设置密码，先设置
+    // 如果未设置密码，引导设置密码
     if (!await privacy.hasPassword()) {
       if (!mounted) return;
       final result = await showPrivacySetupDialog(context);
       if (result && mounted) {
         await context.read<NotesProvider>().loadNotes();
         setState(() => _isUnlocked = true);
-      } else {
-        // 用户取消设置，返回上一页
-        if (mounted) Navigator.pop(context);
+        context.read<PrivacyModeProvider>().enterPrivateModeDirect();
       }
       return;
     }
 
-    // 需要解锁
+    // 已设置密码，需要解锁
     if (!mounted) return;
     final unlocked = await showPrivacyUnlockDialog(context);
     if (unlocked && mounted) {
@@ -94,9 +107,6 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
       setState(() => _isUnlocked = true);
       // 更新全局隐私模式状态
       context.read<PrivacyModeProvider>().enterPrivateModeDirect();
-    } else {
-      // 解锁失败或取消，返回上一页
-      if (mounted) Navigator.pop(context);
     }
   }
 
@@ -194,7 +204,7 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
     );
   }
 
-  /// 锁定状态显示
+  /// 锁定状态显示 - 与电脑端一致，添加修改密码功能
   Widget _buildLockedState(ThemeData theme) {
     return Center(
       child: Column(
@@ -239,7 +249,53 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
             ),
           ),
+          const SizedBox(height: 16),
+          // 🌟 添加修改密码按钮
+          FutureBuilder<bool>(
+            future: PrivacyService().hasPassword(),
+            builder: (context, snapshot) {
+              if (snapshot.data == true) {
+                return TextButton.icon(
+                  onPressed: _showChangePasswordDialog,
+                  icon: Icon(
+                    Icons.key,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  label: Text(
+                    '修改密码',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
         ],
+      ),
+    );
+  }
+
+  /// 🌟 显示修改密码对话框
+  Future<void> _showChangePasswordDialog() async {
+    final privacy = PrivacyService();
+    
+    // 先验证旧密码
+    final unlocked = await showPrivacyUnlockDialog(context);
+    if (!unlocked || !mounted) return;
+
+    // 显示修改密码对话框
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _ChangePasswordDialog(
+        onSuccess: () {
+          // 修改成功后保持解锁状态
+          setState(() => _isUnlocked = true);
+          context.read<PrivacyModeProvider>().enterPrivateModeDirect();
+        },
       ),
     );
   }
@@ -570,7 +626,7 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
           if (!isSearching) ...[
             const SizedBox(height: 8),
             Text(
-              '点击右下角 + 创建私密笔记',
+              '点击 + 创建私密笔记',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
               ),
@@ -634,6 +690,149 @@ class _SyncStatusIndicator extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 🌟 修改密码对话框
+class _ChangePasswordDialog extends StatefulWidget {
+  final VoidCallback onSuccess;
+
+  const _ChangePasswordDialog({required this.onSuccess});
+
+  @override
+  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+}
+
+class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _changePassword() async {
+    final newPassword = _newPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    if (newPassword.isEmpty) {
+      setState(() => _errorText = '请输入新密码');
+      return;
+    }
+
+    if (newPassword.length < 4) {
+      setState(() => _errorText = '密码至少4位');
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      setState(() => _errorText = '两次输入的密码不一致');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorText = null;
+    });
+
+    try {
+      // 需要先锁定再重新设置密码
+      PrivacyService().lock();
+      await PrivacyService().setupPassword(newPassword);
+
+      if (mounted) {
+        Navigator.pop(context);
+        widget.onSuccess();
+        ToastUtils.showSuccess(context, '密码修改成功');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorText = '修改密码失败: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.key, color: theme.colorScheme.error),
+          const SizedBox(width: 8),
+          const Text('修改密码'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '请输入新密码',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _newPasswordController,
+            obscureText: true,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: '新密码',
+              hintText: '至少4位',
+              prefixIcon: const Icon(Icons.lock_outline),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              errorText: _errorText,
+            ),
+            onSubmitted: (_) => _changePassword(),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _confirmPasswordController,
+            obscureText: true,
+            decoration: InputDecoration(
+              labelText: '确认密码',
+              hintText: '再次输入新密码',
+              prefixIcon: const Icon(Icons.lock_outline),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onSubmitted: (_) => _changePassword(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _isLoading ? null : _changePassword,
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.error,
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('确认修改'),
+        ),
+      ],
     );
   }
 }

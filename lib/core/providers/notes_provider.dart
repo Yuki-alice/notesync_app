@@ -261,6 +261,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     List<String> tagIds = const [],
     String? categoryId,
     bool isPrivate = false,
+    List<String> imagePaths = const [],
   }) async {
     final note = Note(
       id: _uuid.v4(),
@@ -274,6 +275,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       isPinned: false,
       isDeleted: false,
       isPrivate: isPrivate,
+      imagePaths: imagePaths,
     );
 
     await _repository.addNote(note);

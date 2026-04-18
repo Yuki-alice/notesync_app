@@ -27,6 +27,9 @@ class Note {
   bool isDeleted;
   bool isPrivate;
 
+  // 🌟 图片路径列表（用于同步，不加密存储）
+  List<String> imagePaths;
+
   Note({
     required this.id,
     required this.title,
@@ -40,6 +43,7 @@ class Note {
     this.isPinned = false,
     this.isDeleted = false,
     this.isPrivate = false,
+    this.imagePaths = const [],
   });
 
   bool get isRichText {
@@ -91,6 +95,7 @@ class Note {
     bool? isPinned,
     bool? isDeleted,
     bool? isPrivate,
+    List<String>? imagePaths,
   }) {
     return Note(
       id: id ?? this.id,
@@ -105,6 +110,7 @@ class Note {
       isPinned: isPinned ?? this.isPinned,
       isDeleted: isDeleted ?? this.isDeleted,
       isPrivate: isPrivate ?? this.isPrivate,
+      imagePaths: imagePaths ?? this.imagePaths,
     );
   }
 

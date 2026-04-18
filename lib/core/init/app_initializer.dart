@@ -10,6 +10,8 @@ import '../repositories/category_repository.dart';
 import '../repositories/note_repository.dart';
 import '../repositories/tag_repository.dart';
 import '../repositories/todo_repository.dart';
+import '../services/privacy_service.dart';
+import '../services/supabase_sync_service.dart';
 
 class AppInitializer {
   // 全局提供 Repository 实例
@@ -63,5 +65,12 @@ class AppInitializer {
     todoRepo = TodoRepository(dbService.isar);
     categoryRepo = CategoryRepository(dbService.isar);
     tagRepo = TagRepository(dbService.isar);
+
+    // 6. 注册隐私空间解锁回调 - 解锁时触发隐私图片同步
+    PrivacyService().addOnUnlockListener(() async {
+      debugPrint('🔐 AppInitializer: 隐私空间解锁，触发隐私图片同步');
+      final syncService = SupabaseSyncService(noteRepo, todoRepo, categoryRepo, tagRepo);
+      await syncService.syncPrivateImagesOnly();
+    });
   }
 }

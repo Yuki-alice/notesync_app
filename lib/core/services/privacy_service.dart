@@ -46,6 +46,31 @@ class PrivacyService with WidgetsBindingObserver {
   static const String _encryptPrefix = 'AES_V1::';
   static const String _storageKeyPasswordHash = 'privacy_password_hash';
 
+  // ==================== 回调 ====================
+  /// 解锁成功后的回调列表
+  final List<VoidCallback> _onUnlockCallbacks = [];
+
+  /// 注册解锁回调
+  void addOnUnlockListener(VoidCallback callback) {
+    _onUnlockCallbacks.add(callback);
+  }
+
+  /// 移除解锁回调
+  void removeOnUnlockListener(VoidCallback callback) {
+    _onUnlockCallbacks.remove(callback);
+  }
+
+  /// 触发解锁回调
+  void _notifyUnlockListeners() {
+    for (final callback in _onUnlockCallbacks) {
+      try {
+        callback();
+      } catch (e) {
+        debugPrint('❌ PrivacyService: 解锁回调执行失败 - $e');
+      }
+    }
+  }
+
   // ==================== 状态获取 ====================
   bool get isUnlocked => _sessionKey != null;
   Duration get autoLockDuration => _autoLockDuration;
@@ -152,6 +177,9 @@ class PrivacyService with WidgetsBindingObserver {
       // 🌟 跨设备兼容：从密码派生密钥
       _sessionKey = _deriveKeyFromPassword(password);
 
+      // 🌟 触发解锁回调（用于同步隐私图片等）
+      _notifyUnlockListeners();
+
       debugPrint('🔓 PrivacyService: 密码解锁成功');
       return true;
     } catch (e) {
@@ -239,6 +267,58 @@ class PrivacyService with WidgetsBindingObserver {
       return cipherTexts.map((_) => '🔒 [私密内容]').toList();
     }
     return cipherTexts.map(decryptText).toList();
+  }
+
+  // ==================== 文件加密/解密 ====================
+
+  /// 加密文件字节
+  /// 
+  /// [fileBytes]: 原始文件字节
+  /// 返回加密后的字节，格式: IV (12 bytes) + Ciphertext + Auth Tag (16 bytes)
+  Uint8List encryptFileBytes(Uint8List fileBytes) {
+    if (_sessionKey == null) {
+      throw Exception('PrivacyService is locked! Cannot encrypt file.');
+    }
+
+    final encrypter = enc.Encrypter(
+      enc.AES(_sessionKey!, mode: enc.AESMode.gcm),
+    );
+    final iv = enc.IV.fromSecureRandom(12);
+    final encrypted = encrypter.encryptBytes(fileBytes, iv: iv);
+
+    // 格式: IV + Ciphertext
+    final result = Uint8List(iv.bytes.length + encrypted.bytes.length);
+    result.setAll(0, iv.bytes);
+    result.setAll(iv.bytes.length, encrypted.bytes);
+    return result;
+  }
+
+  /// 解密文件字节
+  /// 
+  /// [encryptedBytes]: 加密后的字节（格式: IV + Ciphertext）
+  /// 返回原始文件字节
+  Uint8List decryptFileBytes(Uint8List encryptedBytes) {
+    if (_sessionKey == null) {
+      throw Exception('PrivacyService is locked! Cannot decrypt file.');
+    }
+
+    try {
+      // 分离 IV 和密文
+      final iv = enc.IV(Uint8List.fromList(encryptedBytes.sublist(0, 12)));
+      final encrypted = enc.Encrypted(
+        Uint8List.fromList(encryptedBytes.sublist(12)),
+      );
+
+      final encrypter = enc.Encrypter(
+        enc.AES(_sessionKey!, mode: enc.AESMode.gcm),
+      );
+
+      final decrypted = encrypter.decryptBytes(encrypted, iv: iv);
+      return Uint8List.fromList(decrypted);
+    } catch (e) {
+      debugPrint('❌ PrivacyService: 文件解密失败 - $e');
+      throw Exception('文件解密失败: 密钥错误或数据损坏');
+    }
   }
 
   // ==================== 私有方法 ====================

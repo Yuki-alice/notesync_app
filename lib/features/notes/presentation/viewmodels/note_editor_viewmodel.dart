@@ -178,6 +178,9 @@ class NoteEditorViewModel extends ChangeNotifier {
     final deltaJsonList = quillController.document.toDelta().toJson();
     final contentJson = await compute(_encodeDeltaInBackground, deltaJsonList);
 
+    // 🌟 提取图片路径（用于同步，不加密）
+    final imagePaths = Note.extractAllImagePaths(contentJson);
+
     // 处理隐私笔记加密
     String finalTitle = title.isEmpty ? '未命名笔记' : title;
     String finalContent = contentJson;
@@ -195,15 +198,16 @@ class NoteEditorViewModel extends ChangeNotifier {
           content: finalContent,
           tagIds: tagIds,
           categoryId: categoryId,
-          isPrivate: finalIsPrivate
+          isPrivate: finalIsPrivate,
+          imagePaths: imagePaths,
       );
       _editingNote = newNote;
     } else {
       // 如果原笔记是隐私笔记，保持隐私状态
       final shouldEncrypt = _editingNote!.isPrivate || isPrivate;
-      
+
       final updatedNote = _editingNote!.copyWith(
-          title: shouldEncrypt && PrivacyService().isUnlocked 
+          title: shouldEncrypt && PrivacyService().isUnlocked
               ? PrivacyService().encryptText(title.isEmpty ? '未命名笔记' : title)
               : title.isEmpty ? '未命名笔记' : title,
           content: shouldEncrypt && PrivacyService().isUnlocked
@@ -212,6 +216,7 @@ class NoteEditorViewModel extends ChangeNotifier {
           tagIds: tagIds,
           categoryId: categoryId,
           isPrivate: shouldEncrypt,
+          imagePaths: imagePaths,
           version: _editingNote!.version + 1,
           updatedAt: DateTime.now());
       await notesProvider.updateNote(updatedNote);
