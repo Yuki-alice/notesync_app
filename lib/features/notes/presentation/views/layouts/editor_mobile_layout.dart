@@ -69,6 +69,7 @@ class _EditorMobileLayoutState extends State<EditorMobileLayout> {
                         viewModel: viewModel,
                         focusNode: widget.titleFocusNode,
                         editorFocusNode: widget.editorFocusNode,
+                        isDesktop: false,
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -87,6 +88,7 @@ class _EditorMobileLayoutState extends State<EditorMobileLayout> {
                     focusNode: widget.editorFocusNode,
                     scrollController: widget.editorInnerScrollController,
                     imageService: widget.imageService,
+                    isDesktop: false,
                   ),
                 ),
                 // 🌟 底部唤醒区

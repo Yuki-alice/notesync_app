@@ -134,9 +134,9 @@ class _EditorDesktopLayoutState extends State<EditorDesktopLayout> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      EditorTitleField(theme: theme, viewModel: widget.viewModel, focusNode: widget.titleFocusNode, editorFocusNode: widget.editorFocusNode),
+                                      EditorTitleField(theme: theme, viewModel: widget.viewModel, focusNode: widget.titleFocusNode, editorFocusNode: widget.editorFocusNode, isDesktop: true),
                                       const SizedBox(height: 16),
-                                      EditorQuillArea(theme: theme, viewModel: widget.viewModel, focusNode: widget.editorFocusNode, scrollController: widget.editorInnerScrollController, imageService: widget.imageService),
+                                      EditorQuillArea(theme: theme, viewModel: widget.viewModel, focusNode: widget.editorFocusNode, scrollController: widget.editorInnerScrollController, imageService: widget.imageService, isDesktop: true),
                                       // 底部点击自动聚焦逻辑...
                                       GestureDetector(
                                         behavior: HitTestBehavior.opaque,

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'package:google_fonts/google_fonts.dart';
 import 'package:notesync_app/features/notes/presentation/widgets/editor_core/quill_styles_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:provider/provider.dart';
 import '../../../../../core/providers/notes_provider.dart';
+import '../../../../../core/theme/app_fonts.dart';
 import '../../views/note_editor_page.dart';
 
 import '../../../../../core/services/image_storage_service.dart';
@@ -17,6 +17,7 @@ class EditorTitleField extends StatelessWidget {
   final NoteEditorViewModel viewModel;
   final FocusNode focusNode;
   final FocusNode editorFocusNode;
+  final bool isDesktop;
 
   const EditorTitleField({
     super.key,
@@ -24,6 +25,7 @@ class EditorTitleField extends StatelessWidget {
     required this.viewModel,
     required this.focusNode,
     required this.editorFocusNode,
+    this.isDesktop = false,
   });
 
   @override
@@ -36,11 +38,8 @@ class EditorTitleField extends StatelessWidget {
       onEditingComplete: () => editorFocusNode.requestFocus(),
       decoration: InputDecoration(
         hintText: '写个好标题...',
-        hintStyle: TextStyle(
-            color: theme.colorScheme.outline.withValues(alpha: 0.3),
-            fontSize: 36,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.5
+        hintStyle: AppFonts.editorTitle(context, isDesktop: isDesktop).copyWith(
+          color: theme.colorScheme.outline.withValues(alpha: 0.3),
         ),
         filled: false,
         fillColor: Colors.transparent,
@@ -50,13 +49,7 @@ class EditorTitleField extends StatelessWidget {
         isDense: true,
         contentPadding: EdgeInsets.zero,
       ),
-      style: TextStyle(
-          color: theme.colorScheme.onSurface,
-          fontSize: 36,
-          fontWeight: FontWeight.w900,
-          height: 1.3,
-          letterSpacing: 0.5
-      ),
+      style: AppFonts.editorTitle(context, isDesktop: isDesktop),
       maxLines: null,
     );
   }
@@ -68,6 +61,7 @@ class EditorQuillArea extends StatefulWidget {
   final FocusNode focusNode;
   final ScrollController scrollController;
   final ImageStorageService imageService;
+  final bool isDesktop;
 
   const EditorQuillArea({
     super.key,
@@ -76,6 +70,7 @@ class EditorQuillArea extends StatefulWidget {
     required this.focusNode,
     required this.scrollController,
     required this.imageService,
+    this.isDesktop = false,
   });
 
   @override
@@ -87,7 +82,6 @@ class _EditorQuillAreaState extends State<EditorQuillArea> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = widget.theme;
     final viewModel = widget.viewModel;
 
     return quill.QuillEditor.basic(
@@ -156,7 +150,9 @@ class _EditorQuillAreaState extends State<EditorQuillArea> {
             },
           ),
         ],
-        customStyles: QuillStylesConfig.getStyles(theme),
+        customStyles: widget.isDesktop
+            ? QuillStylesConfig.getDesktopStyles(context)
+            : QuillStylesConfig.getMobileStyles(context),
       ),
     );
   }
