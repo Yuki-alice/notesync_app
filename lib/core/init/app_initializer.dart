@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -33,11 +34,19 @@ class AppInitializer {
       ),
     );
 
-    // 2. Supabase 云端初始化
-    await Supabase.initialize(
-      url: 'https://mauzvvakcqqhrcphcgmf.supabase.co',
-      anonKey: 'sb_publishable_8HmK4iGLBFj3hk2GJ9a1Xw_yDHC6rPj',
-    );
+    // 2. Supabase 云端初始化（从环境变量读取配置）
+    final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
+    final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+
+    if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+      debugPrint('⚠️ AppInitializer: Supabase 环境变量未配置，云端功能将不可用');
+    } else {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+      );
+      debugPrint('✅ AppInitializer: Supabase 初始化成功');
+    }
 
     // 3. 本地 Isar 数据库初始化
     final dbService = SimpleDatabaseService();

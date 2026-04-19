@@ -13,10 +13,18 @@ import 'core/providers/theme_provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   try {
-    // 1. 执行全局底层初始化 (数据库、云端、窗口)
+    // 0. 确保 Flutter 绑定初始化
+    WidgetsFlutterBinding.ensureInitialized();
+
+    // 1. 加载环境变量
+    await dotenv.load(fileName: ".env");
+    debugPrint('✅ main: 环境变量加载成功');
+
+    // 2. 执行全局底层初始化 (数据库、云端、窗口)
     await AppInitializer.init();
 
     // 2. 注入全局 Provider 并运行 App

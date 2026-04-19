@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class GlmAiService {
-  // 🌟 保留你申请的智谱 API Key
-  static const String _apiKey = 'fe3cc01c2be64bc8bafdc50a9acdf9de.a75pkGxtCg6tgOja';
+  // 🌟 从环境变量读取 API Key
+  static String get _apiKey => dotenv.env['GLM_API_KEY'] ?? '';
   static const String _apiUrl = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
 
   /// 🌟 架构师升级：增加 fullContext 参数，赋予 AI 全局感知能力
