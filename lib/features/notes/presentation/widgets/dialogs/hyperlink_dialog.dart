@@ -134,7 +134,8 @@ class _HyperlinkDialogState extends State<HyperlinkDialog> with SingleTickerProv
   }
 
   Widget _buildNoteTab(BuildContext context, ColorScheme colorScheme) {
-    final notes = context.watch<NotesProvider>().notes;
+    // 🌟 过滤掉隐私笔记（隐私笔记不能通过链接引用）
+    final notes = context.watch<NotesProvider>().notes.where((n) => !n.isPrivate).toList();
     final filteredNotes = notes.where((n) => n.title.toLowerCase().contains(_searchController.text.toLowerCase())).toList();
 
     return Column(

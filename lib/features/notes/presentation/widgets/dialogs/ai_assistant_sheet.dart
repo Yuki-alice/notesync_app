@@ -29,7 +29,7 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
   String _resultText = '';
   String? _errorMsg;
   final ScrollController _scrollController = ScrollController();
-  
+
   // 🌟 性能优化：使用 Timer 节流 setState
   Timer? _throttleTimer;
   String _pendingText = '';
@@ -60,10 +60,10 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
       widget.actionType,
       fullContext: widget.fullContext,
     ).listen(
-      (chunk) {
+          (chunk) {
         _pendingText += chunk;
         _hasPendingUpdate = true;
-        
+
         // 🌟 节流：每 100ms 更新一次 UI，避免频繁重建
         if (_throttleTimer == null || !_throttleTimer!.isActive) {
           _throttleTimer = Timer(const Duration(milliseconds: 100), () {
@@ -210,14 +210,14 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
                 physics: const BouncingScrollPhysics(),
                 child: _errorMsg != null
                     ? Text(
-                        _errorMsg!,
-                        style: TextStyle(color: theme.colorScheme.error),
-                      )
+                  _errorMsg!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                )
                     : MarkdownBody(
-                        data: displayText,
-                        selectable: true,
-                        styleSheet: _buildMarkdownStyleSheet(theme),
-                      ),
+                  data: displayText,
+                  selectable: true,
+                  styleSheet: _buildMarkdownStyleSheet(theme),
+                ),
               ),
             ),
           ),
@@ -231,9 +231,9 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
                   onPressed: _isGenerating || _errorMsg != null
                       ? null
                       : () => Navigator.pop(
-                            context,
-                            {'action': 'append', 'text': _resultText},
-                          ),
+                    context,
+                    {'action': 'append', 'text': _resultText},
+                  ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
@@ -249,9 +249,9 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
                   onPressed: _isGenerating || _errorMsg != null
                       ? null
                       : () => Navigator.pop(
-                            context,
-                            {'action': 'replace', 'text': _resultText},
-                          ),
+                    context,
+                    {'action': 'replace', 'text': _resultText},
+                  ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
@@ -276,7 +276,7 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
         height: 1.7,
         fontSize: 16,
       ),
-      
+
       // 标题样式
       h1: theme.textTheme.headlineSmall?.copyWith(
         fontWeight: FontWeight.bold,
@@ -295,7 +295,7 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
         fontWeight: FontWeight.bold,
         height: 1.4,
       ),
-      
+
       // 🌟 修复列表对齐：统一使用左对齐和适当的缩进
       listBullet: TextStyle(
         color: theme.colorScheme.primary,
@@ -303,10 +303,10 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
         height: 1.7,
       ),
       listBulletPadding: const EdgeInsets.only(left: 8, right: 8),
-      
+
       // 列表项样式
       listIndent: 24, // 🌟 关键：统一缩进距离
-      
+
       // 代码样式
       code: TextStyle(
         backgroundColor: theme.colorScheme.surfaceContainerHighest,
@@ -324,7 +324,7 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
         ),
       ),
       codeblockPadding: const EdgeInsets.all(12),
-      
+
       // 引用样式
       blockquote: TextStyle(
         fontSize: 16,
@@ -345,10 +345,10 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
         horizontal: 16,
         vertical: 8,
       ),
-      
+
       // 段落间距
       blockSpacing: 12,
-      
+
       // 强调样式
       em: TextStyle(
         fontStyle: FontStyle.italic,
@@ -358,7 +358,7 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
         fontWeight: FontWeight.bold,
         height: 1.7,
       ),
-      
+
       // 分隔线
       horizontalRuleDecoration: BoxDecoration(
         border: Border(

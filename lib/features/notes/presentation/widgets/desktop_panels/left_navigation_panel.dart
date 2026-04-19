@@ -543,7 +543,8 @@ class _LeftNavigationPanelState extends State<LeftNavigationPanel> {
     final provider = context.watch<NotesProvider>();
     final categories = provider.categories;
 
-    Iterable<Note> allNotes = provider.notes;
+    // 🌟 过滤掉隐私笔记（隐私笔记只在隐私空间页面显示）
+    Iterable<Note> allNotes = provider.notes.where((n) => !n.isPrivate);
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       allNotes = allNotes.where((n) => n.title.toLowerCase().contains(q));

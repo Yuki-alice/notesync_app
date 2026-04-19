@@ -717,10 +717,33 @@ class SupabaseSyncService {
     for (var id in idsToPush) {
       final note = _noteRepo!.getNoteById(id);
       if (note != null) {
+        // 🌟 隐私笔记加密：在同步前加密 title 和 content
+        String titleToSync = note.title;
+        String contentToSync = note.content;
+        
+        if (note.isPrivate) {
+          final privacy = PrivacyService();
+          if (privacy.isUnlocked) {
+            // 如果隐私空间已解锁，确保内容已加密后再上传
+            titleToSync = privacy.encryptText(note.title);
+            contentToSync = privacy.encryptText(note.content);
+            _SyncLogger.info('PUSH', '隐私笔记 [${note.id}] 已加密后上传');
+          } else {
+            // 如果未解锁，检查内容是否已经是加密格式
+            if (!note.title.startsWith('AES_V1::')) {
+              _SyncLogger.warn('PUSH', '隐私笔记 [${note.id}] 未加密且无法加密，跳过上传');
+              continue; // 跳过这条笔记的上传
+            }
+            // 内容已经是加密的，直接使用
+            titleToSync = note.title;
+            contentToSync = note.content;
+          }
+        }
+        
         payloads.add({
           'id': note.id,
-          'title': note.title,
-          'content': note.content,
+          'title': titleToSync,
+          'content': contentToSync,
           'created_at': note.createdAt.toUtc().toIso8601String(),
           'updated_at': note.updatedAt.toUtc().toIso8601String(),
           // 确保空分类强转 null，防止外键冲突
