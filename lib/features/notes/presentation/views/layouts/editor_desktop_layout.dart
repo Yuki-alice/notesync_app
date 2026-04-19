@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 
@@ -20,6 +22,7 @@ class EditorDesktopLayout extends StatefulWidget {
   final ScrollController mainScrollController;
   final ScrollController editorInnerScrollController;
   final ImageStorageService imageService;
+  final VoidCallback onAiPressed;
 
   const EditorDesktopLayout({
     super.key,
@@ -30,6 +33,7 @@ class EditorDesktopLayout extends StatefulWidget {
     required this.mainScrollController,
     required this.editorInnerScrollController,
     required this.imageService,
+    required this.onAiPressed,
   });
 
   @override
@@ -191,6 +195,12 @@ class _EditorDesktopLayoutState extends State<EditorDesktopLayout> {
           if (widget.viewModel.isDirty) Text('编辑中...', style: TextStyle(color: theme.colorScheme.outline, fontSize: 12, fontWeight: FontWeight.w600)),
           const Spacer(),
           _TopbarBtn(icon: widget.viewModel.isReadOnly ? Icons.edit_note_rounded : Icons.menu_book_rounded, tooltip: widget.viewModel.isReadOnly ? '编辑模式' : '沉浸阅读', onTap: () => widget.viewModel.toggleReadOnly()),
+          const SizedBox(width: 8),
+          _TopbarBtn(
+            icon: Icons.auto_awesome,
+            tooltip: 'AI 伴写 ',
+            onTap: widget.onAiPressed,
+          ),
           const SizedBox(width: 8),
 
           // 🌟 重构后的分享按钮
