@@ -105,9 +105,12 @@ class _TodoItemState extends State<TodoItem>with AutomaticKeepAliveClientMixin {
 
   String _formatDateText(DateTime date) {
     final status = _getDateStatus(date);
-    final timeStr = DateFormat('HH:mm').format(date);
+    final isAllDay = date.hour == 23 && date.minute == 59;
+    final timeStr = isAllDay ? '全天' : DateFormat('HH:mm').format(date);
+
     if (status == _DateStatus.today) return "今天 $timeStr";
     if (status == _DateStatus.overdue) return "已过期 ${DateFormat('MM-dd').format(date)}";
+
     return "${DateFormat('MM-dd').format(date)} $timeStr";
   }
 

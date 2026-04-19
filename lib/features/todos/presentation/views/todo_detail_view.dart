@@ -182,8 +182,14 @@ class _TodoDetailViewState extends State<TodoDetailView> {
                 onPressed: () => _pickDate(todo!),
                 icon: Icon(Icons.calendar_today_rounded, size: 16, color: todo.dueDate == null ? theme.colorScheme.outline : theme.colorScheme.primary),
                 label: Text(
-                  todo.dueDate == null ? "设置提醒" : DateFormat('MM-dd HH:mm').format(todo.dueDate!),
-                  style: TextStyle(color: todo.dueDate == null ? theme.colorScheme.outline : theme.colorScheme.primary),
+                  todo.dueDate == null
+                      ? "设置提醒"
+                      : (todo.dueDate!.hour == 23 && todo.dueDate!.minute == 59)
+                      ? DateFormat('MM-dd 全天').format(todo.dueDate!)
+                      : DateFormat('MM-dd HH:mm').format(todo.dueDate!),
+                  style: TextStyle(
+                      color: todo.dueDate == null ? theme.colorScheme.outline : theme.colorScheme.primary
+                  ),
                 ),
               ),
               const SizedBox(width: 8),

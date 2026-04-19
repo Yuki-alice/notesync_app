@@ -13,7 +13,10 @@ class CreateTodoResult {
 }
 
 // 🟢 架构师级终极入口：智能双端路由
-Future<CreateTodoResult?> showAppCreateTodoDialog(BuildContext context, {Todo? existingTodo}) {
+Future<CreateTodoResult?> showAppCreateTodoDialog(
+  BuildContext context, {
+  Todo? existingTodo,
+}) {
   final isDesktop = MediaQuery.of(context).size.width >= 600;
 
   if (isDesktop) {
@@ -30,7 +33,10 @@ Future<CreateTodoResult?> showAppCreateTodoDialog(BuildContext context, {Todo? e
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       elevation: 0,
-      builder: (ctx) => showCreateTodoSheet(context, existingTodo: existingTodo) as Widget,
+      builder:
+          (ctx) =>
+              showCreateTodoSheet(context, existingTodo: existingTodo)
+                  as Widget,
     );
   }
 }
@@ -53,16 +59,22 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
   final FocusNode _inputFocus = FocusNode();
 
   DateTime? _selectedDate;
+  bool _isAllDay = false;
   List<SubTask> _subTasks = [];
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.existingTodo?.title ?? '');
+    _titleController = TextEditingController(
+      text: widget.existingTodo?.title ?? '',
+    );
     _inputController = TextEditingController();
     _selectedDate = widget.existingTodo?.dueDate;
-
-    if (widget.existingTodo != null && widget.existingTodo!.subTasks.isNotEmpty) {
+    if (_selectedDate != null) {
+      _isAllDay = _selectedDate!.hour == 23 && _selectedDate!.minute == 59;
+    }
+    if (widget.existingTodo != null &&
+        widget.existingTodo!.subTasks.isNotEmpty) {
       _subTasks = List.from(widget.existingTodo!.subTasks);
     }
 
@@ -92,10 +104,12 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
     if (value.trim().isEmpty) return;
 
     setState(() {
-      _subTasks.add(SubTask(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: value.trim(),
-      ));
+      _subTasks.add(
+        SubTask(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: value.trim(),
+        ),
+      );
       _inputController.clear();
     });
 
@@ -106,29 +120,62 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
     setState(() => _subTasks.removeWhere((t) => t.id == id));
   }
 
-  // 桌面端优雅的日期时间选择器
+// 🌟 架构师特调 V3：意图拦截式日期选择 (完美避开组件底层 Bug)
   Future<void> _pickDate() async {
     final now = DateTime.now();
+    // 1. 先正常选择日期
     final pickedDate = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? now,
       firstDate: now.subtract(const Duration(days: 365)),
       lastDate: now.add(const Duration(days: 365 * 5)),
     );
-    if (pickedDate != null) {
-      if (!mounted) return;
+
+    if (pickedDate == null) return; // 用户取消了日期选择
+    if (!mounted) return;
+
+    // 🌟 2. 核心交互升级：弹窗询问意图 (全天 vs 具体时间)
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('时间设置', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('这是一个全天任务，还是需要设置精确的提醒时间？'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'allday'),
+            child: const Text('设为全天'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'time'),
+            child: const Text('选择具体时间', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null || !mounted) return; // 用户点击了遮罩层取消
+
+    // 🌟 3. 根据意图分流处理
+    if (choice == 'allday') {
+      setState(() {
+        // 约定 23:59 为全天标识
+        _selectedDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 23, 59);
+        _isAllDay = true;
+      });
+    } else if (choice == 'time') {
+      // 继续弹出时间选择器
       final pickedTime = await showTimePicker(
         context: context,
-        initialTime: _selectedDate != null
+        initialTime: _selectedDate != null && !_isAllDay
             ? TimeOfDay.fromDateTime(_selectedDate!)
             : const TimeOfDay(hour: 9, minute: 0),
       );
+
       if (pickedTime != null && mounted) {
         setState(() {
-          _selectedDate = DateTime(
-              pickedDate.year, pickedDate.month, pickedDate.day,
-              pickedTime.hour, pickedTime.minute
-          );
+          _selectedDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+          _isAllDay = false;
         });
       }
     }
@@ -136,14 +183,17 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
 
   void _submit() {
     if (_inputController.text.trim().isNotEmpty) {
-      _subTasks.add(SubTask(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: _inputController.text.trim(),
-      ));
+      _subTasks.add(
+        SubTask(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: _inputController.text.trim(),
+        ),
+      );
     }
 
     // 过滤空任务
-    List<SubTask> finalSubTasks = _subTasks.where((t) => t.title.trim().isNotEmpty).toList();
+    List<SubTask> finalSubTasks =
+        _subTasks.where((t) => t.title.trim().isNotEmpty).toList();
     String finalTitle = _titleController.text.trim();
 
     if (finalTitle.isEmpty && finalSubTasks.isEmpty) {
@@ -158,11 +208,14 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
       finalTitle = finalSubTasks.isNotEmpty ? '待办清单' : '未命名待办';
     }
 
-    Navigator.pop(context, CreateTodoResult(
-      title: finalTitle,
-      dueDate: _selectedDate,
-      subTasks: finalSubTasks,
-    ));
+    Navigator.pop(
+      context,
+      CreateTodoResult(
+        title: finalTitle,
+        dueDate: _selectedDate,
+        subTasks: finalSubTasks,
+      ),
+    );
   }
 
   @override
@@ -190,7 +243,9 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
                 children: [
                   Text(
                     widget.existingTodo == null ? '新建待办' : '编辑待办',
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded),
@@ -212,10 +267,14 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
                     TextField(
                       controller: _titleController,
                       focusNode: _titleFocus,
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                       decoration: InputDecoration(
                         hintText: "准备做什么？",
-                        hintStyle: TextStyle(color: theme.colorScheme.outlineVariant),
+                        hintStyle: TextStyle(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
                         border: InputBorder.none,
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -224,61 +283,107 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
                     ),
 
                     const SizedBox(height: 16),
-                    Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), height: 1),
+                    Divider(
+                      color: theme.colorScheme.outlineVariant.withValues(
+                        alpha: 0.3,
+                      ),
+                      height: 1,
+                    ),
                     const SizedBox(height: 16),
 
                     // 2. 子任务列表 (原汁原味移植)
                     if (_subTasks.isNotEmpty)
                       Column(
-                        children: _subTasks.map((task) => Padding(
-                          key: ValueKey(task.id),
-                          padding: const EdgeInsets.only(bottom: 12.0),
-                          child: Row(
-                            children: [
-                              Icon(
-                                  task.isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                  size: 20,
-                                  color: task.isCompleted ? theme.colorScheme.primary : theme.colorScheme.outline
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextFormField(
-                                  initialValue: task.title,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    color: task.isCompleted ? theme.colorScheme.outline : theme.colorScheme.onSurface,
-                                    decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                        children:
+                            _subTasks
+                                .map(
+                                  (task) => Padding(
+                                    key: ValueKey(task.id),
+                                    padding: const EdgeInsets.only(
+                                      bottom: 12.0,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          task.isCompleted
+                                              ? Icons.check_circle_rounded
+                                              : Icons
+                                                  .radio_button_unchecked_rounded,
+                                          size: 20,
+                                          color:
+                                              task.isCompleted
+                                                  ? theme.colorScheme.primary
+                                                  : theme.colorScheme.outline,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: TextFormField(
+                                            initialValue: task.title,
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              color:
+                                                  task.isCompleted
+                                                      ? theme
+                                                          .colorScheme
+                                                          .outline
+                                                      : theme
+                                                          .colorScheme
+                                                          .onSurface,
+                                              decoration:
+                                                  task.isCompleted
+                                                      ? TextDecoration
+                                                          .lineThrough
+                                                      : null,
+                                            ),
+                                            decoration: const InputDecoration(
+                                              border: InputBorder.none,
+                                              isDense: true,
+                                              contentPadding: EdgeInsets.zero,
+                                            ),
+                                            onChanged: (val) {
+                                              final index = _subTasks
+                                                  .indexWhere(
+                                                    (t) => t.id == task.id,
+                                                  );
+                                              if (index != -1) {
+                                                _subTasks[index] =
+                                                    _subTasks[index].copyWith(
+                                                      title: val,
+                                                    );
+                                              }
+                                            },
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.close_rounded,
+                                            size: 16,
+                                          ),
+                                          color:
+                                              theme.colorScheme.outlineVariant,
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          onPressed:
+                                              () => _removeSubTask(task.id),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  decoration: const InputDecoration(
-                                    border: InputBorder.none,
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                  onChanged: (val) {
-                                    final index = _subTasks.indexWhere((t) => t.id == task.id);
-                                    if (index != -1) {
-                                      _subTasks[index] = _subTasks[index].copyWith(title: val);
-                                    }
-                                  },
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.close_rounded, size: 16),
-                                color: theme.colorScheme.outlineVariant,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                onPressed: () => _removeSubTask(task.id),
-                              )
-                            ],
-                          ),
-                        )).toList(),
+                                )
+                                .toList(),
                       ),
 
                     // 3. 连续添加栏
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Icon(Icons.add_task_rounded, size: 20, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+                        Icon(
+                          Icons.add_task_rounded,
+                          size: 20,
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: TextField(
@@ -289,10 +394,17 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
                             style: const TextStyle(fontSize: 15),
                             decoration: InputDecoration(
                               hintText: "添加子待办 (敲击回车连续添加)...",
-                              hintStyle: TextStyle(color: theme.colorScheme.outline.withValues(alpha: 0.6), fontSize: 15),
+                              hintStyle: TextStyle(
+                                color: theme.colorScheme.outline.withValues(
+                                  alpha: 0.6,
+                                ),
+                                fontSize: 15,
+                              ),
                               border: InputBorder.none,
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                              ),
                             ),
                           ),
                         ),
@@ -309,26 +421,50 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(24),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   ActionChip(
-                    avatar: Icon(Icons.notifications_active_rounded, size: 16, color: _selectedDate != null ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+                    avatar: Icon(
+                      Icons.notifications_active_rounded,
+                      size: 16,
+                      color:
+                          _selectedDate != null
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurfaceVariant,
+                    ),
                     label: Text(
-                      _selectedDate == null ? "设置提醒时间" : DateFormat('MM-dd HH:mm').format(_selectedDate!),
+                      _selectedDate == null
+                          ? "设置提醒时间"
+                          : (_isAllDay
+                              ? DateFormat('MM-dd 全天').format(_selectedDate!)
+                              : DateFormat(
+                                'MM-dd HH:mm',
+                              ).format(_selectedDate!)),
                       style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: _selectedDate != null ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color:
+                            _selectedDate != null
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    backgroundColor: _selectedDate != null
-                        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
-                        : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    backgroundColor:
+                        _selectedDate != null
+                            ? theme.colorScheme.primaryContainer.withValues(
+                              alpha: 0.5,
+                            )
+                            : theme.colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.5),
                     side: BorderSide.none,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     onPressed: _pickDate,
                   ),
                   Row(
@@ -341,10 +477,18 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
                       FilledButton(
                         onPressed: _submit,
                         style: FilledButton.styleFrom(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 16,
+                          ),
                         ),
-                        child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          '保存',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ],
                   ),
