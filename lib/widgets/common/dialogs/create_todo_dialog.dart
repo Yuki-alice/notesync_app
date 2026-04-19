@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../models/todo.dart';
@@ -117,6 +116,7 @@ class _DesktopTodoDialogState extends State<_DesktopTodoDialog> {
       lastDate: now.add(const Duration(days: 365 * 5)),
     );
     if (pickedDate != null) {
+      if (!mounted) return;
       final pickedTime = await showTimePicker(
         context: context,
         initialTime: _selectedDate != null

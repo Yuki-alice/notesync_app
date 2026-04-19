@@ -12,16 +12,13 @@ import '../../../../core/services/privacy_service.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../utils/app_feedback.dart';
 import '../../../../utils/toast_utils.dart';
-import '../../../../widgets/common/dialogs/add_category_dialog.dart';
 import '../../../../widgets/common/dialogs/privacy_unlock_dialog.dart';
 import 'note_editor_page.dart';
 import '../widgets/note_card.dart';
-import '../widgets/dialogs/note_options_sheet.dart';
 import '../widgets/dialogs/private_note_options_sheet.dart';
 import '../widgets/note_search_bar.dart';
 
 /// 隐私笔记页面
-/// 
 /// 独立的隐私笔记空间，进入需要解锁
 /// 样式与 NotesPage 保持一致
 class PrivateNotesPage extends StatefulWidget {
@@ -93,6 +90,7 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
       final result = await showPrivacySetupDialog(context);
       if (result && mounted) {
         await context.read<NotesProvider>().loadNotes();
+        if (!mounted) return;
         setState(() => _isUnlocked = true);
         context.read<PrivacyModeProvider>().enterPrivateModeDirect();
       }
@@ -105,6 +103,7 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
     if (unlocked && mounted) {
       // 🌟 解锁成功后刷新笔记，解密隐私笔记内容
       await context.read<NotesProvider>().loadNotes();
+      if (!mounted) return;
       setState(() => _isUnlocked = true);
       // 更新全局隐私模式状态
       context.read<PrivacyModeProvider>().enterPrivateModeDirect();
@@ -283,7 +282,7 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
   /// 🌟 显示修改密码对话框
   Future<void> _showChangePasswordDialog() async {
     final privacy = PrivacyService();
-    
+
     // 先验证旧密码
     final unlocked = await showPrivacyUnlockDialog(context);
     if (!unlocked || !mounted) return;
@@ -672,8 +671,7 @@ class _SyncStatusIndicator extends StatelessWidget {
             tooltip = "同步失败，请检查网络";
             break;
           case SyncState.idle:
-          default:
-            icon = Icon(Icons.cloud_queue_rounded, color: theme.colorScheme.error.withValues(alpha: 0.7), size: 20);
+          icon = Icon(Icons.cloud_queue_rounded, color: theme.colorScheme.error.withValues(alpha: 0.7), size: 20);
             tooltip = "已与云端同步";
             break;
         }
