@@ -151,7 +151,9 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     return prefs.getBool('isAutoSyncEnabled') ?? false;
   }
 
-  Future<void> syncWithCloud() async {
+  /// 
+  /// [context] 可选，用于显示冲突对话框
+  Future<void> syncWithCloud({BuildContext? context}) async {
     if (!await _isSyncAllowed()) return;
     if (_syncState == SyncState.syncing) return;
     _setSyncState(SyncState.syncing);
@@ -169,13 +171,31 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
           _setSyncState(SyncState.unauthenticated);
           return;
         }
-        await _syncService.syncNotes(onTextSyncComplete: () => loadNotes());
+        // 🌟 保存 context 引用，避免跨异步间隙使用
+        final currentContext = context;
+        await _syncService.syncNotes(
+          onTextSyncComplete: () => loadNotes(),
+          context: currentContext != null && currentContext.mounted ? currentContext : null,
+        );
       }
       loadNotes();
       _runTagGC();
       _setSyncState(SyncState.success);
+      
+      // 🌟 3秒后自动恢复为 idle 状态
+      Future.delayed(const Duration(seconds: 3), () {
+        if (_syncState == SyncState.success) {
+          _setSyncState(SyncState.idle);
+        }
+      });
     } catch (e) {
       _setSyncState(SyncState.error);
+      // 🌟 5秒后自动恢复为 idle 状态
+      Future.delayed(const Duration(seconds: 5), () {
+        if (_syncState == SyncState.error) {
+          _setSyncState(SyncState.idle);
+        }
+      });
     }
   }
 
@@ -190,6 +210,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   List<Note> get notes => _notes.where((n) => !n.isDeleted).toList();
   List<Note> get trashNotes => _notes.where((n) => n.isDeleted).toList();
   List<Note> get filteredNotes => _filteredNotes;
+  List<Note> get allNotes => _notes; // 🌟 获取所有笔记（包括隐私和已删除）
   String? get selectedCategoryId => _selectedCategoryId;
   String get searchQuery => _searchQuery;
   NoteSortOption get sortOption => _sortOption;
@@ -406,19 +427,15 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       _tags = _tagRepository.getAllTags();
       notifyListeners();
 
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final syncMode = prefs.getString('sync_mode') ?? 'supabase';
-        if (syncMode == 'supabase' && Supabase.instance.client.auth.currentUser != null) {
-          for (var i = 0; i < orphans.length; i += 50) {
-            final chunk = orphans.sublist(i, i + 50 > orphans.length ? orphans.length : i + 50);
-            await Supabase.instance.client.from('tags').delete().inFilter('id', chunk);
-          }
-          debugPrint('🧹 [TAG-GC] 成功清理云端孤儿标签: ${orphans.length} 个');
-        }
-      } catch (e) {
-        debugPrint('🧹 [TAG-GC] 云端标签清理失败: $e');
+      // 🌟 记录删除到黑名单，下次同步时删除云端标签
+      final syncService = SupabaseSyncService();
+      for (var tagId in orphans) {
+        await syncService.recordDeletedTag(tagId);
       }
+      debugPrint('🧹 [TAG-GC] 已记录 ${orphans.length} 个待删除标签到黑名单');
+      
+      // 触发后台同步以删除云端标签
+      _triggerBackgroundSync();
     }
   }
 
@@ -432,6 +449,79 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     loadNotes();
     _triggerBackgroundSync();
     return tag;
+  }
+
+  /// 🌟 立即删除不再被任何笔记使用的标签（用于笔记编辑时移除标签）
+  /// [excludeNoteId] 当前正在编辑的笔记ID，检查时应排除该笔记
+  Future<void> deleteTagIfUnused(String tagId, {String? excludeNoteId}) async {
+    debugPrint('🧹 [TAG] 检查标签 "$tagId" 是否还被使用...');
+    
+    // 从数据库查询所有笔记（确保获取最新数据）
+    final allNotes = _repository.getAllNotes();
+    
+    // 检查该标签是否还被其他笔记使用（排除当前正在编辑的笔记）
+    final isUsed = allNotes.any((note) => 
+      note.id != excludeNoteId && note.tagIds.contains(tagId)
+    );
+    
+    if (isUsed) {
+      debugPrint('🧹 [TAG] 标签 "$tagId" 还被其他笔记使用，暂不删除');
+      return;
+    }
+
+    // 检查标签是否存在
+    final tag = _tagRepository.getTagById(tagId);
+    if (tag == null) {
+      debugPrint('🧹 [TAG] 标签 "$tagId" 不存在');
+      return;
+    }
+
+    debugPrint('🧹 [TAG] 标签 "$tagId" 不再被使用，准备删除...');
+    
+    // 删除标签
+    await _tagRepository.deleteTag(tagId);
+    _tags = _tagRepository.getAllTags();
+    notifyListeners();
+
+    // 记录到删除黑名单，下次同步时删除云端标签
+    await _syncService.recordDeletedTag(tagId);
+    debugPrint('🧹 [TAG] 标签 "$tagId" 已删除并记录到黑名单');
+
+    // 触发同步
+    _triggerBackgroundSync();
+  }
+
+  /// 🌟 清理所有孤儿标签（用于数据维护）
+  /// 返回删除的标签数量
+  Future<int> cleanupAllOrphanTags() async {
+    final allNotes = _repository.getAllNotes();
+    final allTags = _tagRepository.getAllTags();
+    
+    final usedTagIds = <String>{};
+    for (var note in allNotes) {
+      usedTagIds.addAll(note.tagIds);
+    }
+    
+    int deletedCount = 0;
+    for (var tag in allTags) {
+      if (!usedTagIds.contains(tag.id)) {
+        // 删除本地标签
+        await _tagRepository.deleteTag(tag.id);
+        // 记录到黑名单
+        await _syncService.recordDeletedTag(tag.id);
+        deletedCount++;
+        debugPrint('🧹 [TAG-CLEANUP] 删除孤儿标签: ${tag.name} ($tag.id)');
+      }
+    }
+    
+    if (deletedCount > 0) {
+      _tags = _tagRepository.getAllTags();
+      notifyListeners();
+      _triggerBackgroundSync();
+      debugPrint('🧹 [TAG-CLEANUP] 共删除 $deletedCount 个孤儿标签');
+    }
+    
+    return deletedCount;
   }
 
   Future<void> addCategory(String name) async {

@@ -18,6 +18,18 @@ class NoteRepository {
     return {for (var note in notes) note.id: note.updatedAt};
   }
 
+  /// 🌟 获取包含版本号的元数据（用于同步冲突检测）
+  Map<String, NoteSyncMeta> getAllNotesMetadataWithVersion() {
+    final notes = _isar.notes.where().findAllSync();
+    return {
+      for (var note in notes)
+        note.id: NoteSyncMeta(
+          updatedAt: note.updatedAt,
+          version: note.version,
+        )
+    };
+  }
+
   List<Note> getAllNotes() {
     try {
       final notes = _isar.notes.where().findAllSync();
@@ -80,4 +92,15 @@ class NoteRepository {
   Stream<void> watchNotesChanged() {
     return _isar.notes.watchLazy(fireImmediately: true);
   }
+}
+
+/// 🌟 笔记同步元数据（用于冲突检测）
+class NoteSyncMeta {
+  final DateTime updatedAt;
+  final int version;
+
+  const NoteSyncMeta({
+    required this.updatedAt,
+    required this.version,
+  });
 }

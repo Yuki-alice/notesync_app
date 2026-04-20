@@ -219,6 +219,9 @@ class NoteEditorViewModel extends ChangeNotifier {
   void removeTag(String tagId) {
     tagIds.remove(tagId);
     _markAsDirty();
+    
+    // 🌟 立即检查并删除不再使用的标签（传入当前笔记ID，排除当前笔记的检查）
+    notesProvider.deleteTagIfUnused(tagId, excludeNoteId: _editingNote?.id);
   }
 
   void setCategoryId(String? newCategoryId) {

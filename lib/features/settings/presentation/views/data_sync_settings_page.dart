@@ -88,8 +88,8 @@ class _DataSyncSettingsPageState extends State<DataSyncSettingsPage> {
     if (!mounted) return;
     if (value) {
       ToastUtils.showSuccess(context, '云端同步已开启');
-      context.read<NotesProvider>().syncWithCloud();
-      context.read<TodosProvider>().syncWithCloud();
+      context.read<NotesProvider>().syncWithCloud(context: context);
+      context.read<TodosProvider>().syncWithCloud(context: context);
     } else {
       ToastUtils.showInfo(context, '同步已关闭，数据仅保留在本地');
       context.read<NotesProvider>().clearTimers();
@@ -104,7 +104,7 @@ class _DataSyncSettingsPageState extends State<DataSyncSettingsPage> {
 
     if (!mounted) return;
     ToastUtils.showSuccess(context, '已切换至 ${mode == 'supabase' ? '官方云' : 'WebDAV'} 同步');
-    context.read<NotesProvider>().syncWithCloud();
+    context.read<NotesProvider>().syncWithCloud(context: context);
   }
 
   @override

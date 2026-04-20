@@ -61,6 +61,7 @@ class SupabaseSyncService {
   static const String _deletedTodosKey = 'deleted_todo_ids';
   static const String _deletedNotesKey = 'deleted_note_ids';
   static const String _deletedCategoriesKey = 'deleted_categories';
+  static const String _deletedTagsKey = 'deleted_tag_ids'; // 🌟 标签删除黑名单
   static const String _lastNoteSyncKey = 'last_sync_time';
   static const String _lastTodoSyncKey = 'last_todo_sync_time';
   static const String _lastSyncedVersionsKey = 'last_synced_versions'; // 🌟 记录每个笔记上次同步时的版本号
@@ -108,6 +109,16 @@ class SupabaseSyncService {
       deletedCats.add(categoryId);
       await prefs.setStringList(_deletedCategoriesKey, deletedCats);
       _SyncLogger.info('CATE', '记录本地待删除分类: $categoryId');
+    }
+  }
+
+  Future<void> recordDeletedTag(String tagId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final deletedTags = prefs.getStringList(_deletedTagsKey) ?? [];
+    if (!deletedTags.contains(tagId)) {
+      deletedTags.add(tagId);
+      await prefs.setStringList(_deletedTagsKey, deletedTags);
+      _SyncLogger.info('TAG', '记录本地待删除标签: $tagId');
     }
   }
 
@@ -804,7 +815,19 @@ class SupabaseSyncService {
       _SyncLogger.info('CATE', '从云端拉取并更新了本地分类');
     }
 
-    // ----- 3. 标签双向合并同步 (标签通常不修改名字，只需比对存在性) -----
+    // ----- 3. 标签同步：先处理删除黑名单，再双向同步 -----
+    // 🌟 3.1 处理标签删除黑名单 (物理删除)
+    final deletedTags = prefs.getStringList(_deletedTagsKey) ?? [];
+    if (deletedTags.isNotEmpty) {
+      await _withRetry(
+        operation: () => _supabase.from('tags').delete().inFilter('id', deletedTags),
+        operationName: '删除云端标签',
+      );
+      await prefs.setStringList(_deletedTagsKey, []);
+      _SyncLogger.info('TAG', '成功清空本地标签黑名单，删除 ${deletedTags.length} 个云端标签');
+    }
+
+    // 🌟 3.2 标签双向合并同步 (标签通常不修改名字，只需比对存在性)
     final localTags = _tagRepo!.getAllTags();
     final cloudTagsData = await _withRetry(
       operation: () => _supabase.from('tags').select().eq('user_id', userId),
@@ -816,6 +839,7 @@ class SupabaseSyncService {
 
     final tagsToPush = <Map<String, dynamic>>[];
 
+    // (1) 遍历本地，推送本地有但云端没有的新标签
     for (var localTag in localTags) {
       if (!cloudTagsMap.containsKey(localTag.id)) {
         tagsToPush.add({
@@ -826,9 +850,17 @@ class SupabaseSyncService {
       }
     }
 
+    // (2) 遍历云端，拉取云端有但本地没有的新标签
     bool localTagChanged = false;
     for (var cloudData in cloudTagsData) {
       final cloudId = cloudData['id'] as String;
+      
+      // 🌟 关键修复：跳过已在黑名单中的标签（防止刚删除的又被拉回来）
+      if (deletedTags.contains(cloudId)) {
+        _SyncLogger.info('TAG', '跳过黑名单标签: $cloudId');
+        continue;
+      }
+      
       if (!localTagsMap.containsKey(cloudId)) {
         await _tagRepo!.addTag(Tag(
           id: cloudId, name: cloudData['name'], color: cloudData['color'],
@@ -839,15 +871,20 @@ class SupabaseSyncService {
       }
     }
 
+    // 执行标签推送
     if (tagsToPush.isNotEmpty) {
       await _withRetry(
         operation: () => _supabase.from('tags').upsert(tagsToPush),
         operationName: '推送标签到云端',
       );
-      _SyncLogger.info('TAG', '推送 ${tagsToPush.length} 个新标签到云端');
+      _SyncLogger.info('TAG', '📤 推送 ${tagsToPush.length} 个新标签到云端');
+    } else {
+      _SyncLogger.info('TAG', '📤 无需推送标签（本地无新标签）');
     }
     if (localTagChanged) {
-      _SyncLogger.info('TAG', '从云端拉取了新标签');
+      _SyncLogger.info('TAG', '📥 从云端拉取了新标签');
+    } else {
+      _SyncLogger.info('TAG', '📥 无需拉取标签（云端无新标签）');
     }
   }
 

@@ -11,6 +11,7 @@ import '../../../../core/providers/auth_provider.dart';
 import '../../../../utils/toast_utils.dart';
 import '../../../../widgets/common/dialogs/app_dialog.dart';
 import '../../../../core/services/local_backup_service.dart';
+import '../../../../core/services/privacy_service.dart';
 import '../../../../models/note.dart'; // 🌟 需要引入 Note 模型来解析图片路径
 
 class StorageSettingsPage extends StatefulWidget {
@@ -62,7 +63,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
     }
   }
 
-  // 🌟 核心新功能：真正的冗余图片清理引擎
+  // 🌟 核心新功能：真正的冗余图片清理引擎（修复：支持隐私笔记，不会误删隐私图片）
   Future<void> _cleanRedundantImages() async {
     ToastUtils.showInfo(context, "正在扫描无用图片...");
     try {
@@ -73,17 +74,27 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
         return;
       }
 
-      // 1. 提取所有笔记中仍在被引用的图片文件名
+      // 1. 提取所有笔记中仍在被引用的图片文件名（包括隐私笔记）
       final notesProvider = context.read<NotesProvider>();
+      final allNotes = notesProvider.allNotes; // 获取所有笔记，包括隐私笔记
+      final privacyService = PrivacyService();
+      
       Set<String> usedImageNames = {};
-      for (var note in notesProvider.filteredNotes) {
-        final rawPaths = Note.extractAllImagePaths(note.content ?? '');
+      for (var note in allNotes) {
+        String content = note.content;
+        
+        // 🌟 关键修复：如果是隐私笔记，先解密内容再提取图片路径
+        if (note.isPrivate && content.startsWith('AES_V1::')) {
+          content = privacyService.decryptText(content);
+        }
+        
+        final rawPaths = Note.extractAllImagePaths(content);
         for (var rawPath in rawPaths) {
           usedImageNames.add(p.basename(rawPath.replaceAll('\\', '/')));
         }
       }
 
-      // 2. 遍历本地图片文件夹，揪出没被使用的“孤儿图片”
+      // 2. 遍历本地图片文件夹，揪出没被使用的"孤儿图片"
       int deletedCount = 0;
       int freedBytes = 0;
 
@@ -107,7 +118,54 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
         ToastUtils.showSuccess(context, "检查完毕，所有的图片都在被使用中");
       }
     } catch (e) {
-      if (mounted) ToastUtils.showError(context, "清理过程发生异常");
+      if (mounted) ToastUtils.showError(context, "清理过程发生异常: $e");
+    }
+  }
+
+  // 🌟 清理孤儿标签
+  Future<void> _cleanupOrphanTags() async {
+    final confirmed = await AppDialog.showConfirm(
+      context: context,
+      title: '清理孤儿标签',
+      content: '将删除不再被任何笔记使用的标签。此操作会同步删除云端标签。\n\n是否继续？',
+      icon: Icons.label_off_outlined,
+      isDestructive: true,
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    // 显示进度对话框
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    // 在异步操作前获取 navigator 引用
+    final navigator = Navigator.of(context);
+    
+    try {
+      final notesProvider = Provider.of<NotesProvider>(context, listen: false);
+      final deletedCount = await notesProvider.cleanupAllOrphanTags();
+
+      if (!context.mounted) {
+        navigator.pop();
+        return;
+      }
+      navigator.pop(); // 关闭进度对话框
+
+      if (deletedCount > 0) {
+        ToastUtils.showSuccess(context, '已清理 $deletedCount 个孤儿标签');
+      } else {
+        ToastUtils.showInfo(context, '没有需要清理的孤儿标签');
+      }
+    } catch (e) {
+      if (!context.mounted) {
+        navigator.pop();
+        return;
+      }
+      navigator.pop(); // 关闭进度对话框
+      ToastUtils.showError(context, '清理失败: $e');
     }
   }
 
@@ -258,39 +316,83 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
           // ==========================================
           _buildSectionHeader(theme, '空间清理', Icons.cleaning_services_rounded),
           Container(
-            padding: const EdgeInsets.all(20),
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(28),
             ),
-            child: Row(
+            child: Column(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: theme.colorScheme.secondary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
-                  child: Icon(Icons.delete_sweep_rounded, color: theme.colorScheme.secondary, size: 24),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                // 🌟 清理无用图片
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
                     children: [
-                      Text('清理无用图片', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: theme.colorScheme.onSurface)),
-                      const SizedBox(height: 2),
-                      Text('找出并删除那些已不在笔记里的残留图片', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant, height: 1.3)),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: theme.colorScheme.secondary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
+                        child: Icon(Icons.delete_sweep_rounded, color: theme.colorScheme.secondary, size: 24),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('清理无用图片', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: theme.colorScheme.onSurface)),
+                            const SizedBox(height: 2),
+                            Text('删除已不在笔记中引用的普通图片（不会删除隐私图片）', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant, height: 1.3)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.tonal(
+                        onPressed: _cleanRedundantImages,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: theme.colorScheme.secondary.withValues(alpha: 0.15),
+                          foregroundColor: theme.colorScheme.secondary,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                        ),
+                        child: const Text('清理', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                FilledButton.tonal(
-                  onPressed: _cleanRedundantImages, // 🌟 绑定真正的清理方法
-                  style: FilledButton.styleFrom(
-                    backgroundColor: theme.colorScheme.secondary.withValues(alpha: 0.15),
-                    foregroundColor: theme.colorScheme.secondary,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2)),
+                // 🌟 清理孤儿标签
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
+                        child: Icon(Icons.label_off_outlined, color: theme.colorScheme.primary, size: 24),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('清理孤儿标签', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: theme.colorScheme.onSurface)),
+                            const SizedBox(height: 2),
+                            Text('删除不再被任何笔记使用的标签', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant, height: 1.3)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.tonal(
+                        onPressed: _cleanupOrphanTags,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.15),
+                          foregroundColor: theme.colorScheme.primary,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                        ),
+                        child: const Text('清理', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ),
-                  child: const Text('清理', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -348,13 +450,13 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: activeColor)),
+                Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: theme.colorScheme.onSurface)),
                 const SizedBox(height: 2),
-                Text(subtitle, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+                Text(subtitle, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant, height: 1.3)),
               ],
             ),
           ),
-          Icon(Icons.chevron_right_rounded, color: theme.colorScheme.outlineVariant),
+          Icon(Icons.chevron_right_rounded, color: theme.colorScheme.onSurfaceVariant),
         ],
       ),
     );
