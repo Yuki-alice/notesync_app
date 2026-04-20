@@ -534,24 +534,54 @@ class _NotesPageState extends State<NotesPage> with WidgetsBindingObserver, Rout
   }
 
   Widget _buildEmptyState(ThemeData theme, bool isSearching, String? selectedCategoryId) {
+    // 🌟 有温度的空状态文案
+    String title;
+    String subtitle;
+    IconData icon;
+
+    if (isSearching) {
+      title = '没搜到相关内容';
+      subtitle = '换个词试试';
+      icon = Icons.search_off_rounded;
+    } else if (selectedCategoryId != null) {
+      title = '这里还是空的';
+      subtitle = '点右下角 + 写点什么';
+      icon = Icons.folder_open_outlined;
+    } else {
+      title = '还没有笔记';
+      subtitle = '点右下角 + 开始记录';
+      icon = Icons.edit_note_rounded;
+    }
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.dashboard_customize_outlined,
-            size: 64, 
-            color: theme.colorScheme.outline.withValues(alpha: 0.5)
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 64,
+              color: theme.colorScheme.primary.withValues(alpha: 0.8),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Text(
-            isSearching
-                ? '未找到相关笔记'
-                : (selectedCategoryId == null
-                    ? '暂无笔记'
-                    : '该分类下暂无笔记'),
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.outline,
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],

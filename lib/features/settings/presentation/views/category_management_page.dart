@@ -31,8 +31,8 @@ class CategoryManagementPage extends StatelessWidget {
 
           if (categories.isEmpty) {
             return const AppEmptyState(
-              message: '暂无分类',
-              subMessage: '点击右下角按钮添加你的第一个分类',
+              message: '还没有分类',
+              subMessage: '点右下角 + 创建分类',
               icon: Icons.folder_open_rounded,
             );
           }

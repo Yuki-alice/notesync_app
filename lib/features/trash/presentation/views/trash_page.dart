@@ -167,8 +167,8 @@ class _NotesTrashList extends StatelessWidget {
         final notes = provider.trashNotes;
         if (notes.isEmpty) {
           return const AppEmptyState(
-            message: '没有废弃的笔记',
-            subMessage: '删除的笔记会在这里保留一段时间',
+            message: '回收站是空的',
+            subMessage: '删除的笔记会在这里保留 30 天',
             icon: Icons.note_alt_outlined,
           );
         }
@@ -242,8 +242,8 @@ class _TodosTrashList extends StatelessWidget {
         final todos = provider.trashTodos;
         if (todos.isEmpty) {
           return const AppEmptyState(
-            message: '没有废弃的待办',
-            subMessage: '完成或删除的任务可能出现在这里',
+            message: '回收站是空的',
+            subMessage: '删除的待办会在这里保留 30 天',
             icon: Icons.task_alt_outlined,
           );
         }

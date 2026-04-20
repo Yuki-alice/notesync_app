@@ -606,33 +606,49 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> with WidgetsBinding
   }
 
   Widget _buildEmptyState(ThemeData theme, bool isSearching) {
+    // 🌟 有温度的私密笔记空状态文案
+    String title;
+    String subtitle;
+
+    if (isSearching) {
+      title = '没搜到相关内容';
+      subtitle = '换个词试试';
+    } else {
+      title = '还没有私密笔记';
+      subtitle = '点右下角 + 创建';
+    }
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.lock_outline,
-            size: 64, 
-            color: theme.colorScheme.error.withValues(alpha: 0.5)
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.lock_outline,
+              size: 64,
+              color: theme.colorScheme.error.withValues(alpha: 0.8),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Text(
-            isSearching
-                ? '未找到相关隐私笔记'
-                : '暂无私密笔记',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.error.withValues(alpha: 0.7),
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
             ),
           ),
-          if (!isSearching) ...[
-            const SizedBox(height: 8),
-            Text(
-              '点击 + 创建私密笔记',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-              ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-          ],
+          ),
         ],
       ),
     );

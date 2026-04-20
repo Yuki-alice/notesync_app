@@ -304,7 +304,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
               boxShadow: [BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))],
             ),
             child: notesProvider.tags.isEmpty
-                ? _buildEmptyHint(theme, '暂无标签数据')
+                ? _buildEmptyHint(theme, '还没有标签')
                 : Wrap(
               spacing: 10, runSpacing: 10,
               children: notesProvider.tags.map((tag) {
@@ -338,7 +338,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             child: _isLoadingImages
                 ? const Center(child: CircularProgressIndicator())
                 : _resolvedImagePaths.isEmpty
-                ? _buildEmptyHint(theme, '尚未在笔记中添加图片')
+                ? _buildEmptyHint(theme, '还没有图片')
                 : SizedBox(
               height: 110,
               child: ListView.separated(

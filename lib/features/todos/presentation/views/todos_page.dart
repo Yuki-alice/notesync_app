@@ -253,12 +253,12 @@ class _TodosPageState extends State<TodosPage> {
                             ),
                             const SizedBox(height: 24),
                             Text(
-                              isSearching ? '未找到相关待办' : '今天真是清清爽爽的一天呢~',
+                              isSearching ? '没搜到相关内容' : '所有待办已完成',
                               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              isSearching ? '换个关键词试试吧' : '点击 "+" 按钮，开始规划你的一天',
+                              isSearching ? '换个词试试' : '点右下角 + 添加新待办',
                               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                             ),
                           ],
