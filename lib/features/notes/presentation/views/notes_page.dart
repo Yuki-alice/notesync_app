@@ -405,7 +405,7 @@ class _NotesPageState extends State<NotesPage> with WidgetsBindingObserver, Rout
           return RefreshIndicator(
             onRefresh: () async {
               HapticFeedback.mediumImpact();
-              await context.read<NotesProvider>().syncWithCloud();
+              await context.read<NotesProvider>().syncWithCloud(context: context);
             },
             child: scrollView,
           );
@@ -456,7 +456,7 @@ class _NotesPageState extends State<NotesPage> with WidgetsBindingObserver, Rout
               const SyncStatusIndicator(),
               IconButton(
                 onPressed: () async {
-                  await context.read<NotesProvider>().syncWithCloud();
+                  await context.read<NotesProvider>().syncWithCloud(context: context);
                   if (context.mounted) ToastUtils.showSuccess(context, '已与云端同步最新数据');
                 },
                 icon: const Icon(Icons.sync_rounded, size: 22),
