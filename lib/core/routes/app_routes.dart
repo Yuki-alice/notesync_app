@@ -6,5 +6,6 @@ class AppRoutes {
   static const String categories = '/categories';
   static const String trash = '/trash';
   static const String noteEditor = '/note_editor';
-  static const String login='/login';
+  static const String login = '/login';
+  static const String storageSettings = '/settings/storage';
 }

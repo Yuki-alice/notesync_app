@@ -15,6 +15,7 @@ import '../repositories/note_repository.dart';
 import '../repositories/tag_repository.dart';
 import '../repositories/todo_repository.dart';
 import '../services/privacy_service.dart';
+import '../services/storage_quota_service.dart';
 import '../../widgets/common/dialogs/sync_conflict_dialog.dart';
 
 // 🌟 导出 NoteSyncMeta 供同步服务使用
@@ -24,6 +25,7 @@ import '../../models/note.dart';
 import '../../models/todo.dart';
 import '../../models/category.dart';
 import '../../models/tag.dart';
+import '../../models/user_quota.dart';
 
 // 🌟 100% 还原你精心设计的全量日志模块
 class _SyncLogger {
@@ -305,6 +307,9 @@ class SupabaseSyncService {
       try {
         final allNotes = _noteRepo.getAllNotes();
 
+        // 🌟 先同步 attachments 表（迁移已有数据）
+        await _syncAttachmentsTable(allNotes);
+
         // 🌟 上传所有笔记的图片（不只是被推送的），确保隐私笔记图片也能上传
         await _uploadImages(allNotes);
 
@@ -444,19 +449,34 @@ class SupabaseSyncService {
   }
 
   // =========================================================================
-  // 🌟 Auto-Heal 附件处理引擎与云端 GC
+  // 🌟 Auto-Heal 附件处理引擎与云端 GC (含配额检查)
   // =========================================================================
   Future<void> _uploadImages(List<Note> pushedNotes) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      _SyncLogger.warn('IMAGE', '用户未登录，跳过图片上传');
+      return;
+    }
+    final userId = user.id;
+    
     final storage = _supabase.storage.from(_imageBucket);
     final appDir = await getApplicationDocumentsDirectory();
 
     // 🌟 收集需要上传的图片，标记是否属于隐私笔记
     final Map<String, bool> fileNameToIsPrivate = {};
+    int totalImageBytes = 0;
+    
     for (var note in pushedNotes) {
       // 优先使用 imagePaths 字段（如果存在）
       if (note.imagePaths.isNotEmpty) {
         for (var path in note.imagePaths) {
-          fileNameToIsPrivate[path.replaceAll('\\', '/').split('/').last] = note.isPrivate;
+          final fileName = path.replaceAll('\\', '/').split('/').last;
+          fileNameToIsPrivate[fileName] = note.isPrivate;
+          // 计算图片大小
+          final file = File(p.join(appDir.path, 'note_images', fileName));
+          if (await file.exists()) {
+            totalImageBytes += await file.length();
+          }
         }
       } else {
         // 从内容中提取图片路径（兼容旧数据）
@@ -472,7 +492,13 @@ class SupabaseSyncService {
         }
         final paths = Note.extractAllImagePaths(content);
         for (var path in paths) {
-          fileNameToIsPrivate[path.replaceAll('\\', '/').split('/').last] = note.isPrivate;
+          final fileName = path.replaceAll('\\', '/').split('/').last;
+          fileNameToIsPrivate[fileName] = note.isPrivate;
+          // 计算图片大小
+          final file = File(p.join(appDir.path, 'note_images', fileName));
+          if (await file.exists()) {
+            totalImageBytes += await file.length();
+          }
         }
       }
     }
@@ -480,6 +506,31 @@ class SupabaseSyncService {
     if (fileNameToIsPrivate.isEmpty) {
       _SyncLogger.info('IMAGE', '没有需要上传的图片');
       return;
+    }
+
+    // 🌟 配额检查：检查图片存储空间
+    if (totalImageBytes > 0) {
+      final quotaService = StorageQuotaService();
+      final quotaCheck = await quotaService.checkStorageQuota(
+        requiredBytes: totalImageBytes,
+        resourceType: ResourceType.image,
+      );
+      
+      if (!quotaCheck.canProceed) {
+        _SyncLogger.warn('QUOTA', '图片存储配额不足，跳过上传: ${quotaCheck.message}');
+        // 图片配额不足不抛出异常，只记录日志，避免阻断整个同步流程
+        return;
+      }
+      
+      // 检查图片数量配额
+      final imageCountCheck = await quotaService.checkImageCountQuota(
+        additionalImages: fileNameToIsPrivate.length,
+      );
+      
+      if (!imageCountCheck.canProceed) {
+        _SyncLogger.warn('QUOTA', '图片数量配额不足，跳过上传: ${imageCountCheck.message}');
+        return;
+      }
     }
 
     _SyncLogger.info('IMAGE', '准备上传 ${fileNameToIsPrivate.length} 张图片，其中隐私图片: ${fileNameToIsPrivate.values.where((v) => v).length} 张');
@@ -541,6 +592,9 @@ class SupabaseSyncService {
             await tempFile.delete();
             uploadedCount++;
             _SyncLogger.info('IMAGE', '隐私图片上传成功: $encryptedFileName');
+            
+            // 🌟 记录到 attachments 表
+            await _recordAttachment(userId, fileName, encryptedFileName, await localFile.length(), isEncrypted: true);
           } else if (isPrivate && !privacy.isUnlocked) {
             _SyncLogger.warn('IMAGE', '隐私图片 $fileName 跳过上传：PrivacyService 未解锁');
           } else {
@@ -552,6 +606,8 @@ class SupabaseSyncService {
               try {
                 await storage.remove([encryptedFileName]);
                 _SyncLogger.info('IMAGE', '已删除云端加密版本: $encryptedFileName');
+                // 删除 attachments 表中的加密记录
+                await _deleteAttachmentRecord(userId, fileName);
               } catch (e) {
                 _SyncLogger.warn('IMAGE', '删除云端加密版本失败: $e');
               }
@@ -560,6 +616,9 @@ class SupabaseSyncService {
             await storage.upload(fileName, localFile, fileOptions: const FileOptions(upsert: true));
             uploadedCount++;
             _SyncLogger.info('IMAGE', '普通图片上传成功: $fileName');
+            
+            // 🌟 记录到 attachments 表
+            await _recordAttachment(userId, fileName, fileName, await localFile.length(), isEncrypted: false);
           }
         } else {
           _SyncLogger.warn('IMAGE', '本地图片不存在: ${localFile.path}');
@@ -571,6 +630,188 @@ class SupabaseSyncService {
 
     await Future.wait(uploadTasks);
     _SyncLogger.info('IMAGE', '图片附件上传完成: 上传 $uploadedCount 张, 跳过 $skippedCount 张');
+  }
+
+  // 🌟 记录附件到数据库
+  Future<void> _recordAttachment(
+    String userId,
+    String originalFileName,
+    String storageFileName,
+    int fileSize, {
+    required bool isEncrypted,
+    String? noteId,
+  }) async {
+    try {
+      // 提取文件扩展名作为文件类型
+      final ext = originalFileName.split('.').last.toLowerCase();
+      String fileType = 'image/jpeg';
+      if (ext == 'png') fileType = 'image/png';
+      else if (ext == 'gif') fileType = 'image/gif';
+      else if (ext == 'webp') fileType = 'image/webp';
+
+      await _supabase.from('attachments').insert({
+        'user_id': userId,
+        'note_id': noteId,
+        'file_path': '$_imageBucket/$storageFileName',
+        'file_size': fileSize,
+        'file_type': fileType,
+      });
+
+      _SyncLogger.info('ATTACHMENT', '记录附件成功: $originalFileName (${_formatBytes(fileSize)})');
+    } catch (e) {
+      _SyncLogger.warn('ATTACHMENT', '记录附件失败 $originalFileName: $e');
+    }
+  }
+
+  // 🌟 删除附件记录
+  Future<void> _deleteAttachmentRecord(String userId, String fileName) async {
+    try {
+      await _supabase
+          .from('attachments')
+          .delete()
+          .eq('user_id', userId)
+          .eq('file_path', '$_imageBucket/$fileName');
+      _SyncLogger.info('ATTACHMENT', '删除附件记录: $fileName');
+    } catch (e) {
+      _SyncLogger.warn('ATTACHMENT', '删除附件记录失败 $fileName: $e');
+    }
+  }
+
+  // 🌟 格式化字节数
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(2)}MB';
+  }
+
+  // =========================================================================
+  // 🌟 Attachments 表同步（迁移已有云端图片数据）
+  // =========================================================================
+  Future<void> _syncAttachmentsTable(List<Note> allNotes) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+    final userId = user.id;
+
+    try {
+      _SyncLogger.info('ATTACHMENT', '====== 开始同步 attachments 表 ======');
+
+      // 1. 获取云端所有文件列表
+      final cloudFiles = await _getCloudFileList();
+      if (cloudFiles.isEmpty) {
+        _SyncLogger.info('ATTACHMENT', '云端没有文件，跳过同步');
+        return;
+      }
+
+      // 2. 获取已记录在 attachments 表的文件
+      final existingAttachments = await _supabase
+          .from('attachments')
+          .select('file_path')
+          .eq('user_id', userId);
+
+      final existingPaths = <String>{};
+      if (existingAttachments != null) {
+        for (final att in existingAttachments) {
+          final path = att['file_path'] as String?;
+          if (path != null) {
+            existingPaths.add(path.split('/').last); // 提取文件名
+          }
+        }
+      }
+
+      _SyncLogger.info('ATTACHMENT', '云端文件: ${cloudFiles.length} 个，已记录: ${existingPaths.length} 个');
+
+      // 3. 找出需要迁移的文件（在云端但不在 attachments 表）
+      final filesToMigrate = cloudFiles.where((f) => !existingPaths.contains(f)).toList();
+      if (filesToMigrate.isEmpty) {
+        _SyncLogger.info('ATTACHMENT', '所有文件已同步，无需迁移');
+        return;
+      }
+
+      _SyncLogger.info('ATTACHMENT', '需要迁移 ${filesToMigrate.length} 个文件');
+
+      // 4. 收集所有笔记中的图片映射（用于确定 note_id）
+      final Map<String, String> fileToNoteId = {};
+      for (final note in allNotes) {
+        if (note.isDeleted) continue;
+
+        List<String> imagePaths = [];
+        if (note.imagePaths.isNotEmpty) {
+          imagePaths = note.imagePaths;
+        } else {
+          String content = note.content;
+          if (note.isPrivate && content.startsWith('AES_V1::')) {
+            content = PrivacyService().decryptText(content);
+            if (content.contains('🔒') || content.contains('❌')) continue;
+          }
+          imagePaths = Note.extractAllImagePaths(content);
+        }
+
+        for (final path in imagePaths) {
+          final fileName = path.replaceAll('\\', '/').split('/').last;
+          // 处理加密文件名（去掉 .enc 后缀）
+          final baseName = fileName.endsWith('.enc') 
+              ? fileName.substring(0, fileName.length - 4) 
+              : fileName;
+          fileToNoteId[baseName] = note.id;
+          fileToNoteId[fileName] = note.id; // 同时记录带 .enc 的版本
+        }
+      }
+
+      // 5. 批量迁移文件
+      int migratedCount = 0;
+      int failedCount = 0;
+
+      for (final fileName in filesToMigrate) {
+        try {
+          // 获取文件信息
+          final isEncrypted = fileName.endsWith('.enc');
+          final baseName = isEncrypted 
+              ? fileName.substring(0, fileName.length - 4) 
+              : fileName;
+
+          // 尝试获取文件大小（从 Storage API）
+          int fileSize = 0;
+          try {
+            final fileInfo = await _supabase.storage
+                .from(_imageBucket)
+                .info(fileName);
+            fileSize = fileInfo.size ?? 0;
+          } catch (e) {
+            // 如果获取不到大小，使用默认值
+            fileSize = 0;
+          }
+
+          // 确定文件类型
+          final ext = baseName.split('.').last.toLowerCase();
+          String fileType = 'image/jpeg';
+          if (ext == 'png') fileType = 'image/png';
+          else if (ext == 'gif') fileType = 'image/gif';
+          else if (ext == 'webp') fileType = 'image/webp';
+
+          // 确定关联的 note_id
+          final noteId = fileToNoteId[baseName];
+
+          // 插入 attachments 表
+          await _supabase.from('attachments').insert({
+            'user_id': userId,
+            'note_id': noteId,
+            'file_path': '$_imageBucket/$fileName',
+            'file_size': fileSize,
+            'file_type': fileType,
+          });
+
+          migratedCount++;
+          _SyncLogger.info('ATTACHMENT', '已迁移: $fileName (${_formatBytes(fileSize)})');
+        } catch (e) {
+          failedCount++;
+          _SyncLogger.warn('ATTACHMENT', '迁移失败 $fileName: $e');
+        }
+      }
+
+      _SyncLogger.info('ATTACHMENT', '====== 迁移完成: 成功 $migratedCount 个, 失败 $failedCount 个 ======');
+    } catch (e) {
+      _SyncLogger.error('ATTACHMENT', '同步 attachments 表失败', e);
+    }
   }
 
   // 🌟 优化：获取云端文件列表
@@ -962,9 +1203,39 @@ class SupabaseSyncService {
   }
 
   // =========================================================================
-  // 🌟 V2: 笔记推送与关系插入 (含防御降级)
+  // 🌟 V2: 笔记推送与关系插入 (含防御降级 + 配额检查)
   // =========================================================================
   Future<List<Note>> _pushNotes(List<String> idsToPush, String userId) async {
+    // 🌟 配额检查：计算需要推送的内容大小
+    int totalBytesToPush = 0;
+    List<Note> notesToPush = [];
+    
+    for (var id in idsToPush) {
+      final note = _noteRepo!.getNoteById(id);
+      if (note != null && !note.isDeleted) {
+        notesToPush.add(note);
+        // 估算：标题 + 内容 + 元数据开销
+        totalBytesToPush += (note.title.length + note.content.length) * 2 + 2048;
+      }
+    }
+    
+    // 🌟 检查存储配额
+    if (totalBytesToPush > 0) {
+      final quotaService = StorageQuotaService();
+      final quotaCheck = await quotaService.checkStorageQuota(
+        requiredBytes: totalBytesToPush,
+        resourceType: ResourceType.note,
+      );
+      
+      if (!quotaCheck.canProceed) {
+        _SyncLogger.warn('QUOTA', '存储配额不足，跳过推送: ${quotaCheck.message}');
+        throw SyncException(
+          '云端存储空间不足: ${quotaCheck.message}',
+          type: SyncErrorType.quotaExceeded,
+        );
+      }
+    }
+
     List<Map<String, dynamic>> payloads = [];
     List<Note> pushedNotes = [];
 
@@ -1441,11 +1712,12 @@ class _CloudNoteMeta {
 
 /// 同步错误类型
 enum SyncErrorType {
-  network,    // 网络错误
-  timeout,    // 超时
-  auth,       // 认证错误
-  server,     // 服务器错误
-  unknown,    // 未知错误
+  network,       // 网络错误
+  timeout,       // 超时
+  auth,          // 认证错误
+  server,        // 服务器错误
+  quotaExceeded, // 配额超限
+  unknown,       // 未知错误
 }
 
 /// 同步异常类

@@ -16,6 +16,7 @@ import '../repositories/category_repository.dart';
 import '../repositories/tag_repository.dart';
 
 import '../../core/services/privacy_service.dart';
+import '../../utils/toast_utils.dart';
 
 enum SyncState { idle, syncing, success, error, unauthenticated }
 
@@ -188,6 +189,23 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
           _setSyncState(SyncState.idle);
         }
       });
+    } on SyncException catch (e) {
+      // 🌟 处理同步异常，特别是配额超限
+      if (e.type == SyncErrorType.quotaExceeded) {
+        _setSyncState(SyncState.error);
+        // 配额超限不自动恢复，让用户看到错误状态
+        if (context != null && context.mounted) {
+          ToastUtils.showError(context, e.message);
+        }
+      } else {
+        _setSyncState(SyncState.error);
+        // 🌟 5秒后自动恢复为 idle 状态
+        Future.delayed(const Duration(seconds: 5), () {
+          if (_syncState == SyncState.error) {
+            _setSyncState(SyncState.idle);
+          }
+        });
+      }
     } catch (e) {
       _setSyncState(SyncState.error);
       // 🌟 5秒后自动恢复为 idle 状态

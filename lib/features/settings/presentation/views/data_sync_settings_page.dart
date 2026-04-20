@@ -10,11 +10,13 @@ import 'package:path/path.dart' as p;
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/providers/todos_provider.dart';
 import '../../../../core/providers/auth_provider.dart';
+import '../../../../core/providers/quota_provider.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../utils/toast_utils.dart';
 import '../../../../widgets/common/dialogs/app_dialog.dart';
 import '../../../../core/services/local_backup_service.dart';
 import 'webdav_config_page.dart';
+import 'quota_settings_page.dart';
 
 class DataSyncSettingsPage extends StatefulWidget {
   const DataSyncSettingsPage({super.key});
@@ -188,18 +190,68 @@ class _DataSyncSettingsPageState extends State<DataSyncSettingsPage> {
             decoration: _buildCardDecoration(theme),
             child: Column(
               children: [
-                // 🌟 新增：存储占用查看
+                // 🌟 云端存储配额
+                Consumer<QuotaProvider>(
+                  builder: (context, quotaProvider, child) {
+                    final quota = quotaProvider.quota;
+                    final isAuthenticated = context.watch<AuthProvider>().isAuthenticated;
+
+                    return ListTile(
+                      title: Text('云端存储配额', style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+                      subtitle: Text(
+                        isAuthenticated
+                            ? (quota != null
+                                ? '已使用 ${quota.storageUsagePercent}% (${quota.formattedUsedStorage}/${quota.formattedLimitStorage})'
+                                : '点击刷新配额信息')
+                            : '登录后查看云端配额',
+                        style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                      leading: Icon(Icons.cloud_queue_rounded, color: theme.colorScheme.primary),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (quota != null && quota.isNearLimit)
+                            Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: quota.isWarning ? Colors.orange : Colors.amber,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                quota.isWarning ? '将满' : '${quota.storageUsagePercent}%',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          Icon(Icons.chevron_right_rounded, color: theme.colorScheme.onSurfaceVariant),
+                        ],
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const QuotaSettingsPage()),
+                        );
+                      },
+                    );
+                  },
+                ),
+                Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+
+                // 🌟 本地存储占用
                 ListTile(
-                  title: Text('存储位置与占用', style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
-                  subtitle: Text('本地数据库与图片缓存', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+                  title: Text('本地存储占用', style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+                  subtitle: Text('数据库与图片缓存', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
                   leading: Icon(Icons.storage_rounded, color: theme.colorScheme.primary),
                   trailing: Text(
                       _storageUsage,
                       style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.primary, fontSize: 14)
                   ),
                   onTap: () {
-                    ToastUtils.showInfo(context, '正在重新扫描存储空间...');
-                    _calculateStorageUsage();
+                    Navigator.pushNamed(context, AppRoutes.storageSettings);
                   },
                 ),
                 Divider(height: 1, indent: 56, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),

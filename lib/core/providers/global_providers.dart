@@ -7,6 +7,7 @@ import 'theme_provider.dart';
 import 'notes_provider.dart';
 import 'todos_provider.dart';
 import 'privacy_mode_provider.dart';
+import 'quota_provider.dart';
 import '../services/lan_sync_service.dart';
 
 class GlobalProviders extends StatelessWidget {
@@ -28,6 +29,7 @@ class GlobalProviders extends StatelessWidget {
         ),
         ChangeNotifierProvider(create: (_) => TodosProvider(AppInitializer.todoRepo)),
         ChangeNotifierProvider(create: (_) => PrivacyModeProvider()),
+        ChangeNotifierProvider(create: (_) => QuotaProvider()),
         ChangeNotifierProvider(create: (_) => LanSyncService()),
       ],
       child: child,

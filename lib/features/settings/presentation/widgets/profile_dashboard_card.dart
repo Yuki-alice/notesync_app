@@ -8,12 +8,14 @@ import 'package:path_provider/path_provider.dart';
 import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/providers/notes_provider.dart';
 import '../../../../core/providers/todos_provider.dart';
+import '../../../../core/providers/quota_provider.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../widgets/common/dialogs/app_sheet.dart';
 import '../../../../widgets/common/dialogs/app_dialog.dart';
 import '../../../../utils/toast_utils.dart';
 import '../viewmodels/profile_viewmodel.dart';
 import 'edit_profile_sheet.dart';
+import '../views/quota_settings_page.dart';
 
 class ProfileDashboardCard extends StatefulWidget {
   final AuthProvider auth;
@@ -128,9 +130,12 @@ class _ProfileDashboardCardState extends State<ProfileDashboardCard> {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             // 🌟 真实的同步状态看板
             _buildSyncStatusBox(context, theme),
+            const SizedBox(height: 12),
+            // 🌟 云端存储配额看板
+            _buildQuotaStatusBox(context, theme),
           ],
         ),
       ),
@@ -214,6 +219,236 @@ class _ProfileDashboardCardState extends State<ProfileDashboardCard> {
             ),
           );
         }
+    );
+  }
+
+  // 🌟 云端存储配额看板
+  Widget _buildQuotaStatusBox(BuildContext context, ThemeData theme) {
+    return Consumer<QuotaProvider>(
+      builder: (context, quotaProvider, child) {
+        final quota = quotaProvider.quota;
+
+        // 未登录或未获取到配额数据
+        if (quota == null) {
+          return _buildQuotaPlaceholder(theme);
+        }
+
+        final usagePercent = quota.storageUsagePercent ?? 0;
+        final usedMb = quota.storageUsedMb ?? 0;
+        final limitMb = quota.storageLimitMb ?? 100;
+        final planName = quota.planName ?? '免费版';
+
+        // 根据使用率确定颜色
+        Color progressColor;
+        if (usagePercent >= 100) {
+          progressColor = theme.colorScheme.error;
+        } else if (usagePercent >= 80) {
+          progressColor = Colors.orange;
+        } else {
+          progressColor = theme.colorScheme.primary;
+        }
+
+        return InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const QuotaSettingsPage()),
+          ),
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // 图标
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: progressColor.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.cloud_circle_outlined,
+                        color: progressColor,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // 配额信息
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                '云端存储',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurface,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  planName,
+                                  style: TextStyle(
+                                    color: theme.colorScheme.primary,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${usedMb.toStringAsFixed(1)} MB / $limitMb MB',
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // 使用率 Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: progressColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$usagePercent%',
+                        style: TextStyle(
+                          color: progressColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: theme.colorScheme.onSurfaceVariant,
+                      size: 20,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // 进度条
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: usagePercent / 100,
+                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                    minHeight: 6,
+                  ),
+                ),
+                // 超限警告
+                if (usagePercent >= 100)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.warning_rounded,
+                          color: theme.colorScheme.error,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '存储空间已满，请升级套餐或清理数据',
+                          style: TextStyle(
+                            color: theme.colorScheme.error,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // 🌟 配额占位符（未获取到数据时）
+  Widget _buildQuotaPlaceholder(ThemeData theme) {
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const QuotaSettingsPage()),
+      ),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outline.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.cloud_circle_outlined,
+                color: theme.colorScheme.outline,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '云端存储',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '点击查看配额详情',
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: theme.colorScheme.onSurfaceVariant,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

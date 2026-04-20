@@ -4,6 +4,7 @@ import 'package:notesync_app/features/auth/presentation/views/login_page.dart';
 import '../../app/main_screen.dart';
 import '../../features/settings/presentation/views/settings_page.dart';
 import '../../features/settings/presentation/views/category_management_page.dart';
+import '../../features/settings/presentation/views/storage_settings_page.dart';
 import '../../features/trash/presentation/views/trash_page.dart';
 import '../../features/notes/presentation/views/note_editor_page.dart';
 import '../../models/note.dart';
@@ -50,6 +51,12 @@ class AppRouter {
         final note = (args is Note) ? args : null;
         return MaterialPageRoute(
           builder: (_) => NoteEditorPage(note: note),
+          settings: settings,
+        );
+
+      case AppRoutes.storageSettings:
+        return MaterialPageRoute(
+          builder: (_) => const StorageSettingsPage(),
           settings: settings,
         );
 

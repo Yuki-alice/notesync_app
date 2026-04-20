@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -27,46 +29,128 @@ class ImageStorageService {
 
     // 判断是否是移动端 (Android / iOS / macOS 官方支持压缩)
     final isMobileOrMac = Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+    final isWindowsOrLinux = Platform.isWindows || Platform.isLinux;
+    final isCompressibleFormat = ext == '.jpg' || ext == '.jpeg' || ext == '.png' || ext == '.webp';
 
-    if (isMobileOrMac && (ext == '.jpg' || ext == '.jpeg' || ext == '.png' || ext == '.webp')) {
-      if (kDebugMode) {
-        print('🗜️ 开始压缩图片: ${imageFile.lengthSync() / 1024} KB');
-      }
-
-      try {
-        final result = await FlutterImageCompress.compressAndGetFile(
-          imageFile.absolute.path,
-          targetPath,
-          quality: 80,
-          minWidth: 1920,
-          minHeight: 1080,
-        );
-
-        if (result != null) {
-          final compressedFile = File(result.path);
-          if (kDebugMode) {
-            print('✅ 压缩完成: ${compressedFile.lengthSync() / 1024} KB');
-          }
-        } else {
-          // 压缩意外返回 null，回退到原样拷贝
-          await imageFile.copy(targetPath);
-        }
-      } catch (e) {
-        // 如果压缩过程出现任何未知的底层异常，也必须保证业务不中断，回退到拷贝
-        if (kDebugMode) {
-          print('⚠️ 压缩失败，回退到原图: $e');
-        }
+    if (isCompressibleFormat) {
+      if (isMobileOrMac) {
+        // 🟢 移动端使用 flutter_image_compress
+        await _compressWithFlutterImageCompress(imageFile, targetPath);
+      } else if (isWindowsOrLinux) {
+        // 🟢 Windows/Linux 使用 image 库
+        await _compressWithImageLibrary(imageFile, targetPath, ext);
+      } else {
+        // 其他平台原样拷贝
         await imageFile.copy(targetPath);
       }
     } else {
-      // 🟢 Windows/Linux 桌面端，或者不支持压缩的格式（如 gif），直接原样拷贝！
+      // 🟢 不支持压缩的格式（如 gif），直接原样拷贝
       if (kDebugMode) {
-        print('💻 当前平台或格式不执行压缩，原样保存');
+        print('💻 格式不支持压缩，原样保存');
       }
       await imageFile.copy(targetPath);
     }
 
     return '$_imageDirName/$fileName';
+  }
+
+  /// 🗜️ 使用 flutter_image_compress 压缩（移动端）
+  Future<void> _compressWithFlutterImageCompress(File imageFile, String targetPath) async {
+    if (kDebugMode) {
+      print('🗜️ 开始压缩图片: ${imageFile.lengthSync() / 1024} KB');
+    }
+
+    try {
+      final result = await FlutterImageCompress.compressAndGetFile(
+        imageFile.absolute.path,
+        targetPath,
+        quality: 80,
+        minWidth: 1920,
+        minHeight: 1080,
+      );
+
+      if (result != null) {
+        final compressedFile = File(result.path);
+        if (kDebugMode) {
+          print('✅ 压缩完成: ${compressedFile.lengthSync() / 1024} KB');
+        }
+      } else {
+        await imageFile.copy(targetPath);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ 压缩失败，回退到原图: $e');
+      }
+      await imageFile.copy(targetPath);
+    }
+  }
+
+  /// 🗜️ 使用 image 库压缩（Windows/Linux）
+  Future<void> _compressWithImageLibrary(File imageFile, String targetPath, String ext) async {
+    if (kDebugMode) {
+      print('🗜️ [Windows/Linux] 开始压缩图片: ${imageFile.lengthSync() / 1024} KB');
+    }
+
+    try {
+      // 读取图片
+      final bytes = await imageFile.readAsBytes();
+      final originalImage = img.decodeImage(bytes);
+
+      if (originalImage == null) {
+        if (kDebugMode) {
+          print('⚠️ 无法解码图片，回退到原图');
+        }
+        await imageFile.copy(targetPath);
+        return;
+      }
+
+      // 计算新尺寸（保持比例，最大边不超过 1920）
+      int newWidth = originalImage.width;
+      int newHeight = originalImage.height;
+      const maxDimension = 1920;
+
+      if (newWidth > maxDimension || newHeight > maxDimension) {
+        if (newWidth > newHeight) {
+          newHeight = (newHeight * maxDimension / newWidth).round();
+          newWidth = maxDimension;
+        } else {
+          newWidth = (newWidth * maxDimension / newHeight).round();
+          newHeight = maxDimension;
+        }
+      }
+
+      // 调整大小
+      final resizedImage = img.copyResize(
+        originalImage,
+        width: newWidth,
+        height: newHeight,
+        interpolation: img.Interpolation.linear,
+      );
+
+      // 编码并保存
+      Uint8List? encodedBytes;
+      if (ext == '.png') {
+        encodedBytes = img.encodePng(resizedImage, level: 6); // 压缩级别 0-9
+      } else {
+        // jpg/jpeg/webp 都使用 jpeg 编码（image 库不支持 webp 编码）
+        encodedBytes = img.encodeJpg(resizedImage, quality: 80);
+      }
+
+      if (encodedBytes != null) {
+        await File(targetPath).writeAsBytes(encodedBytes);
+        final compressedSize = await File(targetPath).length();
+        if (kDebugMode) {
+          print('✅ [Windows/Linux] 压缩完成: ${compressedSize / 1024} KB (${newWidth}x${newHeight})');
+        }
+      } else {
+        await imageFile.copy(targetPath);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ [Windows/Linux] 压缩失败，回退到原图: $e');
+      }
+      await imageFile.copy(targetPath);
+    }
   }
 
   Future<File?> getLocalFile(String path) async {

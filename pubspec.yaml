@@ -37,7 +37,7 @@ dependencies:
   share_plus: ^12.0.1
   gal: ^2.3.2
   url_launcher: ^6.3.2
-  archive: ^3.4.10
+  archive: ^4.0.9
   file_picker: ^11.0.2
   path: ^1.9.1
   webdav_client: ^1.2.2
@@ -54,6 +54,8 @@ dependencies:
   http: ^1.6.0
   flutter_markdown: ^0.7.7+1
   flutter_dotenv: ^6.0.0
+  device_info_plus: ^11.4.0
+  image: ^4.5.4
 
 dev_dependencies:
   flutter_test:
