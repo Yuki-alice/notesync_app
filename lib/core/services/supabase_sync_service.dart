@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' hide Category;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -7,11 +8,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 
+import 'package:flutter/material.dart';
+
 import '../repositories/category_repository.dart';
 import '../repositories/note_repository.dart';
 import '../repositories/tag_repository.dart';
 import '../repositories/todo_repository.dart';
 import '../services/privacy_service.dart';
+import '../../widgets/common/dialogs/sync_conflict_dialog.dart';
+
+// 🌟 导出 NoteSyncMeta 供同步服务使用
+export '../repositories/note_repository.dart' show NoteSyncMeta;
 
 import '../../models/note.dart';
 import '../../models/todo.dart';
@@ -56,6 +63,7 @@ class SupabaseSyncService {
   static const String _deletedCategoriesKey = 'deleted_categories';
   static const String _lastNoteSyncKey = 'last_sync_time';
   static const String _lastTodoSyncKey = 'last_todo_sync_time';
+  static const String _lastSyncedVersionsKey = 'last_synced_versions'; // 🌟 记录每个笔记上次同步时的版本号
   static const String _imageBucket = 'note_images';
 
   static const Duration _timeBuffer = Duration(seconds: 2);
@@ -64,6 +72,11 @@ class SupabaseSyncService {
   static bool _isPrivateImageSyncing = false;
   static DateTime? _lastPrivateImageSyncTime;
   static const Duration _minSyncInterval = Duration(seconds: 10);
+
+  // 🌟 网络异常重试配置
+  static const int _maxRetryAttempts = 3;
+  static const Duration _retryDelay = Duration(seconds: 2);
+  static const Duration _networkTimeout = Duration(seconds: 15);
 
   // =========================================================================
   // 🌟 1. 本地删除动作记录 (废纸篓同步机制)
@@ -99,9 +112,80 @@ class SupabaseSyncService {
   }
 
   // =========================================================================
+  // 🌟 网络异常重试机制
+  // =========================================================================
+  
+  /// 🌟 带重试的网络操作包装器
+  /// 
+  /// [operation] 要执行的网络操作
+  /// [operationName] 操作名称（用于日志）
+  /// [maxAttempts] 最大重试次数（默认3次）
+  Future<T> _withRetry<T>({
+    required Future<T> Function() operation,
+    required String operationName,
+    int maxAttempts = _maxRetryAttempts,
+  }) async {
+    int attempts = 0;
+    Duration delay = _retryDelay;
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        _SyncLogger.info('RETRY', '[$operationName] 第 $attempts/$maxAttempts 次尝试');
+        final result = await operation().timeout(_networkTimeout);
+        if (attempts > 1) {
+          _SyncLogger.info('RETRY', '[$operationName] 重试成功！');
+        }
+        return result;
+      } on TimeoutException catch (e) {
+        _SyncLogger.warn('RETRY', '[$operationName] 超时 (${e.duration?.inSeconds}s)');
+        if (attempts >= maxAttempts) {
+          throw SyncException(
+            '[$operationName] 操作超时，已重试 $maxAttempts 次',
+            type: SyncErrorType.timeout,
+          );
+        }
+      } on SocketException catch (e) {
+        _SyncLogger.warn('RETRY', '[$operationName] 网络错误: ${e.message}');
+        if (attempts >= maxAttempts) {
+          throw SyncException(
+            '[$operationName] 网络连接失败，请检查网络设置',
+            type: SyncErrorType.network,
+          );
+        }
+      } catch (e) {
+        _SyncLogger.error('RETRY', '[$operationName] 错误', e);
+        if (attempts >= maxAttempts) {
+          throw SyncException(
+            '[$operationName] 操作失败: $e',
+            type: SyncErrorType.unknown,
+          );
+        }
+      }
+      
+      // 指数退避：每次重试延迟增加
+      if (attempts < maxAttempts) {
+        _SyncLogger.info('RETRY', '[$operationName] ${delay.inSeconds}秒后重试...');
+        await Future.delayed(delay);
+        delay = Duration(milliseconds: (delay.inMilliseconds * 1.5).round());
+      }
+    }
+    
+    throw SyncException(
+      '[$operationName] 重试次数耗尽',
+      type: SyncErrorType.unknown,
+    );
+  }
+
+  // =========================================================================
   // 🌟 2. 笔记 & 字典 同步全链路 (V2.0 增量版本)
   // =========================================================================
-  Future<void> syncNotes({Function()? onTextSyncComplete}) async {
+  /// 
+  /// [context] 用于显示冲突对话框，如果为 null 则跳过冲突处理
+  Future<void> syncNotes({
+    Function()? onTextSyncComplete,
+    BuildContext? context,
+  }) async {
     if (_noteRepo == null) return;
     if (_supabase.auth.currentUser == null) {
       _SyncLogger.warn('NOTE', '未登录，中止同步');
@@ -123,32 +207,87 @@ class SupabaseSyncService {
       final lastSyncTime = lastSyncStr != null ? DateTime.parse(lastSyncStr) : null;
       _SyncLogger.info('NOTE', '上次同步时间: ${lastSyncTime?.toLocal() ?? "从未同步"}');
 
-      // 3. 笔记主表拉取比对 (基于更新时间兜底，兼容版本号)
-      final cloudMetadata = await _fetchCloudMetadata('notes', currentUserId);
-      final localMetaMap = _noteRepo.getAllNotesMetadata();
+      // 🌟 读取上次同步时的版本号记录
+      final lastSyncedVersionsJson = prefs.getString(_lastSyncedVersionsKey);
+      final Map<String, int> lastSyncedVersions = lastSyncedVersionsJson != null
+          ? Map<String, int>.from(jsonDecode(lastSyncedVersionsJson) as Map)
+          : {};
+      _SyncLogger.info('NOTE', '已记录 ${lastSyncedVersions.length} 条笔记的上次同步版本');
 
-      final plan = _reconcileData(
-        localMetaMap: localMetaMap,
-        cloudMetadata: cloudMetadata,
+      // 3. 笔记主表拉取比对 (🌟 基于版本号 + lastSyncedVersion，支持真正的冲突检测)
+      final cloudMetadataWithVersion = await _fetchCloudMetadataWithVersion(currentUserId);
+      final localMetaMapWithVersion = _noteRepo.getAllNotesMetadataWithVersion();
+
+      final plan = _reconcileDataWithVersion(
+        localMetaMap: localMetaMapWithVersion,
+        cloudMetadata: cloudMetadataWithVersion,
         lastSyncTime: lastSyncTime,
+        lastSyncedVersions: lastSyncedVersions,
       );
 
+      // 🌟 处理冲突（如果有）
+      List<String> resolvedConflicts = [];
+      if (plan.conflicts.isNotEmpty && context != null && context.mounted) {
+        _SyncLogger.warn('NOTE', '检测到 ${plan.conflicts.length} 条笔记冲突，显示解决对话框');
+        resolvedConflicts = await _resolveConflicts(
+          context: context,
+          conflicts: plan.conflicts,
+          cloudMetadata: cloudMetadataWithVersion,
+        );
+      } else if (plan.conflicts.isNotEmpty) {
+        _SyncLogger.warn('NOTE', '检测到 ${plan.conflicts.length} 条笔记冲突，但无上下文，跳过处理');
+      }
+
+      // 合并冲突解决结果到同步计划
+      final finalToPull = [...plan.toPull];
+      final finalToPush = [...plan.toPush];
+      
+      for (var conflictId in resolvedConflicts) {
+        // 用户解决后的冲突从 pull/push 中移除（已单独处理）
+        finalToPull.remove(conflictId);
+        finalToPush.remove(conflictId);
+      }
+
+      // 🌟 执行拉取操作
       List<Note> pulledNotes = [];
-      if (plan.toPull.isNotEmpty) {
-        pulledNotes = await _pullNotes(plan.toPull, currentUserId, localMetaMap.keys.toSet());
+      if (finalToPull.isNotEmpty) {
+        _SyncLogger.info('SYNC', '📥 计划拉取 ${finalToPull.length} 条笔记从云端');
+        pulledNotes = await _pullNotes(finalToPull, currentUserId, localMetaMapWithVersion.keys.toSet());
+      } else {
+        _SyncLogger.info('SYNC', '📥 无需拉取笔记（云端无更新）');
       }
 
+      // 🌟 执行推送操作
       List<Note> pushedNotes = [];
-      if (plan.toPush.isNotEmpty) {
-        pushedNotes = await _pushNotes(plan.toPush, currentUserId);
+      if (finalToPush.isNotEmpty) {
+        _SyncLogger.info('SYNC', '📤 计划推送 ${finalToPush.length} 条笔记到云端');
+        pushedNotes = await _pushNotes(finalToPush, currentUserId);
+      } else {
+        _SyncLogger.info('SYNC', '📤 无需推送笔记（本地无更新）');
       }
 
+      // 🌟 处理本地删除
       for (var id in plan.toDeleteLocally) {
         await _noteRepo.deleteNote(id);
         _SyncLogger.info('NOTE', '👻 成功抹除本地幽灵笔记: $id');
       }
 
       await prefs.setString(_lastNoteSyncKey, DateTime.now().toUtc().toIso8601String());
+
+      // 🌟 保存本次同步后的版本号记录（用于下次冲突检测）
+      final updatedLastSyncedVersions = <String, int>{};
+      for (var entry in localMetaMapWithVersion.entries) {
+        updatedLastSyncedVersions[entry.key] = entry.value.version;
+      }
+      // 合并云端版本（对于云端有但本地没有的笔记）
+      for (var entry in cloudMetadataWithVersion.entries) {
+        if (!updatedLastSyncedVersions.containsKey(entry.key)) {
+          updatedLastSyncedVersions[entry.key] = entry.value.version;
+        }
+      }
+      await prefs.setString(_lastSyncedVersionsKey, jsonEncode(updatedLastSyncedVersions));
+      _SyncLogger.info('NOTE', '已保存 ${updatedLastSyncedVersions.length} 条笔记的同步版本号');
+
       if (onTextSyncComplete != null) onTextSyncComplete();
 
       // 4. 图片资源分离同步
@@ -172,6 +311,63 @@ class SupabaseSyncService {
     } catch (e, stack) {
       _SyncLogger.error('NOTE', '同步管线崩溃', e);
     }
+  }
+
+  // =========================================================================
+  // 🌟 冲突解决处理
+  // =========================================================================
+  
+  /// 🌟 处理同步冲突
+  /// 
+  /// 显示冲突对话框让用户选择保留哪个版本
+  /// 返回已解决的冲突笔记 ID 列表
+  Future<List<String>> _resolveConflicts({
+    required BuildContext context,
+    required List<_SyncConflict> conflicts,
+    required Map<String, _CloudNoteMeta> cloudMetadata,
+  }) async {
+    final resolved = <String>[];
+    
+    for (var conflict in conflicts) {
+      if (!context.mounted) {
+        _SyncLogger.warn('CONFLICT', '上下文已销毁，中断冲突处理');
+        break;
+      }
+      
+      final note = _noteRepo?.getNoteById(conflict.noteId);
+      final noteTitle = note?.title ?? '未命名笔记';
+      
+      _SyncLogger.info('CONFLICT', '显示冲突对话框: $noteTitle');
+      
+      final result = await showSyncConflictDialog(
+        context: context,
+        noteTitle: noteTitle,
+        localVersion: conflict.localVersion,
+        cloudVersion: conflict.cloudVersion,
+        localUpdatedAt: conflict.localUpdatedAt,
+        cloudUpdatedAt: conflict.cloudUpdatedAt,
+      );
+      
+      if (result == null) {
+        // 用户取消，跳过此冲突
+        _SyncLogger.info('CONFLICT', '用户取消解决冲突: $noteTitle');
+        continue;
+      }
+      
+      if (result == 'local') {
+        // 保留本地：推送本地版本到云端
+        _SyncLogger.info('CONFLICT', '用户选择保留本地: $noteTitle');
+        await _pushNotes([conflict.noteId], _supabase.auth.currentUser!.id);
+        resolved.add(conflict.noteId);
+      } else if (result == 'cloud') {
+        // 保留云端：拉取云端版本覆盖本地
+        _SyncLogger.info('CONFLICT', '用户选择保留云端: $noteTitle');
+        await _pullNotes([conflict.noteId], _supabase.auth.currentUser!.id, {});
+        resolved.add(conflict.noteId);
+      }
+    }
+    
+    return resolved;
   }
 
   // =========================================================================
@@ -525,14 +721,20 @@ class SupabaseSyncService {
     // ----- 1. 处理分类黑名单 (物理删除) -----
     final deletedCats = prefs.getStringList(_deletedCategoriesKey) ?? [];
     if (deletedCats.isNotEmpty) {
-      await _supabase.from('categories').delete().inFilter('id', deletedCats);
+      await _withRetry(
+        operation: () => _supabase.from('categories').delete().inFilter('id', deletedCats),
+        operationName: '删除云端分类',
+      );
       await prefs.setStringList(_deletedCategoriesKey, []);
       _SyncLogger.info('CATE', '成功清空本地分类黑名单');
     }
 
     // ----- 2. 分类双向增量同步 (基于 updatedAt 时间戳) -----
     final localCats = _categoryRepo.getAllCategories();
-    final cloudCatsData = await _supabase.from('categories').select().eq('user_id', userId);
+    final cloudCatsData = await _withRetry(
+      operation: () => _supabase.from('categories').select().eq('user_id', userId),
+      operationName: '拉取云端分类',
+    );
 
     final localCatsMap = { for (var c in localCats) c.id: c };
     final cloudCatsMap = { for (var map in cloudCatsData) map['id'] as String: map };
@@ -592,7 +794,10 @@ class SupabaseSyncService {
 
     // 执行分类推送
     if (catsToPush.isNotEmpty) {
-      await _supabase.from('categories').upsert(catsToPush);
+      await _withRetry(
+        operation: () => _supabase.from('categories').upsert(catsToPush),
+        operationName: '推送分类到云端',
+      );
       _SyncLogger.info('CATE', '推送 ${catsToPush.length} 个分类更新到云端');
     }
     if (localCatChanged) {
@@ -601,7 +806,10 @@ class SupabaseSyncService {
 
     // ----- 3. 标签双向合并同步 (标签通常不修改名字，只需比对存在性) -----
     final localTags = _tagRepo!.getAllTags();
-    final cloudTagsData = await _supabase.from('tags').select().eq('user_id', userId);
+    final cloudTagsData = await _withRetry(
+      operation: () => _supabase.from('tags').select().eq('user_id', userId),
+      operationName: '拉取云端标签',
+    );
 
     final localTagsMap = { for (var t in localTags) t.id: t };
     final cloudTagsMap = { for (var map in cloudTagsData) map['id'] as String: map };
@@ -632,7 +840,10 @@ class SupabaseSyncService {
     }
 
     if (tagsToPush.isNotEmpty) {
-      await _supabase.from('tags').upsert(tagsToPush);
+      await _withRetry(
+        operation: () => _supabase.from('tags').upsert(tagsToPush),
+        operationName: '推送标签到云端',
+      );
       _SyncLogger.info('TAG', '推送 ${tagsToPush.length} 个新标签到云端');
     }
     if (localTagChanged) {
@@ -653,21 +864,25 @@ class SupabaseSyncService {
       List<dynamic> cloudUpdates = [];
       try {
         // 尝试执行级联查询 (带有标签关联)
-        final res = await _supabase.from('notes')
-            .select('*, note_tags(tag_id)')
-            .inFilter('id', chunk)
-            .eq('user_id', userId)
-            .timeout(const Duration(seconds: 15));
+        final res = await _withRetry(
+          operation: () => _supabase.from('notes')
+              .select('*, note_tags(tag_id)')
+              .inFilter('id', chunk)
+              .eq('user_id', userId),
+          operationName: '拉取笔记详情',
+        );
         cloudUpdates = res as List<dynamic>;
       } catch (e) {
         _SyncLogger.warn('PULL', '包含 note_tags 的高级查询失败，自动退回基础单表查询: $e');
         try {
           // 防御性回退：如果不允许查 note_tags（RLS未开或表结构异常），则只查 notes 主表
-          final res = await _supabase.from('notes')
-              .select('*')
-              .inFilter('id', chunk)
-              .eq('user_id', userId)
-              .timeout(const Duration(seconds: 15));
+          final res = await _withRetry(
+            operation: () => _supabase.from('notes')
+                .select('*')
+                .inFilter('id', chunk)
+                .eq('user_id', userId),
+            operationName: '拉取笔记详情(降级)',
+          );
           cloudUpdates = res as List<dynamic>;
         } catch (innerError) {
           _SyncLogger.error('PULL', '基础查询也失败了，跳过本批次', innerError);
@@ -703,7 +918,9 @@ class SupabaseSyncService {
         }
       }
     }
-    _SyncLogger.info('PULL', '成功拉取 ${pulled.length} 条 Note 内容及关系');
+    if (pulled.isNotEmpty) {
+      _SyncLogger.info('PULL', '✅ 成功拉取 ${pulled.length} 条笔记到本地');
+    }
     return pulled;
   }
 
@@ -760,7 +977,10 @@ class SupabaseSyncService {
 
     if (payloads.isNotEmpty) {
       try {
-        await _supabase.from('notes').upsert(payloads).timeout(const Duration(seconds: 15));
+        await _withRetry(
+          operation: () => _supabase.from('notes').upsert(payloads),
+          operationName: '推送笔记到云端',
+        );
       } catch (e) {
         // 🌟 降级策略：如果包含 is_private 字段失败，尝试不包含
         _SyncLogger.warn('PUSH', '包含 is_private 推送失败，尝试降级推送: $e');
@@ -777,7 +997,10 @@ class SupabaseSyncService {
             'is_deleted': p['is_deleted'],
             'user_id': p['user_id'],
           }).toList();
-          await _supabase.from('notes').upsert(legacyPayloads).timeout(const Duration(seconds: 15));
+          await _withRetry(
+            operation: () => _supabase.from('notes').upsert(legacyPayloads),
+            operationName: '推送笔记到云端(降级)',
+          );
           _SyncLogger.info('PUSH', '降级推送成功（不含 is_private）');
         } catch (legacyError) {
           _SyncLogger.error('PUSH', '笔记主表推送失败（降级也失败），已中止', legacyError);
@@ -788,16 +1011,24 @@ class SupabaseSyncService {
       // 隔离标签关系的推送，避免拖累笔记主表
       for (var note in pushedNotes) {
         try {
-          await _supabase.from('note_tags').delete().eq('note_id', note.id);
+          await _withRetry(
+            operation: () => _supabase.from('note_tags').delete().eq('note_id', note.id),
+            operationName: '删除笔记标签关联',
+          );
           if (note.tagIds.isNotEmpty) {
             final tagPayloads = note.tagIds.map((tagId) => {'note_id': note.id, 'tag_id': tagId}).toList();
-            await _supabase.from('note_tags').insert(tagPayloads);
+            await _withRetry(
+              operation: () => _supabase.from('note_tags').insert(tagPayloads),
+              operationName: '插入笔记标签关联',
+            );
           }
         } catch (e) {
           _SyncLogger.warn('PUSH', '为笔记 [${note.title}] 绑定标签失败 (请检查 RLS 权限)');
         }
       }
-      _SyncLogger.info('PUSH', '成功推送 ${payloads.length} 条 Note 至云端');
+      _SyncLogger.info('PUSH', '✅ 成功推送 ${payloads.length} 条笔记到云端');
+    } else {
+      _SyncLogger.info('PUSH', 'ℹ️ 无笔记需要推送');
     }
     return pushedNotes;
   }
@@ -827,9 +1058,23 @@ class SupabaseSyncService {
         lastSyncTime: lastSyncTime,
       );
 
-      if (plan.toPull.isNotEmpty) await _pullTodos(plan.toPull, currentUserId, localMetaMap.keys.toSet());
-      if (plan.toPush.isNotEmpty) await _pushTodos(plan.toPush, currentUserId);
+      // 🌟 执行拉取操作
+      if (plan.toPull.isNotEmpty) {
+        _SyncLogger.info('SYNC', '📥 计划拉取 ${plan.toPull.length} 条待办从云端');
+        await _pullTodos(plan.toPull, currentUserId, localMetaMap.keys.toSet());
+      } else {
+        _SyncLogger.info('SYNC', '📥 无需拉取待办（云端无更新）');
+      }
+      
+      // 🌟 执行推送操作
+      if (plan.toPush.isNotEmpty) {
+        _SyncLogger.info('SYNC', '📤 计划推送 ${plan.toPush.length} 条待办到云端');
+        await _pushTodos(plan.toPush, currentUserId);
+      } else {
+        _SyncLogger.info('SYNC', '📤 无需推送待办（本地无更新）');
+      }
 
+      // 🌟 处理本地删除
       for (var id in plan.toDeleteLocally) {
         await _todoRepo!.deleteTodo(id);
         _SyncLogger.info('TODO', '👻 成功抹除本地幽灵待办: $id');
@@ -848,7 +1093,10 @@ class SupabaseSyncService {
     int pullCount = 0;
     for (var i = 0; i < idsToFetch.length; i += 50) {
       final chunk = idsToFetch.sublist(i, i + 50 > idsToFetch.length ? idsToFetch.length : i + 50);
-      final List<dynamic> cloudUpdates = await _supabase.from('todos').select().inFilter('id', chunk).eq('user_id', userId);
+      final List<dynamic> cloudUpdates = await _withRetry(
+        operation: () => _supabase.from('todos').select().inFilter('id', chunk).eq('user_id', userId),
+        operationName: '拉取待办详情',
+      );
 
       for (var data in cloudUpdates) {
         List<SubTask> parsedSubTasks = [];
@@ -878,7 +1126,9 @@ class SupabaseSyncService {
         pullCount++;
       }
     }
-    _SyncLogger.info('PULL', '成功拉取 $pullCount 条 Todo 内容');
+    if (pullCount > 0) {
+      _SyncLogger.info('PULL', '✅ 成功拉取 $pullCount 条待办到本地');
+    }
   }
 
   Future<void> _pushTodos(List<String> idsToPush, String userId) async {
@@ -902,15 +1152,110 @@ class SupabaseSyncService {
       }
     }
     if (payloads.isNotEmpty) {
-      await _supabase.from('todos').upsert(payloads).timeout(const Duration(seconds: 15));
-      _SyncLogger.info('PUSH', '成功推送 ${payloads.length} 条 Todo 至云端');
+      await _withRetry(
+        operation: () => _supabase.from('todos').upsert(payloads),
+        operationName: '推送待办到云端',
+      );
+      _SyncLogger.info('PUSH', '✅ 成功推送 ${payloads.length} 条待办到云端');
+    } else {
+      _SyncLogger.info('PUSH', 'ℹ️ 无待办需要推送');
     }
   }
 
 
   // =========================================================================
-  // 🌟 核心对比算法
+  // 🌟 核心对比算法（基于版本号 + lastSyncedVersion，支持真正的冲突检测）
   // =========================================================================
+  /// 
+  /// 冲突判定：本地版本 > lastSyncedVersion 且 云端版本 > lastSyncedVersion
+  /// 这意味着两端在最后一次同步后都有更新
+  _SyncPlan _reconcileDataWithVersion({
+    required Map<String, NoteSyncMeta> localMetaMap,
+    required Map<String, _CloudNoteMeta> cloudMetadata,
+    required DateTime? lastSyncTime,
+    required Map<String, int> lastSyncedVersions,
+  }) {
+    final toPull = <String>[];
+    final toPush = <String>[];
+    final toDeleteLocally = <String>[];
+    final conflicts = <_SyncConflict>[];
+
+    for (var cloudMeta in cloudMetadata.entries) {
+      final cloudId = cloudMeta.key;
+      final cloudData = cloudMeta.value;
+      final localData = localMetaMap[cloudId];
+      final lastSyncedVersion = lastSyncedVersions[cloudId] ?? 1;
+
+      if (localData == null) {
+        // 本地没有，从云端拉取
+        toPull.add(cloudId);
+      } else {
+        // 🌟 检查是否真正冲突（两端都有更新）
+        final localUpdated = localData.version > lastSyncedVersion;
+        final cloudUpdated = cloudData.version > lastSyncedVersion;
+        
+        if (localUpdated && cloudUpdated) {
+          // 🌟 真正的冲突：两端都有更新
+          conflicts.add(_SyncConflict(
+            noteId: cloudId,
+            localVersion: localData.version,
+            cloudVersion: cloudData.version,
+            localUpdatedAt: localData.updatedAt,
+            cloudUpdatedAt: cloudData.updatedAt,
+          ));
+          _SyncLogger.info('CONFLICT', '检测到冲突: $cloudId (本地v${localData.version} vs 云端v${cloudData.version}, 上次同步v$lastSyncedVersion)');
+        } else if (cloudData.version > localData.version) {
+          // 云端版本更高，拉取
+          toPull.add(cloudId);
+        } else if (cloudData.version < localData.version) {
+          // 本地版本更高，推送
+          toPush.add(cloudId);
+        } else {
+          // 版本号相同，但时间不同（异常情况）
+          // 用时间作为后备判断
+          if (cloudData.updatedAt.difference(localData.updatedAt).inSeconds.abs() <= _timeBuffer.inSeconds) {
+            continue; // 时间差在容错范围内，视为相同
+          }
+          if (cloudData.updatedAt.isAfter(localData.updatedAt)) {
+            toPull.add(cloudId);
+          } else {
+            toPush.add(cloudId);
+          }
+        }
+      }
+    }
+
+    for (var localMeta in localMetaMap.entries) {
+      final localId = localMeta.key;
+      final localData = localMeta.value;
+
+      if (!cloudMetadata.containsKey(localId)) {
+        // 云端没有这条笔记
+        if (lastSyncTime == null) {
+          // 从未同步过，推送本地
+          toPush.add(localId);
+        } else {
+          // 同步过，但云端没有
+          if (localData.updatedAt.isAfter(lastSyncTime.add(_timeBuffer))) {
+            // 本地有更新，推送
+            toPush.add(localId);
+          } else {
+            // 本地没有更新，删除本地
+            toDeleteLocally.add(localId);
+          }
+        }
+      }
+    }
+
+    return _SyncPlan(
+      toPull: toPull,
+      toPush: toPush,
+      toDeleteLocally: toDeleteLocally,
+      conflicts: conflicts,
+    );
+  }
+
+  // 🌟 保留旧方法供其他模块兼容使用
   _SyncPlan _reconcileData({
     required Map<String, DateTime> localMetaMap,
     required Map<String, DateTime> cloudMetadata,
@@ -960,7 +1305,10 @@ class SupabaseSyncService {
 
   Future<Map<String, DateTime>> _fetchCloudMetadata(String table, String userId) async {
     try {
-      final response = await _supabase.from(table).select('id, updated_at').eq('user_id', userId).timeout(const Duration(seconds: 15));
+      final response = await _withRetry(
+        operation: () => _supabase.from(table).select('id, updated_at').eq('user_id', userId),
+        operationName: '拉取云端元数据',
+      );
       final data = response as List<dynamic>;
       _SyncLogger.info('META', '从云端 [$table] 发现 ${data.length} 条记录');
       return {for (var item in data) item['id'].toString(): DateTime.parse(item['updated_at'].toString()).toLocal()};
@@ -970,11 +1318,39 @@ class SupabaseSyncService {
     }
   }
 
+  /// 🌟 获取云端版本号元数据（用于冲突检测）
+  Future<Map<String, _CloudNoteMeta>> _fetchCloudMetadataWithVersion(String userId) async {
+    try {
+      final response = await _withRetry(
+        operation: () => _supabase
+            .from('notes')
+            .select('id, updated_at, version')
+            .eq('user_id', userId),
+        operationName: '拉取云端版本号',
+      );
+      final data = response as List<dynamic>;
+      _SyncLogger.info('META', '从云端获取 ${data.length} 条笔记版本号');
+      return {
+        for (var item in data)
+          item['id'].toString(): _CloudNoteMeta(
+            updatedAt: DateTime.parse(item['updated_at'].toString()).toLocal(),
+            version: (item['version'] as int?) ?? 1,
+          )
+      };
+    } catch (e) {
+      _SyncLogger.error('META', '拉取云端版本号失败', e);
+      return {};
+    }
+  }
+
   Future<void> _processLocalDeletions(SharedPreferences prefs, String table, String key) async {
     final deletedIds = prefs.getStringList(key) ?? [];
     if (deletedIds.isEmpty) return;
     try {
-      await _supabase.from(table).delete().inFilter('id', deletedIds).timeout(const Duration(seconds: 15));
+      await _withRetry(
+        operation: () => _supabase.from(table).delete().inFilter('id', deletedIds),
+        operationName: '清理云端废纸篓',
+      );
       await prefs.setStringList(key, []);
       _SyncLogger.info('TRASH', '成功清空 [$table] 云端废纸篓: ${deletedIds.length} 条');
     } catch (e) {
@@ -987,6 +1363,66 @@ class _SyncPlan {
   final List<String> toPull;
   final List<String> toPush;
   final List<String> toDeleteLocally;
+  final List<_SyncConflict> conflicts;
 
-  _SyncPlan({required this.toPull, required this.toPush, required this.toDeleteLocally});
+  _SyncPlan({
+    required this.toPull,
+    required this.toPush,
+    required this.toDeleteLocally,
+    this.conflicts = const [],
+  });
+}
+
+/// 🌟 同步冲突信息
+class _SyncConflict {
+  final String noteId;
+  final int localVersion;
+  final int cloudVersion;
+  final DateTime localUpdatedAt;
+  final DateTime cloudUpdatedAt;
+
+  _SyncConflict({
+    required this.noteId,
+    required this.localVersion,
+    required this.cloudVersion,
+    required this.localUpdatedAt,
+    required this.cloudUpdatedAt,
+  });
+}
+
+/// 🌟 云端笔记元数据
+class _CloudNoteMeta {
+  final DateTime updatedAt;
+  final int version;
+
+  _CloudNoteMeta({required this.updatedAt, required this.version});
+}
+
+// =========================================================================
+// 🌟 同步异常类型
+// =========================================================================
+
+/// 同步错误类型
+enum SyncErrorType {
+  network,    // 网络错误
+  timeout,    // 超时
+  auth,       // 认证错误
+  server,     // 服务器错误
+  unknown,    // 未知错误
+}
+
+/// 同步异常类
+class SyncException implements Exception {
+  final String message;
+  final SyncErrorType type;
+  final dynamic originalError;
+
+  SyncException(
+    this.message, {
+    required this.type,
+    this.originalError,
+  });
+
+  @override
+  String toString() => 'SyncException[$type]: $message';
 }
