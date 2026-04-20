@@ -145,23 +145,6 @@ class SettingsPage extends StatelessWidget {
                     ],
                   ),
 
-                  const SizedBox(height: 32),
-                  // 🌟 新增的危险操作区：安全登出按钮
-                  const _SectionTitle('危险操作'),
-                  _SettingGroupContainer(
-                    children: [
-                      _buildNavTile(
-                        context,
-                        icon: Icons.logout_rounded,
-                        title: '退出登录',
-                        subtitle: '清除本地缓存数据并返回登录页',
-                        titleStyle: titleStyle.copyWith(color: theme.colorScheme.error),
-                        subStyle: subStyle,
-                        iconColor: theme.colorScheme.error,
-                        onTap: () => _performLogout(context),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
