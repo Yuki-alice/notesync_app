@@ -1087,6 +1087,7 @@ class SupabaseSyncService {
           'id': localTag.id, 'user_id': userId, 'name': localTag.name, 'color': localTag.color,
           'is_deleted': localTag.isDeleted,
           'created_at': localTag.createdAt.toUtc().toIso8601String(),
+          'updated_at': localTag.updatedAt.toUtc().toIso8601String(),
         });
       }
     }
@@ -1107,6 +1108,7 @@ class SupabaseSyncService {
           id: cloudId, name: cloudData['name'], color: cloudData['color'],
           isDeleted: cloudData['is_deleted'] ?? false,
           createdAt: DateTime.parse(cloudData['created_at']).toLocal(),
+          updatedAt: DateTime.parse(cloudData['updated_at'] ?? cloudData['created_at']).toLocal(),
         ));
         localTagChanged = true;
       }

@@ -155,6 +155,11 @@ class LanSyncService extends ChangeNotifier {
       if (!await localImgDir.exists()) await localImgDir.create(recursive: true);
 
       await isar.writeTxn(() async {
+        // 统一冲突解决策略 (与 Supabase/WebDAV 一致):
+        //   - Notes/Todos: version 优先，version 相同时用 updatedAt 作为后备
+        //   - Categories: updatedAt LWW (无 version 字段)
+        //   - Tags: 仅补全存在性
+
         // --- 1. 合并分类 (LWW) ---
         final remoteCategories = data['categories'] as List<dynamic>? ?? [];
         for (var cMap in remoteCategories) {
@@ -181,7 +186,7 @@ class LanSyncService extends ChangeNotifier {
           }
         }
 
-        // --- 3. 合并笔记 (含图片下载与路径重写引擎) ---
+        // --- 3. 合并笔记 (version 优先 LWW，含图片下载与路径重写) ---
         final remoteNotes = data['notes'] as List<dynamic>? ?? [];
         for (var remoteNoteMap in remoteNotes) {
           final remoteNote = Note.fromJson(remoteNoteMap);
@@ -211,24 +216,30 @@ class LanSyncService extends ChangeNotifier {
 
           remoteNote.content = rewrittenContent;
 
+          // 统一冲突策略：version 优先，updatedAt 作为后备
           final localNote = await isar.notes.filter().idEqualTo(remoteNote.id).findFirst();
           if (localNote == null) {
             await isar.notes.put(remoteNote);
-          } else if (remoteNote.updatedAt.isAfter(localNote.updatedAt)) {
+          } else if (remoteNote.version > localNote.version ||
+                     (remoteNote.version == localNote.version &&
+                      remoteNote.updatedAt.isAfter(localNote.updatedAt))) {
             remoteNote.isarId = localNote.isarId;
             await isar.notes.put(remoteNote);
           }
         }
 
-        // --- 4. 合并待办 (LWW) ---
+        // --- 4. 合并待办 (version 优先 LWW) ---
         final remoteTodos = data['todos'] as List<dynamic>? ?? [];
         for (var remoteTodoMap in remoteTodos) {
           final remoteTodo = Todo.fromJson(remoteTodoMap);
           final localTodo = await isar.todos.filter().idEqualTo(remoteTodo.id).findFirst();
 
+          // 统一冲突策略：version 优先，updatedAt 作为后备
           if (localTodo == null) {
             await isar.todos.put(remoteTodo);
-          } else if (remoteTodo.updatedAt.isAfter(localTodo.updatedAt)) {
+          } else if (remoteTodo.version > localTodo.version ||
+                     (remoteTodo.version == localTodo.version &&
+                      remoteTodo.updatedAt.isAfter(localTodo.updatedAt))) {
             remoteTodo.isarId = localTodo.isarId; // 保留本地 ID
             await isar.todos.put(remoteTodo);
           }

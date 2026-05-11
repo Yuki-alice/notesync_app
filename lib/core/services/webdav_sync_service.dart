@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' hide Category;
-import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,14 +10,30 @@ import '../../models/note.dart';
 import '../../models/todo.dart';
 import '../../models/category.dart';
 import '../../models/tag.dart';
+import '../repositories/note_repository.dart';
+import '../repositories/category_repository.dart';
+import '../repositories/tag_repository.dart';
+import '../repositories/todo_repository.dart';
 
 class WebDavSyncService {
-  final Isar _isar;
+  final NoteRepository _noteRepo;
+  final CategoryRepository _categoryRepo;
+  final TagRepository _tagRepo;
+  final TodoRepository _todoRepo;
+
   static const String _remoteBaseDir = '/Komorebi';
   static const String _remoteJsonPath = '$_remoteBaseDir/komorebi_data.json';
   static const String _remoteImageDir = '$_remoteBaseDir/images';
 
-  WebDavSyncService(this._isar);
+  WebDavSyncService({
+    required NoteRepository noteRepository,
+    required CategoryRepository categoryRepository,
+    required TagRepository tagRepository,
+    required TodoRepository todoRepository,
+  })  : _noteRepo = noteRepository,
+        _categoryRepo = categoryRepository,
+        _tagRepo = tagRepository,
+        _todoRepo = todoRepository;
 
   // =========================================================================
   // 🔌 1. 引擎点火与连接测试
@@ -94,7 +109,7 @@ class WebDavSyncService {
       await _mergeData(remoteData);
 
       // 4. 将合并后的最终真理写入本地 Isar，并重新打包成 JSON Push 到云端
-      final newJsonData = _generateSnapshotJson();
+      final newJsonData = await _generateSnapshotJson();
       final jsonString = jsonEncode(newJsonData);
       final Uint8List jsonBytes = Uint8List.fromList(utf8.encode(jsonString));
       await client.write(_remoteJsonPath, jsonBytes);
@@ -120,8 +135,12 @@ class WebDavSyncService {
 // =========================================================================
   // 🧠 3. 合并逻辑与序列化助手
   // =========================================================================
+  /// 统一冲突解决策略 (与 Supabase/LAN 一致):
+  ///   - Notes/Todos: version 优先，version 相同时用 updatedAt 作为后备
+  ///   - Categories: updatedAt LWW (无 version 字段)
+  ///   - Tags: 仅补全存在性
   Future<void> _mergeData(Map<String, dynamic>? remoteData) async {
-    // 🌟 1. 获取本地记录的“物理删除黑名单”
+    // 🌟 1. 获取本地记录的”物理删除黑名单”
     final prefs = await SharedPreferences.getInstance();
     final deletedNoteIds = prefs.getStringList('deleted_note_ids') ?? [];
     final deletedTodoIds = prefs.getStringList('deleted_todo_ids') ?? [];
@@ -144,61 +163,64 @@ class WebDavSyncService {
       remoteCategories.removeWhere((c) => deletedCategoryIds.contains(c.id));
     }
 
-    _isar.writeTxnSync(() {
-      // 🌟 合并 Notes
-      final localNotesMap = {
-        for (var n in _isar.notes.where().findAllSync()) n.id: n,
-      };
-      for (var rNote in remoteNotes) {
-        final lNote = localNotesMap[rNote.id];
-        if (lNote == null || rNote.updatedAt.isAfter(lNote.updatedAt)) {
-          _isar.notes.putSync(rNote);
-        }
+    // 🌟 合并 Notes (统一冲突策略：version 优先，updatedAt 作为后备)
+    final localNotesMap = {
+      for (var n in _noteRepo.getAllNotes()) n.id: n,
+    };
+    for (var rNote in remoteNotes) {
+      final lNote = localNotesMap[rNote.id];
+      if (lNote == null ||
+          rNote.version > lNote.version ||
+          (rNote.version == lNote.version &&
+           rNote.updatedAt.isAfter(lNote.updatedAt))) {
+        await _noteRepo.saveNoteFromSync(rNote);
       }
+    }
 
-      // 🌟 合并 Todos
-      final localTodosMap = {
-        for (var t in _isar.todos.where().findAllSync()) t.id: t,
-      };
-      for (var rTodo in remoteTodos) {
-        final lTodo = localTodosMap[rTodo.id];
-        if (lTodo == null || rTodo.updatedAt.isAfter(lTodo.updatedAt)) {
-          _isar.todos.putSync(rTodo);
-        }
+    // 🌟 合并 Todos (统一冲突策略：version 优先，updatedAt 作为后备)
+    final localTodosMap = {
+      for (var t in _todoRepo.getAllTodos()) t.id: t,
+    };
+    for (var rTodo in remoteTodos) {
+      final lTodo = localTodosMap[rTodo.id];
+      if (lTodo == null ||
+          rTodo.version > lTodo.version ||
+          (rTodo.version == lTodo.version &&
+           rTodo.updatedAt.isAfter(lTodo.updatedAt))) {
+        await _todoRepo.addTodo(rTodo);
       }
+    }
 
-      // 🌟 合并 Categories
-      final localCatsMap = {
-        for (var c in _isar.categorys.where().findAllSync()) c.id: c,
-      };
-      for (var rCat in remoteCategories) {
-        final lCat = localCatsMap[rCat.id];
-        if (lCat == null || rCat.updatedAt.isAfter(lCat.updatedAt)) {
-          _isar.categorys.putSync(rCat);
-        }
+    // 🌟 合并 Categories (LWW)
+    final localCatsMap = {
+      for (var c in _categoryRepo.getAllCategories()) c.id: c,
+    };
+    for (var rCat in remoteCategories) {
+      final lCat = localCatsMap[rCat.id];
+      if (lCat == null || rCat.updatedAt.isAfter(lCat.updatedAt)) {
+        await _categoryRepo.addCategory(rCat);
       }
+    }
 
-      // 🌟 合并 Tags
-      final localTagsMap = {
-        for (var t in _isar.tags.where().findAllSync()) t.id: t,
-      };
-      for (var rTag in remoteTags) {
-        if (!localTagsMap.containsKey(rTag.id)) {
-          _isar.tags.putSync(rTag);
-        }
+    // 🌟 合并 Tags (仅追加新标签)
+    final localTagsMap = {
+      for (var t in _tagRepo.getAllTags()) t.id: t,
+    };
+    for (var rTag in remoteTags) {
+      if (!localTagsMap.containsKey(rTag.id)) {
+        await _tagRepo.addTag(rTag);
       }
-    });
+    }
   }
 
-  Map<String, dynamic> _generateSnapshotJson() {
+  Future<Map<String, dynamic>> _generateSnapshotJson() async {
     return {
       'version': 2,
       'exportAt': DateTime.now().toIso8601String(),
-      'notes': _isar.notes.where().findAllSync().map(_noteToMap).toList(),
-      'todos': _isar.todos.where().findAllSync().map(_todoToMap).toList(),
-      'categories':
-          _isar.categorys.where().findAllSync().map(_categoryToMap).toList(),
-      'tags': _isar.tags.where().findAllSync().map(_tagToMap).toList(),
+      'notes': _noteRepo.getAllNotes().map(_noteToMap).toList(),
+      'todos': _todoRepo.getAllTodos().map(_todoToMap).toList(),
+      'categories': _categoryRepo.getAllCategories().map(_categoryToMap).toList(),
+      'tags': _tagRepo.getAllTags().map(_tagToMap).toList(),
     };
   }
 
@@ -207,8 +229,8 @@ class WebDavSyncService {
     final localImgDir = Directory(p.join(appDir.path, 'note_images'));
     if (!localImgDir.existsSync()) return;
 
-    // 🌟 1. 核心：从本地 Isar 扫描所有“活着的”笔记，提取它们真正引用的图片
-    final allNotes = _isar.notes.filter().isDeletedEqualTo(false).findAllSync();
+    // 🌟 1. 核心：从本地 Repository 扫描所有”活着的”笔记，提取它们真正引用的图片
+    final allNotes = _noteRepo.getAllNotes().where((n) => !n.isDeleted).toList();
     final Set<String> usedImageNames = {};
     for (var note in allNotes) {
       final paths = Note.extractAllImagePaths(note.content);
@@ -358,6 +380,7 @@ class WebDavSyncService {
     'color': t.color,
     'isDeleted': t.isDeleted,
     'createdAt': t.createdAt.toIso8601String(),
+    'updatedAt': t.updatedAt.toIso8601String(),
   };
   Tag _mapToTag(Map<String, dynamic> m) => Tag(
     id: m['id'],
@@ -365,5 +388,6 @@ class WebDavSyncService {
     color: m['color'],
     isDeleted: m['isDeleted'] ?? false,
     createdAt: DateTime.parse(m['createdAt']),
+    updatedAt: DateTime.parse(m['updatedAt'] ?? m['createdAt']),
   );
 }
