@@ -12,6 +12,7 @@ class Tag {
   String? color;
   bool isDeleted;
   DateTime createdAt;
+  DateTime updatedAt;
 
   Tag({
     required this.id,
@@ -19,6 +20,7 @@ class Tag {
     this.color,
     this.isDeleted = false,
     required this.createdAt,
+    required this.updatedAt,
   });
 
   Tag copyWith({
@@ -27,6 +29,7 @@ class Tag {
     String? color,
     bool? isDeleted,
     DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return Tag(
       id: id ?? this.id,
@@ -34,6 +37,7 @@ class Tag {
       color: color ?? this.color,
       isDeleted: isDeleted ?? this.isDeleted,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -47,6 +51,7 @@ class Tag {
       'color': color,
       'isDeleted': isDeleted,
       'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
     };
   }
 
@@ -57,6 +62,7 @@ class Tag {
       color: json['color'] as String?,
       isDeleted: json['isDeleted'] as bool? ?? false,
       createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
   }
 }

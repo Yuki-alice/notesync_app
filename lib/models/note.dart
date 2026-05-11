@@ -149,6 +149,7 @@ class Note {
       'isPinned': isPinned,
       'isDeleted': isDeleted,
       'isPrivate': isPrivate,
+      'imagePaths': imagePaths,
     };
   }
 
@@ -166,6 +167,7 @@ class Note {
       isPinned: json['isPinned'] as bool? ?? false,
       isDeleted: json['isDeleted'] as bool? ?? false,
       isPrivate: json['isPrivate'] as bool? ?? false,
+      imagePaths: (json['imagePaths'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
     );
   }
 }
