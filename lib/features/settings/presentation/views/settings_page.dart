@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,6 +18,9 @@ import 'storage_settings_page.dart';
 import 'statistics_page.dart';
 import 'about_settings_page.dart';
 import 'lan_sync_radar_page.dart';
+
+// 开发工具页面（仅在 Debug 模式下导入）
+import '../../../dev_tools/presentation/views/performance_monitor_page.dart' as dev_tools;
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -147,6 +151,29 @@ class SettingsPage extends StatelessWidget {
                       _buildNavTile(context, icon: Icons.info_outline_rounded, title: '关于与帮助', subtitle: '版本更新日志、GitHub 及文档', titleStyle: titleStyle, subStyle: subStyle, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutSettingsPage()))),
                     ],
                   ),
+
+                  // 开发工具入口（仅在 Debug 模式下显示）
+                  if (kDebugMode) ...[
+                    const SizedBox(height: 24),
+                    const _SectionTitle('开发者工具'),
+                    _SettingGroupContainer(
+                      children: [
+                        _buildNavTile(
+                          context,
+                          icon: Icons.speed_rounded,
+                          title: '性能监控',
+                          subtitle: '实时性能数据与图表分析',
+                          titleStyle: titleStyle,
+                          subStyle: subStyle,
+                          iconColor: Colors.deepPurple,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const dev_tools.PerformanceMonitorPage()),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
 
                 ],
               ),
