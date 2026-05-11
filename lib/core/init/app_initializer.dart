@@ -11,6 +11,7 @@ import '../repositories/category_repository.dart';
 import '../repositories/note_repository.dart';
 import '../repositories/tag_repository.dart';
 import '../repositories/todo_repository.dart';
+import '../constants/ui_constants.dart';
 import '../services/security/privacy_service.dart';
 import '../services/sync/supabase_sync_service.dart';
 import '../services/backup/data_migration_service.dart';
@@ -69,9 +70,9 @@ class AppInitializer {
     // 6. 桌面端窗口初始化
     if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       await windowManager.ensureInitialized();
-      WindowOptions windowOptions = const WindowOptions(
-        size: Size(1024, 768),
-        minimumSize: Size(360, 600),
+      WindowOptions windowOptions = WindowOptions(
+        size: const Size(UiConstants.desktopDefaultWidth, UiConstants.desktopDefaultHeight),
+        minimumSize: const Size(UiConstants.desktopMinWidth, UiConstants.desktopMinHeight),
         center: true,
         backgroundColor: Colors.transparent,
         skipTaskbar: false,

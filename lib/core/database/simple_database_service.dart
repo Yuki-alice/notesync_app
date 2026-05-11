@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../models/note.dart';
@@ -19,5 +20,15 @@ class SimpleDatabaseService {
       CategorySchema,
       TagSchema,
     ], directory: dir.path);
+  }
+
+  /// 关闭 Isar 数据库连接，释放资源。
+  Future<void> close() async {
+    if (_isar.isOpen) {
+      await _isar.close();
+      debugPrint('[SimpleDatabaseService] Isar 数据库连接已关闭');
+    } else {
+      debugPrint('[SimpleDatabaseService] Isar 数据库未打开，跳过关闭');
+    }
   }
 }
