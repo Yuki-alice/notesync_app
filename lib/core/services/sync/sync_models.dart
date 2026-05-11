@@ -18,6 +18,11 @@ const String lastSyncedVersionsKey = 'last_synced_versions';
 const String imageBucket = 'note_images';
 const Duration timeBuffer = Duration(seconds: 2);
 
+// WebDAV 增量同步时间戳键
+const String webdavLastNoteSyncKey = 'webdav_last_note_sync_time';
+const String webdavLastTodoSyncKey = 'webdav_last_todo_sync_time';
+const String webdavLastCategorySyncKey = 'webdav_last_category_sync_time';
+
 // =========================================================================
 // 日志工具
 // =========================================================================

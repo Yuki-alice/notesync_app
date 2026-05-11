@@ -14,6 +14,7 @@ import '../../repositories/note_repository.dart';
 import '../../repositories/category_repository.dart';
 import '../../repositories/tag_repository.dart';
 import '../../repositories/todo_repository.dart';
+import 'sync_models.dart';
 
 class WebDavSyncService {
   final NoteRepository _noteRepo;
@@ -77,7 +78,23 @@ class WebDavSyncService {
       return;
     }
 
+    final prefs = await SharedPreferences.getInstance();
+
+    // 读取上次增量同步时间戳（null 则为首次全量同步）
+    final lastNoteSyncTime = _parseLastSyncTime(prefs.getString(webdavLastNoteSyncKey));
+    final lastTodoSyncTime = _parseLastSyncTime(prefs.getString(webdavLastTodoSyncKey));
+    final lastCategorySyncTime = _parseLastSyncTime(prefs.getString(webdavLastCategorySyncKey));
+
+    final isIncremental = lastNoteSyncTime != null ||
+        lastTodoSyncTime != null ||
+        lastCategorySyncTime != null;
+
     debugPrint('🟢 [SYNC-WEBDAV] ====== 🚀 启动 WebDAV 双向同步引擎 ======');
+    debugPrint('🟢 [SYNC-WEBDAV] 同步模式: ${isIncremental ? "增量" : "全量"}');
+    if (isIncremental) {
+      debugPrint('🟢 [SYNC-WEBDAV] 上次同步时间 - notes: $lastNoteSyncTime, todos: $lastTodoSyncTime, categories: $lastCategorySyncTime');
+    }
+
     try {
       // 1. 确保云端目录结构存在
       try {
@@ -105,23 +122,39 @@ class WebDavSyncService {
         debugPrint('⚠️ [SYNC-WEBDAV] 云端无历史快照，将执行全量初始推送');
       }
 
-      // 3. 内存双向合并算法 (Last-Write-Wins)
-      await _mergeData(remoteData);
+      // 3. 增量合并：只处理 updatedAt > lastSyncTime 的记录
+      await _mergeData(
+        remoteData,
+        lastNoteSyncTime: lastNoteSyncTime,
+        lastTodoSyncTime: lastTodoSyncTime,
+        lastCategorySyncTime: lastCategorySyncTime,
+      );
 
-      // 4. 将合并后的最终真理写入本地 Isar，并重新打包成 JSON Push 到云端
-      final newJsonData = await _generateSnapshotJson();
+      // 4. 增量推送：将本地变更合并进云端快照后推送
+      final newJsonData = await _generateSnapshotJson(
+        remoteData: remoteData,
+        lastNoteSyncTime: lastNoteSyncTime,
+        lastTodoSyncTime: lastTodoSyncTime,
+        lastCategorySyncTime: lastCategorySyncTime,
+      );
       final jsonString = jsonEncode(newJsonData);
       final Uint8List jsonBytes = Uint8List.fromList(utf8.encode(jsonString));
       await client.write(_remoteJsonPath, jsonBytes);
       debugPrint('🟢 [SYNC-WEBDAV] 成功将最新快照推送至云端');
 
+      // 5. 更新增量同步时间戳
+      final now = DateTime.now().toUtc().toIso8601String();
+      await prefs.setString(webdavLastNoteSyncKey, now);
+      await prefs.setString(webdavLastTodoSyncKey, now);
+      await prefs.setString(webdavLastCategorySyncKey, now);
+      debugPrint('🟢 [SYNC-WEBDAV] 已更新同步时间戳: $now');
 
-      final prefs = await SharedPreferences.getInstance();
+      // 6. 清空删除黑名单
       await prefs.setStringList('deleted_note_ids', []);
       await prefs.setStringList('deleted_todo_ids', []);
       await prefs.setStringList('deleted_categories', []);
 
-      // 5. 附件同步 (简单的差异上传)
+      // 7. 附件同步 (简单的差异上传)
       await _syncImages(client);
 
       debugPrint('🟢 [SYNC-WEBDAV] ====== ✅ WebDAV 同步完美收官 ======');
@@ -135,11 +168,26 @@ class WebDavSyncService {
 // =========================================================================
   // 🧠 3. 合并逻辑与序列化助手
   // =========================================================================
+
+  /// 解析 ISO-8601 时间戳字符串，null 安全
+  DateTime? _parseLastSyncTime(String? value) {
+    if (value == null || value.isEmpty) return null;
+    return DateTime.tryParse(value);
+  }
+
   /// 统一冲突解决策略 (与 Supabase/LAN 一致):
   ///   - Notes/Todos: version 优先，version 相同时用 updatedAt 作为后备
   ///   - Categories: updatedAt LWW (无 version 字段)
   ///   - Tags: 仅补全存在性
-  Future<void> _mergeData(Map<String, dynamic>? remoteData) async {
+  ///
+  /// 增量模式下只合并 updatedAt > lastSyncTime 的记录。
+  /// Tags 始终全量合并（仅追加新标签，开销极小）。
+  Future<void> _mergeData(
+    Map<String, dynamic>? remoteData, {
+    DateTime? lastNoteSyncTime,
+    DateTime? lastTodoSyncTime,
+    DateTime? lastCategorySyncTime,
+  }) async {
     // 🌟 1. 获取本地记录的”物理删除黑名单”
     final prefs = await SharedPreferences.getInstance();
     final deletedNoteIds = prefs.getStringList('deleted_note_ids') ?? [];
@@ -163,46 +211,64 @@ class WebDavSyncService {
       remoteCategories.removeWhere((c) => deletedCategoryIds.contains(c.id));
     }
 
-    // 🌟 合并 Notes (统一冲突策略：version 优先，updatedAt 作为后备)
+    // 🌟 合并 Notes (增量过滤 + version 优先 + updatedAt 后备)
+    int noteMerged = 0;
     final localNotesMap = {
       for (var n in _noteRepo.getAllNotes()) n.id: n,
     };
     for (var rNote in remoteNotes) {
+      if (lastNoteSyncTime != null &&
+          !rNote.updatedAt.isAfter(lastNoteSyncTime)) {
+        continue; // 增量模式：跳过未变更记录
+      }
       final lNote = localNotesMap[rNote.id];
       if (lNote == null ||
           rNote.version > lNote.version ||
           (rNote.version == lNote.version &&
            rNote.updatedAt.isAfter(lNote.updatedAt))) {
         await _noteRepo.saveNoteFromSync(rNote);
+        noteMerged++;
       }
     }
 
-    // 🌟 合并 Todos (统一冲突策略：version 优先，updatedAt 作为后备)
+    // 🌟 合并 Todos (增量过滤 + version 优先 + updatedAt 后备)
+    int todoMerged = 0;
     final localTodosMap = {
       for (var t in _todoRepo.getAllTodos()) t.id: t,
     };
     for (var rTodo in remoteTodos) {
+      if (lastTodoSyncTime != null &&
+          !rTodo.updatedAt.isAfter(lastTodoSyncTime)) {
+        continue; // 增量模式：跳过未变更记录
+      }
       final lTodo = localTodosMap[rTodo.id];
       if (lTodo == null ||
           rTodo.version > lTodo.version ||
           (rTodo.version == lTodo.version &&
            rTodo.updatedAt.isAfter(lTodo.updatedAt))) {
         await _todoRepo.addTodo(rTodo);
+        todoMerged++;
       }
     }
 
-    // 🌟 合并 Categories (LWW)
+    // 🌟 合并 Categories (增量过滤 + LWW)
+    int categoryMerged = 0;
     final localCatsMap = {
       for (var c in _categoryRepo.getAllCategories()) c.id: c,
     };
     for (var rCat in remoteCategories) {
+      if (lastCategorySyncTime != null &&
+          !rCat.updatedAt.isAfter(lastCategorySyncTime)) {
+        continue; // 增量模式：跳过未变更记录
+      }
       final lCat = localCatsMap[rCat.id];
       if (lCat == null || rCat.updatedAt.isAfter(lCat.updatedAt)) {
         await _categoryRepo.addCategory(rCat);
+        categoryMerged++;
       }
     }
 
-    // 🌟 合并 Tags (仅追加新标签)
+    // 🌟 合并 Tags (始终全量，仅追加新标签)
     final localTagsMap = {
       for (var t in _tagRepo.getAllTags()) t.id: t,
     };
@@ -211,9 +277,101 @@ class WebDavSyncService {
         await _tagRepo.addTag(rTag);
       }
     }
+
+    if (lastNoteSyncTime != null || lastTodoSyncTime != null || lastCategorySyncTime != null) {
+      debugPrint('🟢 [SYNC-WEBDAV] 增量合并完成 - notes: $noteMerged, todos: $todoMerged, categories: $categoryMerged');
+    }
   }
 
-  Future<Map<String, dynamic>> _generateSnapshotJson() async {
+  /// 生成推送快照 JSON。
+  ///
+  /// 增量模式下，将本地 updatedAt > lastSyncTime 的记录合并进云端快照，
+  /// 未变更的记录保留云端版本，避免全量序列化开销。
+  Future<Map<String, dynamic>> _generateSnapshotJson({
+    Map<String, dynamic>? remoteData,
+    DateTime? lastNoteSyncTime,
+    DateTime? lastTodoSyncTime,
+    DateTime? lastCategorySyncTime,
+  }) async {
+    // 增量模式：基于云端快照 + 本地变更合并
+    if (lastNoteSyncTime != null && remoteData != null) {
+      // Notes: 云端未变更的 + 本地所有记录（本地为准）
+      final cloudNotes = <String, Map<String, dynamic>>{};
+      for (var m in (remoteData['notes'] as List? ?? [])) {
+        final map = Map<String, dynamic>.from(m);
+        cloudNotes[map['id'] as String] = map;
+      }
+      final localNotes = _noteRepo.getAllNotes();
+      // 本地记录全覆盖云端，未变更的保留云端
+      final pushNotes = <Map<String, dynamic>>[];
+      for (var n in localNotes) {
+        if (lastNoteSyncTime.isAfter(n.updatedAt)) {
+          // 本地未变更，保留云端版本
+          if (cloudNotes.containsKey(n.id)) {
+            pushNotes.add(cloudNotes[n.id]!);
+          } else {
+            pushNotes.add(_noteToMap(n));
+          }
+        } else {
+          pushNotes.add(_noteToMap(n));
+        }
+      }
+      // 云端有但本地没有的（已被删除），不加入快照
+      debugPrint('🟢 [SYNC-WEBDAV] Notes 增量推送: ${pushNotes.length} 条');
+
+      // Todos
+      final cloudTodos = <String, Map<String, dynamic>>{};
+      for (var m in (remoteData['todos'] as List? ?? [])) {
+        final map = Map<String, dynamic>.from(m);
+        cloudTodos[map['id'] as String] = map;
+      }
+      final localTodos = _todoRepo.getAllTodos();
+      final pushTodos = <Map<String, dynamic>>[];
+      for (var t in localTodos) {
+        if (lastTodoSyncTime != null && lastTodoSyncTime.isAfter(t.updatedAt)) {
+          if (cloudTodos.containsKey(t.id)) {
+            pushTodos.add(cloudTodos[t.id]!);
+          } else {
+            pushTodos.add(_todoToMap(t));
+          }
+        } else {
+          pushTodos.add(_todoToMap(t));
+        }
+      }
+      debugPrint('🟢 [SYNC-WEBDAV] Todos 增量推送: ${pushTodos.length} 条');
+
+      // Categories
+      final cloudCats = <String, Map<String, dynamic>>{};
+      for (var m in (remoteData['categories'] as List? ?? [])) {
+        final map = Map<String, dynamic>.from(m);
+        cloudCats[map['id'] as String] = map;
+      }
+      final localCats = _categoryRepo.getAllCategories();
+      final pushCats = <Map<String, dynamic>>[];
+      for (var c in localCats) {
+        if (lastCategorySyncTime != null && lastCategorySyncTime.isAfter(c.updatedAt)) {
+          if (cloudCats.containsKey(c.id)) {
+            pushCats.add(cloudCats[c.id]!);
+          } else {
+            pushCats.add(_categoryToMap(c));
+          }
+        } else {
+          pushCats.add(_categoryToMap(c));
+        }
+      }
+      debugPrint('🟢 [SYNC-WEBDAV] Categories 增量推送: ${pushCats.length} 条');
+
+      return {
+        'version': 2,
+        'exportAt': DateTime.now().toIso8601String(),
+        'notes': pushNotes,
+        'todos': pushTodos,
+        'categories': pushCats,
+        'tags': _tagRepo.getAllTags().map(_tagToMap).toList(),
+      };
+    }
+
+    // 全量模式：直接序列化本地全部数据
     return {
       'version': 2,
       'exportAt': DateTime.now().toIso8601String(),
