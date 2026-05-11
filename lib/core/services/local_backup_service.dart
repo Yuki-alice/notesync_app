@@ -159,6 +159,7 @@ class LocalBackupService {
           color: oldTag.color,
           isDeleted: oldTag.isDeleted,
           createdAt: now,
+          updatedAt: now,
         );
       }).toList();
 
@@ -269,9 +270,11 @@ class LocalBackupService {
   Map<String, dynamic> _tagToMap(Tag t) => {
     'id': t.id, 'name': t.name, 'color': t.color, 'isDeleted': t.isDeleted,
     'createdAt': t.createdAt.toIso8601String(),
+    'updatedAt': t.updatedAt.toIso8601String(),
   };
   Tag _mapToTag(Map<String, dynamic> m) => Tag(
     id: m['id'], name: m['name'], color: m['color'], isDeleted: m['isDeleted'] ?? false,
     createdAt: DateTime.parse(m['createdAt']),
+    updatedAt: DateTime.parse(m['updatedAt'] ?? m['createdAt']),
   );
 }
