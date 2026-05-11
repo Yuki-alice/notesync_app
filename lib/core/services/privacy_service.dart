@@ -126,30 +126,33 @@ class PrivacyService with WidgetsBindingObserver {
   ///
   /// [password]: 用户密码
   Future<void> setupPassword(String password) async {
-    // 🌟 跨设备兼容：使用密码派生密钥直接加密，而不是随机密钥
-    // 这样跨设备时，只要输入相同密码，就能派生相同密钥解密
-    final masterKey = _deriveKeyFromPassword(password);
+    final salt = _generateSalt();
+    final masterKey = _deriveKeyFromPassword(password, salt: salt);
 
-    // 2. 保存密码哈希（用于验证）
-    final passwordHash = sha256.convert(utf8.encode(password)).toString();
-    await _secureStorage.write(
-      key: _storageKeyPasswordHash,
-      value: passwordHash,
-    );
+    // 存储格式：base64(salt):HMAC-SHA256(salt, password)
+    final hash = _hashPasswordWithSalt(password, salt);
+    final storedValue = '${base64Encode(salt)}:$hash';
+    await _secureStorage.write(key: _storageKeyPasswordHash, value: storedValue);
 
-    // 3. 设置内存中的密钥
     _sessionKey = masterKey;
-
-    debugPrint('🔐 PrivacyService: 密码设置成功');
+    debugPrint('🔐 PrivacyService: 密码设置成功 (HMAC-SHA256 + salt)');
   }
   /// 验证密码是否正确（不解锁，仅验证）
   Future<bool> verifyPassword(String password) async {
     try {
-      final passwordHash = await _secureStorage.read(key: _storageKeyPasswordHash);
-      if (passwordHash == null) return false;
-      
+      final storedValue = await _secureStorage.read(key: _storageKeyPasswordHash);
+      if (storedValue == null) return false;
+
+      final parts = storedValue.split(':');
+      if (parts.length == 2) {
+        // 新格式：base64(salt):hash
+        final salt = base64Decode(parts[0]);
+        final expectedHash = _hashPasswordWithSalt(password, salt);
+        return parts[1] == expectedHash;
+      }
+      // 旧格式：无 salt，直接 SHA-256
       final inputHash = sha256.convert(utf8.encode(password)).toString();
-      return passwordHash == inputHash;
+      return storedValue == inputHash;
     } catch (e) {
       return false;
     }
@@ -162,25 +165,34 @@ class PrivacyService with WidgetsBindingObserver {
     try {
       HapticFeedback.lightImpact();
 
-      // 验证密码哈希
-      final passwordHash = await _secureStorage.read(key: _storageKeyPasswordHash);
-      if (passwordHash == null) {
+      final storedValue = await _secureStorage.read(key: _storageKeyPasswordHash);
+      if (storedValue == null) {
         throw Exception('未设置密码');
       }
 
-      final inputHash = sha256.convert(utf8.encode(password)).toString();
-      if (passwordHash != inputHash) {
-        debugPrint('❌ PrivacyService: 密码错误');
-        return false;
+      final parts = storedValue.split(':');
+      if (parts.length == 2) {
+        // 新格式：base64(salt):hash
+        final salt = base64Decode(parts[0]);
+        final expectedHash = _hashPasswordWithSalt(password, salt);
+        if (parts[1] != expectedHash) {
+          debugPrint('❌ PrivacyService: 密码错误');
+          return false;
+        }
+        _sessionKey = _deriveKeyFromPassword(password, salt: salt);
+        debugPrint('🔓 PrivacyService: 密码解锁成功 (HMAC-SHA256 + salt)');
+      } else {
+        // 向后兼容：旧格式无 salt，直接 SHA-256
+        final inputHash = sha256.convert(utf8.encode(password)).toString();
+        if (storedValue != inputHash) {
+          debugPrint('❌ PrivacyService: 密码错误');
+          return false;
+        }
+        _sessionKey = _deriveKeyFromPassword(password, salt: []);
+        debugPrint('🔓 PrivacyService: 密码解锁成功 (legacy SHA-256)');
       }
 
-      // 🌟 跨设备兼容：从密码派生密钥
-      _sessionKey = _deriveKeyFromPassword(password);
-
-      // 🌟 触发解锁回调（用于同步隐私图片等）
       _notifyUnlockListeners();
-
-      debugPrint('🔓 PrivacyService: 密码解锁成功');
       return true;
     } catch (e) {
       debugPrint('❌ PrivacyService: 密码解锁失败 - $e');
@@ -323,13 +335,64 @@ class PrivacyService with WidgetsBindingObserver {
 
   // ==================== 私有方法 ====================
 
-  /// 从密码派生密钥（简化版 PBKDF2）
-  enc.Key _deriveKeyFromPassword(String password) {
-    // 使用 SHA-256 派生 32 字节密钥
-    // 生产环境建议使用更安全的 Argon2 或 PBKDF2 多轮迭代
-    final bytes = utf8.encode(password);
-    final digest = sha256.convert(bytes);
-    return enc.Key(Uint8List.fromList(digest.bytes));
+  /// 生成随机 salt（16 字节）
+  List<int> _generateSalt() {
+    return enc.SecureRandom(16).bytes;
+  }
+
+  /// 使用 HMAC-SHA256 实现 PBKDF2 密钥派生
+  ///
+  /// PBKDF2 参数：
+  /// - iterations: 10000 次（抵抗暴力破解）
+  /// - keyLength: 32 字节（AES-256 密钥长度）
+  /// - hash: HMAC-SHA256
+  /// - salt: 16 字节随机值（与密文一起存储）
+  enc.Key _deriveKeyFromPassword(String password, {required List<int> salt}) {
+    const iterations = 10000;
+    const keyLength = 32;
+    const hashLength = 32; // SHA-256 输出 32 字节
+
+    final hmac = Hmac(sha256, utf8.encode(password));
+    final blocks = (keyLength / hashLength).ceil();
+    final derivedBytes = <int>[];
+
+    for (var blockIndex = 1; blockIndex <= blocks; blockIndex++) {
+      // U1 = HMAC(password, salt || INT_32_BE(blockIndex))
+      final input = [...salt, ..._intToBigEndianBytes(blockIndex)];
+      var u = hmac.convert(input).bytes;
+      var result = List<int>.from(u);
+
+      // U2..Uc = HMAC(password, U_{i-1})
+      for (var iteration = 1; iteration < iterations; iteration++) {
+        u = hmac.convert(u).bytes;
+        for (var j = 0; j < result.length; j++) {
+          result[j] ^= u[j];
+        }
+      }
+
+      derivedBytes.addAll(result);
+    }
+
+    return enc.Key(Uint8List.fromList(derivedBytes.sublist(0, keyLength)));
+  }
+
+  /// 将整数转为大端序 4 字节
+  List<int> _intToBigEndianBytes(int value) {
+    return [
+      (value >> 24) & 0xFF,
+      (value >> 16) & 0xFF,
+      (value >> 8) & 0xFF,
+      value & 0xFF,
+    ];
+  }
+
+  /// 使用 HMAC-SHA256 对密码加盐哈希
+  ///
+  /// [password]: 用户密码
+  /// [salt]: 16 字节随机 salt
+  String _hashPasswordWithSalt(String password, List<int> salt) {
+    final hmac = Hmac(sha256, salt);
+    return hmac.convert(utf8.encode(password)).toString();
   }
 
   /// 加密密钥
