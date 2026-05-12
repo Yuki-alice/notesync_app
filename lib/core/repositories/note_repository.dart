@@ -91,9 +91,24 @@ class NoteRepository {
   /// 🌟 同步专用：批量保存笔记（保留云端时间戳）
   Future<void> saveNotesFromSync(List<Note> notes) async {
     if (notes.isEmpty) return;
-    await Perf.trace('repo.note.saveNotesFromSync', () => _isar.writeTxn(() async {
-      await _isar.notes.putAll(notes);
-    }));
+    await Perf.trace('repo.note.saveNotesFromSync', () async {
+      // 🌟 优化：分批写入，每批 50 条，避免阻塞主线程
+      const batchSize = 50;
+      final totalBatches = (notes.length / batchSize).ceil();
+      for (var i = 0; i < notes.length; i += batchSize) {
+        final end = i + batchSize > notes.length ? notes.length : i + batchSize;
+        final batch = notes.sublist(i, end);
+        final batchIndex = (i / batchSize).floor() + 1;
+
+        await _isar.writeTxn(() async {
+          await _isar.notes.putAll(batch);
+        });
+        debugPrint('[SYNC] 笔记批次写入完成: $batchIndex/$totalBatches (${batch.length} 条)');
+
+        // 让出主线程，避免阻塞 UI
+        await Future.delayed(Duration.zero);
+      }
+    });
     invalidateCache();
   }
 

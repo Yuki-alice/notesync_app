@@ -58,9 +58,24 @@ class TodoRepository {
   /// 🌟 同步专用：批量保存待办（保留云端时间戳）
   Future<void> saveTodosFromSync(List<Todo> todos) async {
     if (todos.isEmpty) return;
-    await Perf.trace('repo.todo.saveTodosFromSync', () => _isar.writeTxn(() async {
-      await _isar.todos.putAll(todos);
-    }));
+    await Perf.trace('repo.todo.saveTodosFromSync', () async {
+      // 🌟 优化：分批写入，每批 50 条，避免阻塞主线程
+      const batchSize = 50;
+      final totalBatches = (todos.length / batchSize).ceil();
+      for (var i = 0; i < todos.length; i += batchSize) {
+        final end = i + batchSize > todos.length ? todos.length : i + batchSize;
+        final batch = todos.sublist(i, end);
+        final batchIndex = (i / batchSize).floor() + 1;
+
+        await _isar.writeTxn(() async {
+          await _isar.todos.putAll(batch);
+        });
+        debugPrint('[SYNC] 待办批次写入完成: $batchIndex/$totalBatches (${batch.length} 条)');
+
+        // 让出主线程，避免阻塞 UI
+        await Future.delayed(Duration.zero);
+      }
+    });
   }
 
   Future<void> deleteTodo(String id) async {
