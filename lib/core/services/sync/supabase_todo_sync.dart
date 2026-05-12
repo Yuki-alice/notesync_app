@@ -35,6 +35,7 @@ class SupabaseTodoSync {
   Future<void> syncTodos({Function()? onSyncComplete}) async {
     if (_todoRepo == null || _supabase.auth.currentUser == null) return;
 
+    final syncStopwatch = Stopwatch()..start();
     SyncLogger.info('TODO', '====== 🚀 启动待办同步管线 ======');
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -76,9 +77,11 @@ class SupabaseTodoSync {
       await prefs.setString(lastTodoSyncKey, DateTime.now().toUtc().toIso8601String());
       if (onSyncComplete != null) onSyncComplete();
 
-      SyncLogger.info('TODO', '====== ✅ 待办同步管线完美收官 ======');
+      syncStopwatch.stop();
+      SyncLogger.info('TODO', '====== ✅ 待办同步管线完美收官 (${syncStopwatch.elapsedMilliseconds}ms) ======');
     } catch (e) {
-      SyncLogger.error('TODO', '同步管线崩溃', e);
+      syncStopwatch.stop();
+      SyncLogger.error('TODO', '同步管线崩溃 (${syncStopwatch.elapsedMilliseconds}ms)', e);
     }
   }
 
@@ -87,45 +90,64 @@ class SupabaseTodoSync {
   // =========================================================================
 
   Future<void> _pullTodos(List<String> idsToFetch, String userId, Set<String> existingLocalIds) async {
-    int pullCount = 0;
+    final pullStopwatch = Stopwatch()..start();
+    SyncLogger.info('PULL', '开始拉取 ${idsToFetch.length} 条待办');
+
+    // 构建所有批次
+    final List<List<String>> batches = [];
     for (var i = 0; i < idsToFetch.length; i += SyncConstants.supabaseBatchSize) {
-      final chunk = idsToFetch.sublist(i, i + SyncConstants.supabaseBatchSize > idsToFetch.length ? idsToFetch.length : i + SyncConstants.supabaseBatchSize);
-      final List<dynamic> cloudUpdates = await _retry.withRetry(
+      final end = i + SyncConstants.supabaseBatchSize > idsToFetch.length ? idsToFetch.length : i + SyncConstants.supabaseBatchSize;
+      batches.add(idsToFetch.sublist(i, end));
+    }
+
+    // 🌟 并发拉取所有批次
+    final List<List<dynamic>> allResults = await Future.wait(
+      batches.map((chunk) => _retry.withRetry(
         operation: () => _supabase.from('todos').select().inFilter('id', chunk).eq('user_id', userId),
         operationName: '拉取待办详情',
-      );
+      )),
+    );
 
+    final networkMs = pullStopwatch.elapsedMilliseconds;
+    SyncLogger.info('PULL', '网络拉取完成: ${networkMs}ms (${batches.length} 个批次并发)');
+
+    // 解析所有结果
+    final List<Todo> allTodos = [];
+    for (var cloudUpdates in allResults) {
       for (var data in cloudUpdates) {
-        List<SubTask> parsedSubTasks = [];
-        if (data['sub_tasks'] != null) {
-          final List<dynamic> stList = data['sub_tasks'] as List<dynamic>;
-          parsedSubTasks = stList.map((e) => SubTask.fromMap(e as Map<String, dynamic>)).toList();
-        }
+        try {
+          List<SubTask> parsedSubTasks = [];
+          if (data['sub_tasks'] != null) {
+            final List<dynamic> stList = data['sub_tasks'] as List<dynamic>;
+            parsedSubTasks = stList.map((e) => SubTask.fromMap(e as Map<String, dynamic>)).toList();
+          }
 
-        final updatedTodo = Todo(
-          id: data['id'],
-          title: data['title'] ?? '',
-          description: data['description'] ?? '',
-          createdAt: DateTime.parse(data['created_at']).toLocal(),
-          updatedAt: DateTime.parse(data['updated_at']).toLocal(),
-          dueDate: data['due_date'] != null ? DateTime.parse(data['due_date']).toLocal() : null,
-          isCompleted: data['is_completed'] ?? false,
-          isDeleted: data['is_deleted'] ?? false,
-          sortOrder: (data['sort_order'] as num?)?.toDouble() ?? SyncConstants.defaultSortOrder,
-          subTasks: parsedSubTasks,
-        );
-
-        if (existingLocalIds.contains(updatedTodo.id)) {
-          await _todoRepo!.updateTodo(updatedTodo);
-        } else {
-          await _todoRepo!.addTodo(updatedTodo);
+          final updatedTodo = Todo(
+            id: data['id'],
+            title: data['title'] ?? '',
+            description: data['description'] ?? '',
+            createdAt: DateTime.parse(data['created_at']).toLocal(),
+            updatedAt: DateTime.parse(data['updated_at']).toLocal(),
+            dueDate: data['due_date'] != null ? DateTime.parse(data['due_date']).toLocal() : null,
+            isCompleted: data['is_completed'] ?? false,
+            isDeleted: data['is_deleted'] ?? false,
+            sortOrder: (data['sort_order'] as num?)?.toDouble() ?? SyncConstants.defaultSortOrder,
+            subTasks: parsedSubTasks,
+          );
+          allTodos.add(updatedTodo);
+        } catch (e) {
+          SyncLogger.error('PULL', '解析单条待办失败 [id: ${data['id']}]', e);
         }
-        pullCount++;
       }
     }
-    if (pullCount > 0) {
-      SyncLogger.info('PULL', '✅ 成功拉取 $pullCount 条待办到本地');
+
+    // 🌟 一次性批量写入所有待办
+    if (allTodos.isNotEmpty) {
+      await _todoRepo!.saveTodosFromSync(allTodos);
     }
+
+    pullStopwatch.stop();
+    SyncLogger.info('PULL', '✅ 拉取完成: ${allTodos.length} 条待办, 总耗时 ${pullStopwatch.elapsedMilliseconds}ms');
   }
 
   // =========================================================================

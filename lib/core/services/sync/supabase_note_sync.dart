@@ -24,6 +24,14 @@ import 'supabase_note_conflict_resolver.dart';
 
 export '../../repositories/note_repository.dart' show NoteSyncMeta;
 
+/// 笔记同步结果（用于协调图片同步）
+class NoteSyncResult {
+  final List<Note> pulledNotes;
+  final List<Note> pushedNotes;
+
+  NoteSyncResult({required this.pulledNotes, required this.pushedNotes});
+}
+
 class SupabaseNoteSync {
   final SupabaseClient _supabase;
   final NoteRepository? _noteRepo;
@@ -45,14 +53,14 @@ class SupabaseNoteSync {
   // 笔记同步主入口
   // =========================================================================
 
-  Future<void> syncNotes({
+  Future<NoteSyncResult> syncNotes({
     Function()? onTextSyncComplete,
     BuildContext? context,
   }) async {
-    if (_noteRepo == null) return;
+    if (_noteRepo == null) return NoteSyncResult(pulledNotes: [], pushedNotes: []);
     if (_supabase.auth.currentUser == null) {
       SyncLogger.warn('NOTE', '未登录，中止同步');
-      return;
+      return NoteSyncResult(pulledNotes: [], pushedNotes: []);
     }
 
     SyncLogger.info('NOTE', '====== 🚀 启动 V2.0 笔记同步管线 ======');
@@ -125,17 +133,19 @@ class SupabaseNoteSync {
       }
 
       // 🌟 执行拉取操作
+      List<Note> pulledNotes = [];
       if (finalToPull.isNotEmpty) {
         SyncLogger.info('SYNC', '📥 计划拉取 ${finalToPull.length} 条笔记从云端');
-        await _pullNotes(finalToPull, currentUserId, localMetaMapWithVersion.keys.toSet());
+        pulledNotes = await _pullNotes(finalToPull, currentUserId, localMetaMapWithVersion.keys.toSet());
       } else {
         SyncLogger.info('SYNC', '📥 无需拉取笔记（云端无更新）');
       }
 
       // 🌟 执行推送操作
+      List<Note> pushedNotes = [];
       if (finalToPush.isNotEmpty) {
         SyncLogger.info('SYNC', '📤 计划推送 ${finalToPush.length} 条笔记到云端');
-        await _pushNotes(finalToPush, currentUserId);
+        pushedNotes = await _pushNotes(finalToPush, currentUserId);
       } else {
         SyncLogger.info('SYNC', '📤 无需推送笔记（本地无更新）');
       }
@@ -168,8 +178,10 @@ class SupabaseNoteSync {
       // 图片同步逻辑已移至 SupabaseImageSync，此处通过 onTextSyncComplete 回调通知主协调器
 
       SyncLogger.info('NOTE', '====== ✅ 笔记同步管线完美收官 ======');
+      return NoteSyncResult(pulledNotes: pulledNotes, pushedNotes: pushedNotes);
     } catch (e) {
       SyncLogger.error('NOTE', '同步管线崩溃', e);
+      return NoteSyncResult(pulledNotes: [], pushedNotes: []);
     }
   }
 
@@ -178,44 +190,27 @@ class SupabaseNoteSync {
   // =========================================================================
 
   Future<List<Note>> _pullNotes(List<String> idsToFetch, String userId, Set<String> existingLocalIds) async {
-    List<Note> pulled = [];
     SyncLogger.info('PULL', '准备从云端拉取 ${idsToFetch.length} 条笔记内容...');
 
+    // 构建所有批次
+    final List<List<String>> batches = [];
     for (var i = 0; i < idsToFetch.length; i += SyncConstants.supabaseBatchSize) {
-      final chunk = idsToFetch.sublist(i, i + SyncConstants.supabaseBatchSize > idsToFetch.length ? idsToFetch.length : i + SyncConstants.supabaseBatchSize);
+      final end = i + SyncConstants.supabaseBatchSize > idsToFetch.length
+          ? idsToFetch.length
+          : i + SyncConstants.supabaseBatchSize;
+      batches.add(idsToFetch.sublist(i, end));
+    }
 
-      List<dynamic> cloudUpdates = [];
-      try {
-        // 尝试执行级联查询 (带有标签关联)
-        final res = await _retry.withRetry(
-          operation: () => _supabase.from('notes')
-              .select('*, note_tags(tag_id)')
-              .inFilter('id', chunk)
-              .eq('user_id', userId),
-          operationName: '拉取笔记详情',
-        );
-        cloudUpdates = res as List<dynamic>;
-      } catch (e) {
-        SyncLogger.warn('PULL', '包含 note_tags 的高级查询失败，自动退回基础单表查询: $e');
-        try {
-          // 防御性回退：如果不允许查 note_tags（RLS未开或表结构异常），则只查 notes 主表
-          final res = await _retry.withRetry(
-            operation: () => _supabase.from('notes')
-                .select('*')
-                .inFilter('id', chunk)
-                .eq('user_id', userId),
-            operationName: '拉取笔记详情(降级)',
-          );
-          cloudUpdates = res as List<dynamic>;
-        } catch (innerError) {
-          SyncLogger.error('PULL', '基础查询也失败了，跳过本批次', innerError);
-          continue;
-        }
-      }
+    // 🌟 并发拉取所有批次
+    final List<List<dynamic>> allResults = await Future.wait(
+      batches.map((chunk) => _fetchNoteChunk(chunk, userId)),
+    );
 
+    // 解析所有结果
+    final List<Note> allNotes = [];
+    for (var cloudUpdates in allResults) {
       for (var map in cloudUpdates) {
         try {
-          // 容错提取 tags：如果回退到了基础查询，这里会是 null
           final rawTags = map['note_tags'] as List<dynamic>?;
           final List<String> tagIds = rawTags != null ? rawTags.map((t) => t['tag_id'].toString()).toList() : [];
 
@@ -232,19 +227,49 @@ class SupabaseNoteSync {
             isDeleted: map['is_deleted'] == true,
             isPrivate: map['is_private'] == true,
           );
-
-          // 🌟 使用 saveNoteFromSync 保留云端 updatedAt 时间戳
-          await _noteRepo!.saveNoteFromSync(updatedNote);
-          pulled.add(updatedNote);
+          allNotes.add(updatedNote);
         } catch (e) {
           SyncLogger.error('PULL', '解析单条笔记失败 [id: ${map['id']}]', e);
         }
       }
     }
-    if (pulled.isNotEmpty) {
-      SyncLogger.info('PULL', '✅ 成功拉取 ${pulled.length} 条笔记到本地');
+
+    // 🌟 一次性批量写入所有笔记
+    if (allNotes.isNotEmpty) {
+      await _noteRepo!.saveNotesFromSync(allNotes);
+      SyncLogger.info('PULL', '✅ 批量写入 ${allNotes.length} 条笔记到本地');
     }
-    return pulled;
+
+    return allNotes;
+  }
+
+  /// 获取单个批次的笔记数据（支持降级查询）
+  Future<List<dynamic>> _fetchNoteChunk(List<String> chunk, String userId) async {
+    try {
+      final res = await _retry.withRetry(
+        operation: () => _supabase.from('notes')
+            .select('*, note_tags(tag_id)')
+            .inFilter('id', chunk)
+            .eq('user_id', userId),
+        operationName: '拉取笔记详情',
+      );
+      return res as List<dynamic>;
+    } catch (e) {
+      SyncLogger.warn('PULL', '包含 note_tags 的高级查询失败，自动退回基础单表查询: $e');
+      try {
+        final res = await _retry.withRetry(
+          operation: () => _supabase.from('notes')
+              .select('*')
+              .inFilter('id', chunk)
+              .eq('user_id', userId),
+          operationName: '拉取笔记详情(降级)',
+        );
+        return res as List<dynamic>;
+      } catch (innerError) {
+        SyncLogger.error('PULL', '基础查询也失败了，跳过本批次', innerError);
+        return [];
+      }
+    }
   }
 
   // =========================================================================
@@ -252,24 +277,15 @@ class SupabaseNoteSync {
   // =========================================================================
 
   Future<List<Note>> _pushNotes(List<String> idsToPush, String userId) async {
-    // 🌟 配额检查：计算需要推送的内容大小
-    int totalBytesToPush = 0;
-    List<Note> notesToPush = [];
+    // 🌟 配额检查：估算推送大小（避免 O(n) 遍历所有笔记精确计算）
+    // 平均每条笔记约 2KB，取保守上限
+    const averageNoteSizeBytes = 2048;
+    final estimatedBytes = idsToPush.length * averageNoteSizeBytes;
 
-    for (var id in idsToPush) {
-      final note = _noteRepo!.getNoteById(id);
-      if (note != null && !note.isDeleted) {
-        notesToPush.add(note);
-        // 估算：标题 + 内容 + 元数据开销
-        totalBytesToPush += (note.title.length + note.content.length) * SyncConstants.utf16BytesPerChar + SyncConstants.noteMetadataOverheadBytes;
-      }
-    }
-
-    // 🌟 检查存储配额
-    if (totalBytesToPush > 0) {
+    if (estimatedBytes > 0) {
       final quotaService = StorageQuotaService();
       final quotaCheck = await quotaService.checkStorageQuota(
-        requiredBytes: totalBytesToPush,
+        requiredBytes: estimatedBytes,
         resourceType: ResourceType.note,
       );
 
@@ -362,22 +378,39 @@ class SupabaseNoteSync {
         }
       }
 
-      // 隔离标签关系的推送，避免拖累笔记主表
-      for (var note in pushedNotes) {
+      // 🌟 批量处理标签关系
+      if (pushedNotes.isNotEmpty) {
         try {
+          // 收集所有需要删除的 note_id
+          final noteIds = pushedNotes.map((n) => n.id).toList();
+
+          // 批量删除这些笔记的所有标签关系
           await _retry.withRetry(
-            operation: () => _supabase.from('note_tags').delete().eq('note_id', note.id),
-            operationName: '删除笔记标签关联',
+            operation: () => _supabase.from('note_tags').delete().inFilter('note_id', noteIds),
+            operationName: '批量删除笔记标签关联',
           );
-          if (note.tagIds.isNotEmpty) {
-            final tagPayloads = note.tagIds.map((tagId) => {'note_id': note.id, 'tag_id': tagId}).toList();
+
+          // 收集所有需要插入的标签关系
+          final allTagPayloads = <Map<String, dynamic>>[];
+          for (var note in pushedNotes) {
+            if (note.tagIds.isNotEmpty) {
+              allTagPayloads.addAll(
+                note.tagIds.map((tagId) => {'note_id': note.id, 'tag_id': tagId}),
+              );
+            }
+          }
+
+          // 批量插入所有标签关系
+          if (allTagPayloads.isNotEmpty) {
             await _retry.withRetry(
-              operation: () => _supabase.from('note_tags').insert(tagPayloads),
-              operationName: '插入笔记标签关联',
+              operation: () => _supabase.from('note_tags').insert(allTagPayloads),
+              operationName: '批量插入笔记标签关联',
             );
           }
+
+          SyncLogger.info('PUSH', '批量处理 ${allTagPayloads.length} 条标签关系');
         } catch (e) {
-          SyncLogger.warn('PUSH', '为笔记 [${note.title}] 绑定标签失败 (请检查 RLS 权限)');
+          SyncLogger.warn('PUSH', '批量处理标签关系失败: $e');
         }
       }
       SyncLogger.info('PUSH', '✅ 成功推送 ${payloads.length} 条笔记到云端');

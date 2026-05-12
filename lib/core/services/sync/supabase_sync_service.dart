@@ -17,6 +17,7 @@ import '../../repositories/category_repository.dart';
 import '../../repositories/note_repository.dart';
 import '../../repositories/tag_repository.dart';
 import '../../repositories/todo_repository.dart';
+import '../../../models/note.dart';
 
 import '../performance/perf.dart';
 import 'sync_models.dart';
@@ -30,7 +31,7 @@ import 'supabase_image_sync.dart';
 
 // Re-export for backward compatibility
 export 'sync_models.dart' show SyncException, SyncErrorType;
-export 'supabase_note_sync.dart' show NoteSyncMeta;
+export 'supabase_note_sync.dart' show NoteSyncMeta, NoteSyncResult;
 
 class SupabaseSyncService {
   final _supabase = Supabase.instance.client;
@@ -75,7 +76,7 @@ class SupabaseSyncService {
     dynamic context,
   }) async {
     await Perf.trace('sync.notes', () async {
-      await _noteSync.syncNotes(
+      final syncResult = await _noteSync.syncNotes(
         onTextSyncComplete: onTextSyncComplete,
         context: context,
       );
@@ -83,19 +84,34 @@ class SupabaseSyncService {
       // 笔记文本同步完成后，执行图片资源同步
       if (_noteRepo != null && _supabase.auth.currentUser != null) {
         try {
-          final allNotes = _noteRepo!.getAllNotes();
+          // 🌟 优化：只同步本次推送/拉取的笔记图片，而非所有笔记
+          final notesToSyncImages = <Note>[];
+          notesToSyncImages.addAll(syncResult.pushedNotes);
+          notesToSyncImages.addAll(syncResult.pulledNotes);
 
-          // 先同步 attachments 表（迁移已有数据）
-          await _imageSync.syncAttachmentsTable(allNotes);
+          if (notesToSyncImages.isNotEmpty) {
+            SyncLogger.info('IMAGE', '开始同步 ${notesToSyncImages.length} 条笔记的图片（推送 ${syncResult.pushedNotes.length}，拉取 ${syncResult.pulledNotes.length}）');
 
-          // 上传所有笔记的图片（不只是被推送的），确保隐私笔记图片也能上传
-          await _imageSync.uploadImages(allNotes);
+            // 先同步 attachments 表（迁移已有数据，仅首次执行）
+            await _imageSync.syncAttachmentsTable(notesToSyncImages);
 
-          // 强行扫描所有本地存活笔记，缺失的图片全部从云端下回来
-          await _imageSync.downloadImages(allNotes);
+            // 只上传本次推送的笔记图片
+            if (syncResult.pushedNotes.isNotEmpty) {
+              await _imageSync.uploadImages(syncResult.pushedNotes);
+            }
 
-          // 云端垃圾回收
-          await _imageSync.cleanUpCloudImages(allNotes);
+            // 只下载本次拉取的笔记图片
+            if (syncResult.pulledNotes.isNotEmpty) {
+              await _imageSync.downloadImages(syncResult.pulledNotes);
+            }
+
+            // 云端垃圾回收（只在有推送时执行）
+            if (syncResult.pushedNotes.isNotEmpty) {
+              await _imageSync.cleanUpCloudImages(_noteRepo!.getAllNotes());
+            }
+          } else {
+            SyncLogger.info('IMAGE', '无需同步图片');
+          }
         } catch (e) {
           SyncLogger.error('IMAGE', '图片同步或清理管线异常', e);
         }

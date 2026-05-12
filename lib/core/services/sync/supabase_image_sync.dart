@@ -31,6 +31,9 @@ class SupabaseImageSync {
   static DateTime? _lastPrivateImageSyncTime;
   static const Duration _minSyncInterval = Duration(seconds: 10);
 
+  // 🌟 优化：attachments 表同步标志位，只执行一次
+  static bool _hasSyncedAttachmentsTable = false;
+
   // =========================================================================
   // 隐私图片专用同步 - 在解锁隐私空间时调用
   // =========================================================================
@@ -110,6 +113,8 @@ class SupabaseImageSync {
     // 🌟 收集需要上传的图片，标记是否属于隐私笔记
     final Map<String, bool> fileNameToIsPrivate = {};
     int totalImageBytes = 0;
+    // 缓存图片文件大小，避免同一文件被多篇笔记引用时重复读取文件系统
+    final Map<String, int> imageSizeCache = {};
 
     for (var note in pushedNotes) {
       // 优先使用 imagePaths 字段（如果存在）
@@ -117,10 +122,16 @@ class SupabaseImageSync {
         for (var path in note.imagePaths) {
           final fileName = path.replaceAll('\\', '/').split('/').last;
           fileNameToIsPrivate[fileName] = note.isPrivate;
-          // 计算图片大小
-          final file = File(p.join(appDir.path, 'note_images', fileName));
-          if (await file.exists()) {
-            totalImageBytes += await file.length();
+          // 使用缓存计算图片大小
+          if (imageSizeCache.containsKey(fileName)) {
+            totalImageBytes += imageSizeCache[fileName]!;
+          } else {
+            final file = File(p.join(appDir.path, 'note_images', fileName));
+            if (await file.exists()) {
+              final size = await file.length();
+              imageSizeCache[fileName] = size;
+              totalImageBytes += size;
+            }
           }
         }
       } else {
@@ -139,10 +150,16 @@ class SupabaseImageSync {
         for (var path in paths) {
           final fileName = path.replaceAll('\\', '/').split('/').last;
           fileNameToIsPrivate[fileName] = note.isPrivate;
-          // 计算图片大小
-          final file = File(p.join(appDir.path, 'note_images', fileName));
-          if (await file.exists()) {
-            totalImageBytes += await file.length();
+          // 使用缓存计算图片大小
+          if (imageSizeCache.containsKey(fileName)) {
+            totalImageBytes += imageSizeCache[fileName]!;
+          } else {
+            final file = File(p.join(appDir.path, 'note_images', fileName));
+            if (await file.exists()) {
+              final size = await file.length();
+              imageSizeCache[fileName] = size;
+              totalImageBytes += size;
+            }
           }
         }
       }
@@ -183,27 +200,39 @@ class SupabaseImageSync {
     final privacy = PrivacyService();
     SyncLogger.info('IMAGE', 'PrivacyService 状态: isUnlocked=${privacy.isUnlocked}');
 
-    // 🌟 优化：先获取云端已有文件列表，避免重复上传
+    // 🌟 优化：批量获取云端已有文件列表（Set 查找 O(1)）
     final cloudFiles = await _getCloudFileList();
     SyncLogger.info('IMAGE', '云端已有 ${cloudFiles.length} 个文件');
 
+    // 🌟 优化：预过滤，跳过云端已存在的文件，避免为每个文件创建异步任务
+    final filesToUpload = <MapEntry<String, bool>>[];
     int skippedCount = 0;
-    int uploadedCount = 0;
-
-    List<Future<void>> uploadTasks = fileNameToIsPrivate.entries.map((entry) async {
+    for (final entry in fileNameToIsPrivate.entries) {
       final fileName = entry.key;
       final isPrivate = entry.value;
       final cloudFileName = isPrivate ? '$fileName.enc' : fileName;
+      if (cloudFiles.contains(cloudFileName)) {
+        skippedCount++;
+      } else {
+        filesToUpload.add(entry);
+      }
+    }
+    SyncLogger.info('IMAGE', '跳过 $skippedCount 张已存在的图片，需上传 ${filesToUpload.length} 张');
+
+    if (filesToUpload.isEmpty) {
+      SyncLogger.info('IMAGE', '图片附件上传完成: 上传 0 张, 跳过 $skippedCount 张');
+      return;
+    }
+
+    int uploadedCount = 0;
+
+    List<Future<void>> uploadTasks = filesToUpload.map((entry) async {
+      final fileName = entry.key;
+      final isPrivate = entry.value;
 
       try {
         final localFile = File(p.join(appDir.path, 'note_images', fileName));
         if (await localFile.exists()) {
-          // 🌟 优化：检查云端是否已有该文件
-          if (cloudFiles.contains(cloudFileName)) {
-            skippedCount++;
-            return; // 跳过已存在的文件
-          }
-
           if (isPrivate && privacy.isUnlocked) {
             // 🌟 隐私笔记图片：读取、加密、写入临时文件、上传
             // 检查云端是否已有普通版本（笔记从普通变为私密时）
@@ -427,6 +456,12 @@ class SupabaseImageSync {
   // Attachments 表同步（迁移已有云端图片数据）
   // =========================================================================
   Future<void> syncAttachmentsTable(List<Note> allNotes) async {
+    // 🌟 优化：只执行一次，避免每次同步都重复迁移
+    if (_hasSyncedAttachmentsTable) {
+      SyncLogger.info('ATTACHMENT', 'attachments 表已同步，跳过');
+      return;
+    }
+
     final user = _supabase.auth.currentUser;
     if (user == null) return;
     final userId = user.id;
@@ -548,6 +583,7 @@ class SupabaseImageSync {
       }
 
       SyncLogger.info('ATTACHMENT', '====== 迁移完成: 成功 $migratedCount 个, 失败 $failedCount 个 ======');
+      _hasSyncedAttachmentsTable = true;
     } catch (e) {
       SyncLogger.error('ATTACHMENT', '同步 attachments 表失败', e);
     }
