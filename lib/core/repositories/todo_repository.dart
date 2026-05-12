@@ -55,6 +55,14 @@ class TodoRepository {
     }));
   }
 
+  /// 🌟 同步专用：批量保存待办（保留云端时间戳）
+  Future<void> saveTodosFromSync(List<Todo> todos) async {
+    if (todos.isEmpty) return;
+    await Perf.trace('repo.todo.saveTodosFromSync', () => _isar.writeTxn(() async {
+      await _isar.todos.putAll(todos);
+    }));
+  }
+
   Future<void> deleteTodo(String id) async {
     await Perf.trace('repo.todo.delete', () => _isar.writeTxn(() async {
       await _isar.todos.where().idEqualTo(id).deleteAll();

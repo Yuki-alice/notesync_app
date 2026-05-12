@@ -5,6 +5,7 @@ import '../services/performance/perf.dart';
 
 class NoteRepository {
   final Isar _isar;
+  List<Note>? _allNotesCache;
 
   NoteRepository(this._isar);
 
@@ -36,6 +37,11 @@ class NoteRepository {
   List<Note> getAllNotes() {
     return Perf.traceSync('repo.note.getAll', () {
       try {
+        if (_allNotesCache != null) {
+          debugPrint('[CACHE] getAllNotes HIT (${_allNotesCache!.length} notes)');
+          return _allNotesCache!;
+        }
+        debugPrint('[CACHE] getAllNotes MISS → querying DB');
         final notes = _isar.notes.where().findAllSync();
         notes.sort((a, b) {
           if (a.isPinned != b.isPinned) {
@@ -43,6 +49,8 @@ class NoteRepository {
           }
           return b.updatedAt.compareTo(a.updatedAt);
         });
+        _allNotesCache = notes;
+        debugPrint('[CACHE] getAllNotes cached ${notes.length} notes');
         return notes;
       } catch (e) {
         debugPrint('Repo Error (getAllNotes): $e');
@@ -51,10 +59,16 @@ class NoteRepository {
     });
   }
 
+  void invalidateCache() {
+    _allNotesCache = null;
+    debugPrint('[CACHE] getAllNotes cache invalidated');
+  }
+
   Future<void> addNote(Note note) async {
     await Perf.trace('repo.note.add', () => _isar.writeTxn(() async {
       await _isar.notes.put(note);
     }));
+    invalidateCache();
   }
 
   Future<void> updateNote(Note note) async {
@@ -63,6 +77,7 @@ class NoteRepository {
       note.updatedAt = DateTime.now();
       await _isar.notes.put(note);
     }));
+    invalidateCache();
   }
 
   /// 🌟 同步专用：保存笔记但不修改 updatedAt（保留云端时间戳）
@@ -70,12 +85,23 @@ class NoteRepository {
     await Perf.trace('repo.note.saveFromSync', () => _isar.writeTxn(() async {
       await _isar.notes.put(note);
     }));
+    invalidateCache();
+  }
+
+  /// 🌟 同步专用：批量保存笔记（保留云端时间戳）
+  Future<void> saveNotesFromSync(List<Note> notes) async {
+    if (notes.isEmpty) return;
+    await Perf.trace('repo.note.saveNotesFromSync', () => _isar.writeTxn(() async {
+      await _isar.notes.putAll(notes);
+    }));
+    invalidateCache();
   }
 
   Future<void> deleteNote(String id) async {
     await Perf.trace('repo.note.delete', () => _isar.writeTxn(() async {
       await _isar.notes.where().idEqualTo(id).deleteAll();
     }));
+    invalidateCache();
   }
 
   Future<List<Note>> searchNotes(String query, String? categoryId) async {
