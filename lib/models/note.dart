@@ -5,6 +5,9 @@ part 'note.g.dart';
 
 @collection
 class Note {
+  /// 单篇笔记最大图片数量
+  static const int maxImagesPerNote = 20;
+
   Id isarId = Isar.autoIncrement;
 
   @Index(unique: true, replace: true)

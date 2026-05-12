@@ -22,6 +22,12 @@ class ImageStorageService {
   }
 
   Future<String> saveImage(File imageFile) async {
+    // 检查原始图片大小，超过 10MB 拒绝保存
+    final originalSize = await imageFile.length();
+    if (originalSize > 10 * 1024 * 1024) {
+      throw Exception('图片过大（${(originalSize / 1024 / 1024).toStringAsFixed(1)}MB），单张图片不能超过 10MB');
+    }
+
     final dir = await _baseDir;
     final ext = p.extension(imageFile.path).toLowerCase();
     final fileName = '${const Uuid().v4()}$ext';
@@ -61,12 +67,13 @@ class ImageStorageService {
     }
 
     try {
+      // quality 70 + 1280px 对笔记插图足够清晰，体积约 200-500KB
       final result = await FlutterImageCompress.compressAndGetFile(
         imageFile.absolute.path,
         targetPath,
-        quality: 80,
-        minWidth: 1920,
-        minHeight: 1080,
+        quality: 70,
+        minWidth: 1280,
+        minHeight: 720,
       );
 
       if (result != null) {
@@ -104,10 +111,10 @@ class ImageStorageService {
         return;
       }
 
-      // 计算新尺寸（保持比例，最大边不超过 1920）
+      // 计算新尺寸（保持比例，最大边不超过 1280）
       int newWidth = originalImage.width;
       int newHeight = originalImage.height;
-      const maxDimension = 1920;
+      const maxDimension = 1280;
 
       if (newWidth > maxDimension || newHeight > maxDimension) {
         if (newWidth > newHeight) {
@@ -119,12 +126,12 @@ class ImageStorageService {
         }
       }
 
-      // 调整大小
+      // 调整大小，cubic 插值比 linear 更清晰
       final resizedImage = img.copyResize(
         originalImage,
         width: newWidth,
         height: newHeight,
-        interpolation: img.Interpolation.linear,
+        interpolation: img.Interpolation.cubic,
       );
 
       // 编码并保存
@@ -133,7 +140,8 @@ class ImageStorageService {
         encodedBytes = img.encodePng(resizedImage, level: 6); // 压缩级别 0-9
       } else {
         // jpg/jpeg/webp 都使用 jpeg 编码（image 库不支持 webp 编码）
-        encodedBytes = img.encodeJpg(resizedImage, quality: 80);
+        // quality 70 对笔记插图足够清晰，体积约 200-500KB
+        encodedBytes = img.encodeJpg(resizedImage, quality: 70);
       }
 
       if (encodedBytes != null) {
