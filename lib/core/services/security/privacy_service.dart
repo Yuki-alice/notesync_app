@@ -44,6 +44,10 @@ class PrivacyService with WidgetsBindingObserver {
   /// 自动锁定时长（默认 5 分钟）
   Duration _autoLockDuration = StorageConstants.privacyAutoLockTimeout;
 
+  /// 获取当前会话密钥的原始字节（用于 Isolate 中的解密操作）
+  /// 返回 null 表示未解锁
+  Uint8List? get sessionKeyBytes => _sessionKey?.bytes;
+
   // ==================== 常量 ====================
   static const String _encryptPrefix = 'AES_V1::';
   static const String _storageKeyPasswordHash = 'privacy_password_hash';

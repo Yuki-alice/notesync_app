@@ -7,9 +7,12 @@
 // - 隐私图片专用同步（解锁隐私空间时触发）
 
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:encrypt/encrypt.dart' as enc;
 
 import '../../repositories/note_repository.dart';
 import '../security/privacy_service.dart';
@@ -17,8 +20,33 @@ import '../storage/storage_quota_service.dart';
 import '../../../models/user_quota.dart';
 import '../../../models/note.dart';
 
+import '../../constants/storage_constants.dart';
 import '../../constants/sync_constants.dart';
 import 'sync_models.dart';
+
+/// Isolate 解密参数（仅包含可跨 Isolate 传递的数据）
+class _DecryptParams {
+  final Uint8List encryptedBytes;
+  final Uint8List keyBytes;
+
+  _DecryptParams({required this.encryptedBytes, required this.keyBytes});
+}
+
+/// 在后台 Isolate 中执行 AES-GCM 解密，避免阻塞主线程
+Uint8List _decryptFileInIsolate(_DecryptParams params) {
+  final key = enc.Key(params.keyBytes);
+  final encryptedBytes = params.encryptedBytes;
+
+  // 分离 IV 和密文（与 PrivacyService.decryptFileBytes 逻辑一致）
+  final iv = enc.IV(Uint8List.fromList(encryptedBytes.sublist(0, StorageConstants.aesGcmIvLength)));
+  final encrypted = enc.Encrypted(
+    Uint8List.fromList(encryptedBytes.sublist(StorageConstants.aesGcmIvLength)),
+  );
+
+  final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.gcm));
+  final decrypted = encrypter.decryptBytes(encrypted, iv: iv);
+  return Uint8List.fromList(decrypted);
+}
 
 class SupabaseImageSync {
   final SupabaseClient _supabase;
@@ -351,6 +379,8 @@ class SupabaseImageSync {
         : SyncConstants.imageDownloadConcurrencyNormal;
     final fileList = fileNameToIsPrivate.keys.toList();
     final privacy = PrivacyService();
+    // 🌟 预先获取密钥字节，供 Isolate 解密使用
+    final keyBytes = privacy.sessionKeyBytes;
 
     for (int i = 0; i < fileList.length; i += maxConcurrent) {
       final end = (i + maxConcurrent < fileList.length) ? i + maxConcurrent : fileList.length;
@@ -363,12 +393,18 @@ class SupabaseImageSync {
           if (!await localFile.exists()) {
             final isPrivate = fileNameToIsPrivate[fileName] ?? false;
 
-            if (isPrivate && privacy.isUnlocked) {
-              // 🌟 隐私笔记图片：下载加密版本，解密后保存
+            if (isPrivate && privacy.isUnlocked && keyBytes != null) {
+              // 🌟 隐私笔记图片：下载加密版本，在后台 Isolate 中解密
               final encryptedFileName = '$fileName.enc';
               SyncLogger.info('IMAGE', '正在下载隐私图片: $encryptedFileName');
               final encryptedBytes = await storage.download(encryptedFileName);
-              final decryptedBytes = privacy.decryptFileBytes(encryptedBytes);
+
+              // 🌟 优化：使用 compute 将 CPU 密集的解密操作移至后台 Isolate
+              final decryptedBytes = await compute(
+                _decryptFileInIsolate,
+                _DecryptParams(encryptedBytes: encryptedBytes, keyBytes: keyBytes),
+              );
+
               await localFile.parent.create(recursive: true);
               await localFile.writeAsBytes(decryptedBytes);
               SyncLogger.info('IMAGE', '隐私图片下载成功: $fileName');
