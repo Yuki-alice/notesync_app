@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import '../../../../../core/services/storage/image_storage_service.dart';
 import '../../../../../utils/date_formatter.dart';
+import '../../../../../utils/toast_utils.dart';
 import '../../viewmodels/note_editor_viewmodel.dart';
 import '../../widgets/editor_toolbar/editor_bottom_toolbar.dart';
 import '../../widgets/note_image_embed.dart';
@@ -122,7 +123,14 @@ class _EditorMobileLayoutState extends State<EditorMobileLayout> {
               onPickImage: () async {
                 FocusScope.of(context).unfocus();
                 setState(() => _activePanel = ToolbarPanel.none);
-                await viewModel.pickAndInsertImage();
+                final result = await viewModel.pickAndInsertImage();
+                if (result != null && context.mounted) {
+                  if (result.startsWith('warn:')) {
+                    ToastUtils.showInfo(context, result.substring(5));
+                  } else {
+                    ToastUtils.showError(context, result);
+                  }
+                }
                 widget.editorFocusNode.requestFocus();
               },
               onFinish: () async {

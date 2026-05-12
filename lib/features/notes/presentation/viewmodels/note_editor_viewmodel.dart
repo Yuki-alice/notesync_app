@@ -150,7 +150,16 @@ class NoteEditorViewModel extends ChangeNotifier {
     });
   }
 
-  Future<void> pickAndInsertImage() async {
+  /// 返回插入结果：null 表示成功，非空字符串为错误提示
+  Future<String?> pickAndInsertImage() async {
+    // 检查当前笔记图片数量
+    final currentPaths = Note.extractAllImagePaths(
+      jsonEncode(quillController.document.toDelta().toJson()),
+    );
+    if (currentPaths.length >= Note.maxImagesPerNote) {
+      return '单篇笔记最多只能添加 ${Note.maxImagesPerNote} 张图片';
+    }
+
     final picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
@@ -167,7 +176,13 @@ class NoteEditorViewModel extends ChangeNotifier {
 
       quillController.updateSelection(TextSelection.collapsed(offset: index + 2), quill.ChangeSource.local);
       _markAsDirty();
+
+      // 接近上限时返回警告
+      if (currentPaths.length + 1 >= Note.maxImagesPerNote - 2) {
+        return 'warn:${currentPaths.length + 1}/${Note.maxImagesPerNote}';
+      }
     }
+    return null;
   }
 
   Future<void> saveNote() async {

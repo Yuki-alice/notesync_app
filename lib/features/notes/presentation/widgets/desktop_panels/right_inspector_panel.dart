@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../../../core/providers/notes_provider.dart';
 import '../../../../../models/tag.dart';
 import '../../../../../utils/date_formatter.dart';
+import '../../../../../utils/toast_utils.dart';
 import '../../viewmodels/note_editor_viewmodel.dart';
 import '../dialogs/add_tag_dialog.dart';
 import '../dialogs/set_category_sheet.dart';
@@ -164,7 +165,16 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
       physics: const BouncingScrollPhysics(),
       children: [
         _buildHeader(theme, '媒体资源'),
-        _buildActionRow(theme, Icons.image_outlined, '插入相册图片', () => viewModel.pickAndInsertImage()),
+        _buildActionRow(theme, Icons.image_outlined, '插入相册图片', () async {
+          final result = await viewModel.pickAndInsertImage();
+          if (result != null && context.mounted) {
+            if (result.startsWith('warn:')) {
+              ToastUtils.showInfo(context, result.substring(5));
+            } else {
+              ToastUtils.showError(context, result);
+            }
+          }
+        }),
 
         _buildActionRow(theme, Icons.link_rounded, '插入超链接', () async {
           final controller = viewModel.quillController;
