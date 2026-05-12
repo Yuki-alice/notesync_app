@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -24,14 +25,24 @@ class TodosPage extends StatefulWidget {
 class _TodosPageState extends State<TodosPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  Timer? _searchDebounce;
   String? _selectedTodoId;
   DateTime _focusedDay = DateTime.now();
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  // 防抖：延迟 300ms 后才执行搜索，减少无效查询
+  void _onSearchChanged(String query) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) context.read<TodosProvider>().setSearchQuery(query);
+    });
   }
 
   double _calculateProgress(int completed, int total) {
@@ -181,7 +192,7 @@ class _TodosPageState extends State<TodosPage> {
                   backgroundColor: WidgetStateProperty.all(
                       theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
                   ),
-                  onChanged: (value) => provider.setSearchQuery(value),
+                  onChanged: _onSearchChanged,
                   constraints: const BoxConstraints(minHeight: 48, maxHeight: 48),
                   trailing: _searchController.text.isNotEmpty
                       ? [
