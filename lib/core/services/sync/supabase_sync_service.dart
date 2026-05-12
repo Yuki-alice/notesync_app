@@ -75,11 +75,16 @@ class SupabaseSyncService {
     Function()? onTextSyncComplete,
     dynamic context,
   }) async {
+    final syncStopwatch = Stopwatch()..start();
+    SyncLogger.info('SYNC', '🚀 笔记同步开始');
     await Perf.trace('sync.notes', () async {
       final syncResult = await _noteSync.syncNotes(
         onTextSyncComplete: onTextSyncComplete,
         context: context,
       );
+
+      // 🌟 让出事件循环，允许 UI 渲染帧
+      await Future(() {});
 
       // 笔记文本同步完成后，执行图片资源同步
       if (_noteRepo != null && _supabase.auth.currentUser != null) {
@@ -94,15 +99,18 @@ class SupabaseSyncService {
 
             // 先同步 attachments 表（迁移已有数据，仅首次执行）
             await _imageSync.syncAttachmentsTable(notesToSyncImages);
+            await Future(() {}); // 让出事件循环
 
             // 只上传本次推送的笔记图片
             if (syncResult.pushedNotes.isNotEmpty) {
               await _imageSync.uploadImages(syncResult.pushedNotes);
+              await Future(() {}); // 让出事件循环
             }
 
             // 只下载本次拉取的笔记图片
             if (syncResult.pulledNotes.isNotEmpty) {
               await _imageSync.downloadImages(syncResult.pulledNotes);
+              await Future(() {}); // 让出事件循环
             }
 
             // 云端垃圾回收（只在有推送时执行）
@@ -117,6 +125,8 @@ class SupabaseSyncService {
         }
       }
     });
+    syncStopwatch.stop();
+    SyncLogger.info('SYNC', '✅ 笔记同步完成，耗时 ${syncStopwatch.elapsedMilliseconds}ms');
   }
 
   // =========================================================================

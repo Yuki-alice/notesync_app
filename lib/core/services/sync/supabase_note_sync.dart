@@ -5,6 +5,7 @@
 // - 委托 SupabaseNoteConflictResolver 处理冲突解决
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,6 +24,34 @@ import 'supabase_category_tag_sync.dart';
 import 'supabase_note_conflict_resolver.dart';
 
 export '../../repositories/note_repository.dart' show NoteSyncMeta;
+
+/// 🌟 后台 Isolate 解析函数：将云端 JSON 列表解析为 Note 对象
+List<Note> _parseNotesFromJson(List<dynamic> rawList) {
+  final List<Note> notes = [];
+  for (var map in rawList) {
+    try {
+      final rawTags = map['note_tags'] as List<dynamic>?;
+      final List<String> tagIds = rawTags != null ? rawTags.map((t) => t['tag_id'].toString()).toList() : [];
+
+      notes.add(Note(
+        id: map['id'].toString(),
+        title: map['title']?.toString() ?? '',
+        content: map['content']?.toString() ?? '',
+        createdAt: DateTime.parse(map['created_at'].toString()).toLocal(),
+        updatedAt: DateTime.parse(map['updated_at'].toString()).toLocal(),
+        categoryId: map['category_id']?.toString(),
+        tagIds: tagIds,
+        version: (map['version'] as int?) ?? 1,
+        isPinned: map['is_pinned'] == true,
+        isDeleted: map['is_deleted'] == true,
+        isPrivate: map['is_private'] == true,
+      ));
+    } catch (e) {
+      // 解析失败的笔记跳过，不影响其他笔记
+    }
+  }
+  return notes;
+}
 
 /// 笔记同步结果（用于协调图片同步）
 class NoteSyncResult {
@@ -70,9 +99,11 @@ class SupabaseNoteSync {
 
       // 1. 优先同步分类和标签字典 (基建数据先到位)
       await _categoryTagSync.syncCategoriesAndTags(currentUserId, prefs);
+      await Future(() {}); // 让出事件循环，避免阻塞 UI
 
       // 2. 清理笔记废纸篓
       await _deletionSync.processLocalDeletions(prefs, 'notes', deletedNotesKey);
+      await Future(() {}); // 让出事件循环
 
       final lastSyncStr = prefs.getString(lastNoteSyncKey);
       final lastSyncTime = lastSyncStr != null ? DateTime.parse(lastSyncStr) : null;
@@ -137,6 +168,7 @@ class SupabaseNoteSync {
       if (finalToPull.isNotEmpty) {
         SyncLogger.info('SYNC', '📥 计划拉取 ${finalToPull.length} 条笔记从云端');
         pulledNotes = await _pullNotes(finalToPull, currentUserId, localMetaMapWithVersion.keys.toSet());
+        await Future(() {}); // 让出事件循环，允许 UI 渲染
       } else {
         SyncLogger.info('SYNC', '📥 无需拉取笔记（云端无更新）');
       }
@@ -146,6 +178,7 @@ class SupabaseNoteSync {
       if (finalToPush.isNotEmpty) {
         SyncLogger.info('SYNC', '📤 计划推送 ${finalToPush.length} 条笔记到云端');
         pushedNotes = await _pushNotes(finalToPush, currentUserId);
+        await Future(() {}); // 让出事件循环
       } else {
         SyncLogger.info('SYNC', '📤 无需推送笔记（本地无更新）');
       }
@@ -206,33 +239,9 @@ class SupabaseNoteSync {
       batches.map((chunk) => _fetchNoteChunk(chunk, userId)),
     );
 
-    // 解析所有结果
-    final List<Note> allNotes = [];
-    for (var cloudUpdates in allResults) {
-      for (var map in cloudUpdates) {
-        try {
-          final rawTags = map['note_tags'] as List<dynamic>?;
-          final List<String> tagIds = rawTags != null ? rawTags.map((t) => t['tag_id'].toString()).toList() : [];
-
-          final updatedNote = Note(
-            id: map['id'].toString(),
-            title: map['title']?.toString() ?? '',
-            content: map['content']?.toString() ?? '',
-            createdAt: DateTime.parse(map['created_at'].toString()).toLocal(),
-            updatedAt: DateTime.parse(map['updated_at'].toString()).toLocal(),
-            categoryId: map['category_id']?.toString(),
-            tagIds: tagIds,
-            version: (map['version'] as int?) ?? SyncConstants.defaultVersion,
-            isPinned: map['is_pinned'] == true,
-            isDeleted: map['is_deleted'] == true,
-            isPrivate: map['is_private'] == true,
-          );
-          allNotes.add(updatedNote);
-        } catch (e) {
-          SyncLogger.error('PULL', '解析单条笔记失败 [id: ${map['id']}]', e);
-        }
-      }
-    }
+    // 🌟 在后台 Isolate 中解析 JSON，避免阻塞主线程
+    final flatResults = allResults.expand((e) => e).toList();
+    final List<Note> allNotes = await compute(_parseNotesFromJson, flatResults);
 
     // 🌟 一次性批量写入所有笔记
     if (allNotes.isNotEmpty) {
