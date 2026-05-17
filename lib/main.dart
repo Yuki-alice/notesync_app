@@ -33,7 +33,6 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   bool _isInitializing = true;
-  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -49,7 +48,6 @@ class _MyAppState extends State<MyApp> {
     ]);
     if (mounted) {
       setState(() => _isInitializing = false);
-      _navigatorKey.currentState?.pushReplacementNamed(AppRoutes.home);
     }
   }
 
@@ -79,12 +77,9 @@ class _MyAppState extends State<MyApp> {
           title: 'Komorebi',
           debugShowCheckedModeBanner: false,
           themeMode: themeProvider.themeMode,
-          navigatorKey: _navigatorKey,
           home: _isInitializing
               ? SplashScreen(onAnimationComplete: _initializeApp)
-              : const SizedBox.shrink(),
-          initialRoute: _isInitializing ? null : AppRoutes.home,
-          onGenerateRoute: _isInitializing ? null : AppRouter.onGenerateRoute,
+              : const _HomePageWrapper(),
           theme: AppTheme.getTheme(context: context, seedColor: themeProvider.themeColor, isDark: false),
           darkTheme: AppTheme.getTheme(context: context, seedColor: themeProvider.themeColor, isDark: true),
           builder: (context, child) {
@@ -143,6 +138,18 @@ class _MyAppState extends State<MyApp> {
           supportedLocales: FlutterQuillLocalizations.supportedLocales,
         ),
       ),
+    );
+  }
+}
+
+class _HomePageWrapper extends StatelessWidget {
+  const _HomePageWrapper();
+
+  @override
+  Widget build(BuildContext context) {
+    return Navigator(
+      onGenerateRoute: AppRouter.onGenerateRoute,
+      initialRoute: AppRoutes.home,
     );
   }
 }
