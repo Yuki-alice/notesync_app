@@ -37,31 +37,25 @@ class AppInitializer {
     final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
     final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
-    // 并行初始化互不依赖的服务
     await Future.wait([
-      // Supabase 云端初始化
       _initSupabase(supabaseUrl, supabaseAnonKey),
-      // 本地 Isar 数据库初始化
       _initDatabase(),
-      // 字体预加载
       AppFonts.preloadFonts(),
-      // 桌面端窗口初始化
-      _initDesktopWindow(),
     ]);
 
-    // 数据库就绪后实例化仓库
     final dbService = SimpleDatabaseService();
     noteRepo = NoteRepository(dbService.isar);
     todoRepo = TodoRepository(dbService.isar);
     categoryRepo = CategoryRepository(dbService.isar);
     tagRepo = TagRepository(dbService.isar);
 
-    // 注册隐私空间解锁回调
     PrivacyService().addOnUnlockListener(() async {
       debugPrint('🔐 AppInitializer: 隐私空间解锁，触发隐私图片同步');
       final syncService = SupabaseSyncService(noteRepo, todoRepo, categoryRepo, tagRepo);
       await syncService.syncPrivateImagesOnly();
     });
+
+    _initDesktopWindow();
   }
 
   static Future<void> _initSupabase(String url, String anonKey) async {
@@ -83,6 +77,7 @@ class AppInitializer {
     if (kIsWeb || !(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) return;
 
     await windowManager.ensureInitialized();
+    await windowManager.setPreventClose(true);
     final windowOptions = WindowOptions(
       size: const Size(UiConstants.desktopDefaultWidth, UiConstants.desktopDefaultHeight),
       minimumSize: const Size(UiConstants.desktopMinWidth, UiConstants.desktopMinHeight),

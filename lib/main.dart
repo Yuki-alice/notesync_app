@@ -15,6 +15,7 @@ import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
 import 'core/services/network/network_service.dart';
 import 'core/services/network/offline_queue.dart';
+import 'core/services/tray/tray_service.dart';
 import 'core/widgets/splash_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -31,23 +32,66 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
-  bool _isInitializing = true;
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver, WindowListener {
+  bool _showSplash = true;
+  final GlobalKey<SplashScreenState> _splashKey = GlobalKey<SplashScreenState>();
+  bool _showSplashAnimation = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    windowManager.addListener(this);
     _initializeApp();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _showSplashAnimation = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowClose() async {
+    final isDesktopOS = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    if (isDesktopOS) {
+      await windowManager.hide();
+    } else {
+      await windowManager.close();
+    }
   }
 
   Future<void> _initializeApp() async {
     await AppInitializer.init();
+    if (mounted) {
+      if (_showSplashAnimation) {
+        _splashKey.currentState?.startExit();
+      } else {
+        _onSplashExit();
+      }
+    }
+    _initBackgroundServices();
+  }
+
+  Future<void> _initBackgroundServices() async {
     await Future.wait([
       NetworkService().init(),
       OfflineQueue().init(),
+      TrayService().init(),
     ]);
+  }
+
+  void _onSplashExit() {
     if (mounted) {
-      setState(() => _isInitializing = false);
+      setState(() => _showSplash = false);
     }
   }
 
@@ -77,8 +121,8 @@ class _MyAppState extends State<MyApp> {
           title: 'Komorebi',
           debugShowCheckedModeBanner: false,
           themeMode: themeProvider.themeMode,
-          home: _isInitializing
-              ? SplashScreen(onAnimationComplete: _initializeApp)
+          home: _showSplash
+              ? SplashScreen(key: _splashKey, onExit: _onSplashExit)
               : const _HomePageWrapper(),
           theme: AppTheme.getTheme(context: context, seedColor: themeProvider.themeColor, isDark: false),
           darkTheme: AppTheme.getTheme(context: context, seedColor: themeProvider.themeColor, isDark: true),
