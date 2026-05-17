@@ -168,7 +168,6 @@ class SupabaseCategoryTagSync {
           'color': localTag.color,
           'is_deleted': localTag.isDeleted,
           'created_at': localTag.createdAt.toUtc().toIso8601String(),
-          'updated_at': localTag.updatedAt.toUtc().toIso8601String(),
         });
       }
     }

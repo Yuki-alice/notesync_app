@@ -437,6 +437,10 @@ class SupabaseImageSync {
   // 云端图片垃圾回收
   // =========================================================================
   Future<void> cleanUpCloudImages(List<Note> allNotes) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+    final userId = user.id;
+
     try {
       final Set<String> usedImageNames = {};
       for (var note in allNotes) {
@@ -482,7 +486,13 @@ class SupabaseImageSync {
       if (orphanedFiles.isNotEmpty) {
         await storage.remove(orphanedFiles);
         SyncLogger.info('CLOUD-GC', '🧹 成功绞杀云端僵尸图片: ${orphanedFiles.length} 张');
+
+        // 🌟 同步删除 attachments 表中的对应记录
+        await _cleanUpOrphanedAttachmentRecords(userId, orphanedFiles);
       }
+
+      // 🌟 额外清理：删除 note_id 为 NULL 的孤儿记录（笔记已删除但附件记录残留）
+      await _cleanUpNullNoteIdAttachments(userId);
     } catch (e) {
       SyncLogger.error('CLOUD-GC', '云端图片垃圾回收失败', e);
     }
@@ -683,6 +693,38 @@ class SupabaseImageSync {
       SyncLogger.info('ATTACHMENT', '删除附件记录: $fileName');
     } catch (e) {
       SyncLogger.warn('ATTACHMENT', '删除附件记录失败 $fileName: $e');
+    }
+  }
+
+  /// 🌟 清理孤儿附件记录（对应文件已被删除，但数据库记录残留）
+  Future<void> _cleanUpOrphanedAttachmentRecords(String userId, List<String> deletedFileNames) async {
+    if (deletedFileNames.isEmpty) return;
+    try {
+      final filePaths = deletedFileNames.map((name) => '$imageBucket/$name').toList();
+      await _supabase
+          .from('attachments')
+          .delete()
+          .eq('user_id', userId)
+          .inFilter('file_path', filePaths);
+      SyncLogger.info('ATTACHMENT', '清理孤儿附件记录: ${deletedFileNames.length} 条');
+    } catch (e) {
+      SyncLogger.warn('ATTACHMENT', '清理孤儿附件记录失败: $e');
+    }
+  }
+
+  ///  清理 note_id 为 NULL 的孤儿附件记录（笔记已删除但附件记录未清理）
+  Future<void> _cleanUpNullNoteIdAttachments(String userId) async {
+    try {
+      final result = await _supabase
+          .from('attachments')
+          .delete()
+          .eq('user_id', userId)
+          .isFilter('note_id', null);
+      if (result != null && result is List) {
+        SyncLogger.info('ATTACHMENT', '清理 NULL note_id 孤儿记录: ${result.length} 条');
+      }
+    } catch (e) {
+      SyncLogger.warn('ATTACHMENT', '清理 NULL note_id 孤儿记录失败: $e');
     }
   }
 

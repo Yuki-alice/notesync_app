@@ -70,13 +70,13 @@ class SupabaseNoteSync {
   final SupabaseNoteConflictResolver _conflictResolver;
 
   SupabaseNoteSync(
-      this._supabase,
-      this._noteRepo,
-      this._retry,
-      this._deletionSync,
-      this._categoryTagSync,
-      this._conflictResolver,
-      );
+    this._supabase,
+    this._noteRepo,
+    this._retry,
+    this._deletionSync,
+    this._categoryTagSync,
+    this._conflictResolver,
+  );
 
   // =========================================================================
   // 笔记同步主入口
