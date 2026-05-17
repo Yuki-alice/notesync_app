@@ -56,6 +56,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   SyncState _syncState = SyncState.idle;
   SyncState get syncState => _syncState;
   StreamSubscription<void>? _dbSubscription;
+  Timer? _syncStateResetTimer;
 
   // 🌟 架构师特供：内存级私密笔记追踪器 (不污染数据库结构)
   final Set<String> _secretNoteIds = {};
@@ -106,6 +107,7 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel();
     _syncTimer?.cancel();
+    _syncStateResetTimer?.cancel();
     _dbSubscription?.cancel();
     super.dispose();
   }
@@ -210,7 +212,8 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       _setSyncState(SyncState.success);
       
       // 🌟 3秒后自动恢复为 idle 状态
-      Future.delayed(UiConstants.syncSuccessResetDelay, () {
+      _syncStateResetTimer?.cancel();
+      _syncStateResetTimer = Timer(UiConstants.syncSuccessResetDelay, () {
         if (_syncState == SyncState.success) {
           _setSyncState(SyncState.idle);
         }
@@ -226,7 +229,8 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       } else {
         _setSyncState(SyncState.error);
         // 🌟 5秒后自动恢复为 idle 状态
-        Future.delayed(UiConstants.syncErrorResetDelay, () {
+        _syncStateResetTimer?.cancel();
+        _syncStateResetTimer = Timer(UiConstants.syncErrorResetDelay, () {
           if (_syncState == SyncState.error) {
             _setSyncState(SyncState.idle);
           }
@@ -235,7 +239,8 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     } catch (e) {
       _setSyncState(SyncState.error);
       // 🌟 5秒后自动恢复为 idle 状态
-      Future.delayed(UiConstants.syncErrorResetDelay, () {
+      _syncStateResetTimer?.cancel();
+      _syncStateResetTimer = Timer(UiConstants.syncErrorResetDelay, () {
         if (_syncState == SyncState.error) {
           _setSyncState(SyncState.idle);
         }
