@@ -118,6 +118,17 @@ class NoteRepository {
     invalidateCache();
   }
 
+  /// 批量删除笔记（单事务，保证原子性）
+  Future<void> deleteNotes(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await Perf.trace('repo.note.deleteBatch', () => _isar.writeTxn(() async {
+      for (final id in ids) {
+        await _isar.notes.where().idEqualTo(id).deleteAll();
+      }
+    }));
+    invalidateCache();
+  }
+
   Future<List<Note>> searchNotes(String query, String? categoryId) async {
     return await Perf.trace('repo.note.search', () async {
       var q = _isar.notes.filter().isDeletedEqualTo(false);

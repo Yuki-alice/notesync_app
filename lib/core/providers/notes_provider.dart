@@ -11,6 +11,8 @@ import '../../models/tag.dart';
 import '../../core/services/storage/image_storage_service.dart';
 import '../../core/services/sync/supabase_sync_service.dart';
 import '../../core/services/sync/webdav_sync_service.dart';
+import '../../core/services/network/network_service.dart';
+import '../../core/services/network/offline_queue.dart';
 import '../init/app_initializer.dart';
 import '../repositories/category_repository.dart';
 import '../repositories/tag_repository.dart';
@@ -61,16 +63,6 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   // 🌟 架构师特供：内存级私密笔记追踪器 (不污染数据库结构)
   final Set<String> _secretNoteIds = {};
 
-  // 🌟 初始化状态标志，防止 notifyListeners() 在 Widget 树就绪前触发
-  bool _isInitialized = false;
-
-  @override
-  void notifyListeners() {
-    if (_isInitialized) {
-      super.notifyListeners();
-    }
-  }
-
   void _setSyncState(SyncState state) {
     _syncState = state;
     notifyListeners();
@@ -83,18 +75,45 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
       loadNotes();
     });
 
-    // 🌟 将异步操作从构造函数中移出，避免在 Widget 树就绪前触发 notifyListeners
-    Future.microtask(() async {
-      await loadNotes();
-      unawaited(_cleanUpOldTrash());
-      _isInitialized = true;
-      notifyListeners();
-    });
+    OfflineQueue().setSyncTrigger(() => syncWithCloud());
 
-    // 🌟 云端同步延迟到帧渲染完成后，确保 UI 已挂载
+    // 🌟 同步加载初始数据，避免首次渲染时显示空状态
+    _loadInitialDataSync();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       syncWithCloud();
     });
+  }
+
+  // 🌟 同步加载初始数据
+  void _loadInitialDataSync() {
+    _categories = _categoryRepository.getAllCategories();
+    _tags = _tagRepository.getAllTags();
+
+    final rawNotes = _repository.getAllNotes();
+    final privacy = PrivacyService();
+
+    _secretNoteIds.clear();
+    _plainTextCache.clear();
+
+    _notes = rawNotes.map((n) {
+      final isEncrypted = n.title.startsWith('AES_V1::') || n.content.startsWith('AES_V1::');
+      if (isEncrypted) {
+        _secretNoteIds.add(n.id);
+        if (!privacy.isUnlocked) {
+          return n.copyWith(isPrivate: true);
+        }
+        return n.copyWith(
+          title: privacy.decryptText(n.title),
+          content: privacy.decryptText(n.content),
+          isPrivate: true,
+        );
+      }
+      return n;
+    }).toList();
+
+    _applyFilters();
+    unawaited(_cleanUpOldTrash());
   }
 
   @override
@@ -137,7 +156,6 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   // 🌟 核心拦截 1：出库解密管线 (Read Pipeline)
   // =========================================================================
   Future<void> loadNotes() async {
-    await _repository.searchNotes(_searchQuery, _selectedCategoryId);
     _categories = _categoryRepository.getAllCategories();
     _tags = _tagRepository.getAllTags();
 
@@ -180,6 +198,17 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
   Future<void> syncWithCloud({BuildContext? context}) async {
     if (!await _isSyncAllowed()) return;
     if (_syncState == SyncState.syncing) return;
+
+    if (!NetworkService().isOnline) {
+      OfflineQueue().enqueue(OfflineTask(
+        id: const Uuid().v4(),
+        type: OfflineTaskType.syncNotes,
+        payload: {},
+      ));
+      _setSyncState(SyncState.error);
+      return;
+    }
+
     _setSyncState(SyncState.syncing);
 
     try {
@@ -400,11 +429,19 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
 
   Future<void> emptyTrash() async {
     final trash = List<Note>.from(trashNotes);
-    for (var note in trash) {
-      await _repository.deleteNote(note.id);
-      _plainTextCache.remove(note.id);
-      await _syncService.recordDeletedNoteId(note.id);
+    if (trash.isEmpty) return;
+
+    final ids = trash.map((n) => n.id).toList();
+
+    // 批量删除（单事务，保证原子性）
+    await _repository.deleteNotes(ids);
+
+    // 清理缓存和同步记录
+    for (final id in ids) {
+      _plainTextCache.remove(id);
+      await _syncService.recordDeletedNoteId(id);
     }
+
     loadNotes();
     _runImageGC();
     _runTagGC();
@@ -415,19 +452,26 @@ class NotesProvider with ChangeNotifier, WidgetsBindingObserver {
     if (Supabase.instance.client.auth.currentUser == null) return;
 
     final now = DateTime.now();
-    bool hasDeletedAny = false;
     final currentTrash = List<Note>.from(trashNotes);
-    for (var note in currentTrash) {
+    final expiredIds = <String>[];
+
+    for (final note in currentTrash) {
       if (now.difference(note.updatedAt).inDays >= UiConstants.trashAutoCleanupDays) {
-        await _repository.deleteNote(note.id);
-        _plainTextCache.remove(note.id);
-        hasDeletedAny = true;
+        expiredIds.add(note.id);
       }
     }
-    if (hasDeletedAny) {
-      loadNotes();
-      await _runImageGC();
+
+    if (expiredIds.isEmpty) return;
+
+    // 批量删除（单事务，保证原子性）
+    await _repository.deleteNotes(expiredIds);
+
+    for (final id in expiredIds) {
+      _plainTextCache.remove(id);
     }
+
+    loadNotes();
+    await _runImageGC();
     await _runTagGC();
   }
 
