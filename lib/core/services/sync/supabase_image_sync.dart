@@ -59,8 +59,8 @@ class SupabaseImageSync {
   static DateTime? _lastPrivateImageSyncTime;
   static const Duration _minSyncInterval = Duration(seconds: 10);
 
-  // 🌟 优化：attachments 表同步标志位，只执行一次
-  static bool _hasSyncedAttachmentsTable = false;
+  //  优化：attachments 表同步标志位，只执行一次
+  bool _hasSyncedAttachmentsTable = false;
 
   // =========================================================================
   // 隐私图片专用同步 - 在解锁隐私空间时调用

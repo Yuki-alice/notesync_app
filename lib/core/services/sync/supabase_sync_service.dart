@@ -97,10 +97,6 @@ class SupabaseSyncService {
           if (notesToSyncImages.isNotEmpty) {
             SyncLogger.info('IMAGE', '开始同步 ${notesToSyncImages.length} 条笔记的图片（推送 ${syncResult.pushedNotes.length}，拉取 ${syncResult.pulledNotes.length}）');
 
-            // 先同步 attachments 表（迁移已有数据，仅首次执行）
-            await _imageSync.syncAttachmentsTable(notesToSyncImages);
-            await Future(() {}); // 让出事件循环
-
             // 只上传本次推送的笔记图片
             if (syncResult.pushedNotes.isNotEmpty) {
               await _imageSync.uploadImages(syncResult.pushedNotes);
@@ -120,6 +116,9 @@ class SupabaseSyncService {
           } else {
             SyncLogger.info('IMAGE', '无需同步图片');
           }
+
+          // 同步 attachments 表（迁移已有数据，仅首次执行，独立于笔记同步）
+          await _imageSync.syncAttachmentsTable(_noteRepo!.getAllNotes());
         } catch (e) {
           SyncLogger.error('IMAGE', '图片同步或清理管线异常', e);
         }
