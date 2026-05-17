@@ -71,8 +71,8 @@ class CustomPerformanceMonitor {
   final List<PerformanceLog> _logs = [];
   static const int _maxLogCount = 1000;
 
-  /// 慢操作阈值（毫秒）
-  static const int _slowThresholdMs = 1000;
+  /// 慢操作阈值（毫秒）— 云端同步等网络操作天然较慢，设为 3 秒
+  static const int _slowThresholdMs = 3000;
 
   /// 是否启用监控
   bool _enabled = true;

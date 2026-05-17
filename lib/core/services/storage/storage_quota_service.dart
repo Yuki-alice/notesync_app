@@ -67,7 +67,7 @@ class StorageQuotaService {
       return _cachedQuota;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ 获取用户配额失败: $e');
+        debugPrint('❌ 获取用户配额失败: $e');
       }
       return _cachedQuota;
     }
@@ -112,7 +112,7 @@ class StorageQuotaService {
       final totalStorageMb = notesSizeMb + imagesSizeMb;
 
       if (kDebugMode) {
-        print('📊 配额计算: 笔记 $noteCount 篇 (${notesSizeMb.toStringAsFixed(2)} MB), '
+        debugPrint('📊 配额计算: 笔记 $noteCount 篇 (${notesSizeMb.toStringAsFixed(2)} MB), '
               '图片 $imageCount 张 (${imagesSizeMb.toStringAsFixed(2)} MB), '
               '总计 ${totalStorageMb.toStringAsFixed(2)} MB');
       }
@@ -124,7 +124,7 @@ class StorageQuotaService {
       };
     } catch (e) {
       if (kDebugMode) {
-        print('❌ 计算使用量失败: $e');
+        debugPrint('❌ 计算使用量失败: $e');
       }
       return {
         'storage_used_mb': 0.0,
@@ -156,7 +156,7 @@ class StorageQuotaService {
       return UserQuota.fromJson(response);
     } catch (e) {
       if (kDebugMode) {
-        print('❌ 创建默认配额失败: $e');
+        debugPrint('❌ 创建默认配额失败: $e');
       }
       return null;
     }
@@ -324,7 +324,7 @@ class StorageQuotaService {
       _cachedQuota = null;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ 记录存储日志失败: $e');
+        debugPrint('❌ 记录存储日志失败: $e');
       }
     }
   }
@@ -341,7 +341,7 @@ class StorageQuotaService {
       return await getUserQuota(forceRefresh: true);
     } catch (e) {
       if (kDebugMode) {
-        print('❌ 刷新配额失败: $e');
+        debugPrint('❌ 刷新配额失败: $e');
       }
       return _cachedQuota;
     }
@@ -361,7 +361,7 @@ class StorageQuotaService {
           .toList();
     } catch (e) {
       if (kDebugMode) {
-        print('❌ 获取套餐配置失败: $e');
+        debugPrint('❌ 获取套餐配置失败: $e');
       }
       return _getDefaultPlanConfigs();
     }
@@ -385,7 +385,7 @@ class StorageQuotaService {
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
       if (kDebugMode) {
-        print('❌ 获取存储历史失败: $e');
+        debugPrint('❌ 获取存储历史失败: $e');
       }
       return [];
     }
@@ -421,7 +421,7 @@ class StorageQuotaService {
           .toList();
     } catch (e) {
       if (kDebugMode) {
-        print('❌ 获取操作日志失败: $e');
+        debugPrint('❌ 获取操作日志失败: $e');
       }
       return [];
     }
