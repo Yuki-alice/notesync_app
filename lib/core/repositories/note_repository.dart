@@ -38,7 +38,6 @@ class NoteRepository {
     return Perf.traceSync('repo.note.getAll', () {
       try {
         if (_allNotesCache != null) {
-          debugPrint('[CACHE] getAllNotes HIT (${_allNotesCache!.length} notes)');
           return _allNotesCache!;
         }
         debugPrint('[CACHE] getAllNotes MISS → querying DB');
