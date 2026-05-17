@@ -72,9 +72,6 @@ flutter:
   uses-material-design: true
   assets:
     - .env
-    - assets/fonts/
-    - assets/fonts/noto_sans_sc/
-    - assets/fonts/noto_serif_sc/
     - assets/icons/
     - assets/icons/android/
     - assets/icons/windows/
