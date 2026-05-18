@@ -37,11 +37,12 @@ class AppInitializer {
     final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
     final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
-    await Future.wait([
-      _initSupabase(supabaseUrl, supabaseAnonKey),
-      _initDatabase(),
-      AppFonts.preloadFonts(),
-    ]);
+    // 关键路径：数据库必须完成才能创建 Repository
+    await _initDatabase();
+
+    // 非关键路径：后台异步初始化，不阻塞首屏渲染
+    _initSupabase(supabaseUrl, supabaseAnonKey);
+    AppFonts.preloadFonts();
 
     final dbService = SimpleDatabaseService();
     noteRepo = NoteRepository(dbService.isar);
