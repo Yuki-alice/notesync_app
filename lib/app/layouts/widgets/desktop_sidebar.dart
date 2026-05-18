@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/privacy_mode_provider.dart';
 
@@ -35,11 +36,12 @@ class DesktopSidebar extends StatelessWidget {
           filterQuality: FilterQuality.high,
         );
       } else if (authProvider.avatarUrl != null) {
-        return Image.network(
-          authProvider.avatarUrl!,
+        return CachedNetworkImage(
+          imageUrl: authProvider.avatarUrl!,
           fit: BoxFit.cover,
-          cacheWidth: 192,
-          filterQuality: FilterQuality.high,
+          memCacheWidth: 192,
+          placeholder: (_, __) => Container(color: theme.colorScheme.primaryContainer),
+          errorWidget: (_, __, ___) => Container(color: theme.colorScheme.primaryContainer),
         );
       } else {
         // 无头像时显示首字母，使用圆形背景

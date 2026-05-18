@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/providers/auth_provider.dart';
 import '../../../../utils/toast_utils.dart';
 import '../viewmodels/profile_viewmodel.dart';
@@ -65,11 +66,12 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
       );
     }
     if (auth.avatarUrl != null) {
-      return Image.network(
-        auth.avatarUrl!,
+      return CachedNetworkImage(
+        imageUrl: auth.avatarUrl!,
         fit: BoxFit.cover,
-        cacheWidth: 256,
-        filterQuality: FilterQuality.high,
+        memCacheWidth: 256,
+        placeholder: (_, __) => Container(color: theme.colorScheme.primaryContainer),
+        errorWidget: (_, __, ___) => Container(color: theme.colorScheme.primaryContainer),
       );
     }
     return Center(

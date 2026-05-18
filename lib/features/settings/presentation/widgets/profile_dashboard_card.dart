@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
@@ -112,11 +113,12 @@ class _ProfileDashboardCardState extends State<ProfileDashboardCard> {
                           filterQuality: FilterQuality.high,
                         );
                       } else if (auth.avatarUrl != null) {
-                        return Image.network(
-                          auth.avatarUrl!,
+                        return CachedNetworkImage(
+                          imageUrl: auth.avatarUrl!,
                           fit: BoxFit.cover,
-                          cacheWidth: 192,
-                          filterQuality: FilterQuality.high,
+                          memCacheWidth: 192,
+                          placeholder: (_, __) => Container(color: theme.colorScheme.primaryContainer),
+                          errorWidget: (_, __, ___) => Container(color: theme.colorScheme.primaryContainer),
                         );
                       } else {
                         return Center(
