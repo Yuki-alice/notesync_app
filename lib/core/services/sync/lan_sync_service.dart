@@ -11,7 +11,7 @@ import 'package:isar/isar.dart';
 import '../../constants/sync_constants.dart';
 
 // 🌟 引入路径处理库
-import 'package:path_provider/path_provider.dart';
+import '../../utils/data_directory.dart';
 import 'package:path/path.dart' as p;
 
 // 🌟 引入所有模型
@@ -117,8 +117,8 @@ class LanSyncService extends ChangeNotifier {
 
     // 🌟 API 2：获取实体图片文件 (微型图床)
     router.get('/sync/image/<fileName>', (Request request, String fileName) async {
-      final appDir = await getApplicationDocumentsDirectory();
-      final file = File(p.join(appDir.path, 'note_images', fileName));
+      final imgDir = await getImageDirectory();
+      final file = File(p.join(imgDir.path, fileName));
 
       if (await file.exists()) {
         return Response.ok(file.openRead(), headers: {
@@ -152,9 +152,7 @@ class LanSyncService extends ChangeNotifier {
       final Map<String, dynamic> data = jsonDecode(jsonStr);
 
       final isar = Isar.getInstance()!;
-      final appDir = await getApplicationDocumentsDirectory();
-      final localImgDir = Directory(p.join(appDir.path, 'note_images'));
-      if (!await localImgDir.exists()) await localImgDir.create(recursive: true);
+      final localImgDir = await getImageDirectory();
 
       await isar.writeTxn(() async {
         // 统一冲突解决策略 (与 Supabase/WebDAV 一致):

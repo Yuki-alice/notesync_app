@@ -14,6 +14,7 @@ import '../../../models/note.dart';
 import '../../../models/tag.dart';
 import '../../../models/todo.dart';
 import '../../../models/category.dart';
+import '../../utils/data_directory.dart';
 
 
 class LocalBackupService {
@@ -22,14 +23,7 @@ class LocalBackupService {
   LocalBackupService(this._isar);
 
   // 获取本地图片存储目录
-  Future<Directory> get _imageDir async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(appDir.path, 'note_images'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
-  }
+  Future<Directory> get _imageDir => getImageDirectory();
 
   // =========================================================================
   // 📦 导出：将数据库和图片打包成 ZIP 并分享

@@ -10,7 +10,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import '../../utils/data_directory.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 
@@ -136,7 +136,7 @@ class SupabaseImageSync {
     final userId = user.id;
 
     final storage = _supabase.storage.from(imageBucket);
-    final appDir = await getApplicationDocumentsDirectory();
+    final appDir = await getDataDirectory();
 
     // 🌟 收集需要上传的图片，标记是否属于隐私笔记
     final Map<String, bool> fileNameToIsPrivate = {};
@@ -154,7 +154,7 @@ class SupabaseImageSync {
           if (imageSizeCache.containsKey(fileName)) {
             totalImageBytes += imageSizeCache[fileName]!;
           } else {
-            final file = File(p.join(appDir.path, 'note_images', fileName));
+            final file = File(p.join(appDir, 'note_images', fileName));
             if (await file.exists()) {
               final size = await file.length();
               imageSizeCache[fileName] = size;
@@ -182,7 +182,7 @@ class SupabaseImageSync {
           if (imageSizeCache.containsKey(fileName)) {
             totalImageBytes += imageSizeCache[fileName]!;
           } else {
-            final file = File(p.join(appDir.path, 'note_images', fileName));
+            final file = File(p.join(appDir, 'note_images', fileName));
             if (await file.exists()) {
               final size = await file.length();
               imageSizeCache[fileName] = size;
@@ -259,7 +259,7 @@ class SupabaseImageSync {
       final isPrivate = entry.value;
 
       try {
-        final localFile = File(p.join(appDir.path, 'note_images', fileName));
+        final localFile = File(p.join(appDir, 'note_images', fileName));
         if (await localFile.exists()) {
           if (isPrivate && privacy.isUnlocked) {
             // 🌟 隐私笔记图片：读取、加密、写入临时文件、上传
@@ -279,7 +279,7 @@ class SupabaseImageSync {
             // 加密后的文件名添加 .enc 后缀
             final encryptedFileName = '$fileName.enc';
             // 写入临时文件（使用临时目录避免污染主目录）
-            final tempDir = Directory(p.join(appDir.path, 'note_images', '.temp'));
+            final tempDir = Directory(p.join(appDir, 'note_images', '.temp'));
             if (!await tempDir.exists()) {
               await tempDir.create(recursive: true);
             }
@@ -339,7 +339,7 @@ class SupabaseImageSync {
   // =========================================================================
   Future<void> downloadImages(List<Note> allNotes) async {
     final storage = _supabase.storage.from(imageBucket);
-    final appDir = await getApplicationDocumentsDirectory();
+    final appDir = await getDataDirectory();
 
     // 🌟 收集需要下载的图片，标记是否属于隐私笔记
     final Map<String, bool> fileNameToIsPrivate = {};
@@ -388,7 +388,7 @@ class SupabaseImageSync {
 
       final tasks = chunk.map((fileName) async {
         try {
-          final localFile = File(p.join(appDir.path, 'note_images', fileName));
+          final localFile = File(p.join(appDir, 'note_images', fileName));
           // 🌟 Auto-Heal: 如果本地文件被误删了，立刻强行从云端拉取！
           if (!await localFile.exists()) {
             final isPrivate = fileNameToIsPrivate[fileName] ?? false;

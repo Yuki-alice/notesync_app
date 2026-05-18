@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' hide Category;
 import 'package:path_provider/path_provider.dart';
+import '../../utils/data_directory.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webdav_client/webdav_client.dart' as webdav;
@@ -387,8 +388,7 @@ class WebDavSyncService {
   }
 
   Future<void> _syncImages(webdav.Client client) async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final localImgDir = Directory(p.join(appDir.path, 'note_images'));
+    final localImgDir = await getImageDirectory();
     if (!localImgDir.existsSync()) return;
 
     // 🌟 1. 核心：从本地 Repository 扫描所有”活着的”笔记，提取它们真正引用的图片

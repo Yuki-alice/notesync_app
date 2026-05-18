@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
+import '../utils/data_directory.dart';
 
 class AuthProvider with ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -198,10 +198,10 @@ class AuthProvider with ChangeNotifier {
         return;
       }
 
-      final directory = await getApplicationDocumentsDirectory();
+      final directory = await getAvatarDirectory();
       final fileExt = _getFileExtensionFromUrl(cloudUrl);
       final fileName = '$userId-avatar.$fileExt';
-      final localFile = File('${directory.path}/$fileName');
+      final localFile = File('${directory.path}${Platform.pathSeparator}$fileName');
 
       await localFile.writeAsBytes(response.bodyBytes);
 
@@ -241,7 +241,7 @@ class AuthProvider with ChangeNotifier {
   // 🌟 清理旧本地头像文件
   Future<void> _cleanupOldLocalAvatars(String userId, String currentFileName) async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
+      final directory = await getAvatarDirectory();
       final dir = Directory(directory.path);
       if (!await dir.exists()) return;
 

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
-import 'package:path_provider/path_provider.dart';
+import '../utils/data_directory.dart';
 import '../../models/note.dart';
 import '../../models/todo.dart';
 import '../../models/category.dart';
@@ -16,14 +16,14 @@ class SimpleDatabaseService {
   Isar get isar => _isar;
 
   Future<void> init() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await getDataDirectory();
 
     _isar = await Isar.open([
       NoteSchema,
       TodoSchema,
       CategorySchema,
       TagSchema,
-    ], directory: dir.path);
+    ], directory: dir);
   }
 
   Future<void> close() async {
