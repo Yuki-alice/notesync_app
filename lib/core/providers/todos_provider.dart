@@ -38,6 +38,17 @@ class TodosProvider with ChangeNotifier, WidgetsBindingObserver {
         loadTodos();
       }
     });
+    _loadInitialDataSync();
+  }
+
+  void _loadInitialDataSync() {
+    _todos = _repository.getAllTodos();
+    _filteredTodos = _todos.where((t) => !t.isDeleted).toList();
+    _filteredTodos.sort((a, b) {
+      if (a.isCompleted != b.isCompleted) return a.isCompleted ? 1 : -1;
+      if (a.isCompleted) return b.updatedAt.compareTo(a.updatedAt);
+      return a.sortOrder.compareTo(b.sortOrder);
+    });
   }
 
   @override
