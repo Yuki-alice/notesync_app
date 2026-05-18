@@ -135,7 +135,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
                       color: paperColor,
                       borderRadius: BorderRadius.circular(24), // 圆润的卡片感
                       boxShadow: [
-                        BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 40, offset: const Offset(0, 20)),
+                        BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.08), blurRadius: 40, offset: const Offset(0, 20)),
                       ],
                     ),
                     // 纸张内部的高级留白
@@ -258,7 +258,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 30, offset: const Offset(0, 10))
+                      BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.15), blurRadius: 30, offset: const Offset(0, 10))
                     ],
                   ),
                   // 为了在预览时不显得过大卡顿，稍微裁剪圆角预览
@@ -279,7 +279,7 @@ class _NoteExportPreviewPageState extends State<NoteExportPreviewPage> {
             color: theme.colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, -4))
+              BoxShadow(color: theme.colorScheme.shadow.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, -4))
             ],
           ),
           child: Column(

@@ -304,7 +304,7 @@ class _RightInspectorPanelState extends State<RightInspectorPanel> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
                     padding: const EdgeInsets.symmetric(vertical: 6),
-                    decoration: BoxDecoration(color: item.isActive ? colorScheme.surface : Colors.transparent, borderRadius: BorderRadius.circular(6), boxShadow: item.isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 1))] : []),
+                    decoration: BoxDecoration(color: item.isActive ? colorScheme.surface : Colors.transparent, borderRadius: BorderRadius.circular(6), boxShadow: item.isActive ? [BoxShadow(color: colorScheme.shadow.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 1))] : []),
                     alignment: Alignment.center,
                     child: item.label != null
                         ? Text(item.label!, style: TextStyle(fontSize: 12, fontWeight: item.isActive ? FontWeight.w600 : FontWeight.w500, color: item.isActive ? colorScheme.primary : colorScheme.onSurfaceVariant))
